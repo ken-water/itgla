@@ -32,4 +32,4 @@ The UI must also launch with the software renderer and pass a screenshot inspect
 
 ## Rollback
 
-Schema v1 is created atomically and is compatible with all releases from `v0.0.2`. Rolling back to `v0.0.1` leaves the database untouched and unused. Before any future destructive migration, copy the database and verify restore against the target version. The application refuses to open a newer unknown schema rather than guessing compatibility.
+Migrations are applied sequentially in transactions. Schema v2 adds relationship archival to schema v1. Rolling back to a release that supports only an older schema is fail-closed: the older application leaves the database untouched and reports the unsupported version. Before any future destructive migration, copy the database and verify restore against the target version. The application never guesses compatibility with a newer schema.

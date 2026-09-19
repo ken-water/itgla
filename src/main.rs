@@ -4,7 +4,8 @@ mod storage;
 use std::{cell::RefCell, rc::Rc};
 
 use domain::{
-    Asset, AssetDraft, Health, Project, ResourceKind, filter_assets, kind_from_label, parse_tags,
+    Asset, AssetDraft, Health, Project, Relationship, RelationshipKind, ResourceKind,
+    filter_assets, kind_from_label, parse_tags,
 };
 use slint::{ModelRc, SharedString, VecModel};
 use storage::{Repository, StorageError};
@@ -18,6 +19,104 @@ struct UiState {
     query: String,
     projects: Vec<Project>,
     assets: Vec<Asset>,
+    relationships: Vec<Relationship>,
+}
+
+fn graph_models(
+    assets: &[Asset],
+    relationships: &[Relationship],
+) -> (Vec<GraphNodeRow>, Vec<GraphEdgeRow>) {
+    let positions = graph_positions(assets.len().min(8));
+    let visible = assets.iter().take(positions.len()).collect::<Vec<_>>();
+    let nodes = visible
+        .iter()
+        .zip(&positions)
+        .map(|(asset, &(x, y))| GraphNodeRow {
+            id: i32::try_from(asset.id).map_or(i32::MAX, |value| value),
+            title: SharedString::from(asset.name.as_str()),
+            subtitle: SharedString::from(asset.kind.label()),
+            mark: SharedString::from(asset.kind.mark()),
+            kind_tone: asset.kind.index(),
+            x,
+            y,
+        })
+        .collect();
+    let edges = relationships
+        .iter()
+        .filter_map(|relationship| {
+            let source = visible
+                .iter()
+                .position(|asset| asset.id == relationship.source_asset_id)?;
+            let target = visible
+                .iter()
+                .position(|asset| asset.id == relationship.target_asset_id)?;
+            let (source_x, source_y) = positions[source];
+            let (target_x, target_y) = positions[target];
+            Some(GraphEdgeRow {
+                path: SharedString::from(format!(
+                    "M {} {} L {} {}",
+                    source_x + 58.0,
+                    source_y + 26.0,
+                    target_x + 58.0,
+                    target_y + 26.0
+                )),
+            })
+        })
+        .collect();
+    (nodes, edges)
+}
+
+fn graph_positions(count: usize) -> Vec<(f32, f32)> {
+    match count {
+        0 => vec![],
+        1 => vec![(137.0, 150.0)],
+        2 => vec![(54.0, 150.0), (220.0, 150.0)],
+        3 => vec![(137.0, 45.0), (220.0, 225.0), (54.0, 225.0)],
+        4 => vec![(45.0, 65.0), (229.0, 65.0), (229.0, 235.0), (45.0, 235.0)],
+        5 => vec![
+            (137.0, 25.0),
+            (245.0, 105.0),
+            (205.0, 245.0),
+            (69.0, 245.0),
+            (29.0, 105.0),
+        ],
+        6 => vec![
+            (137.0, 18.0),
+            (245.0, 75.0),
+            (245.0, 225.0),
+            (137.0, 282.0),
+            (29.0, 225.0),
+            (29.0, 75.0),
+        ],
+        7 => vec![
+            (137.0, 15.0),
+            (245.0, 60.0),
+            (245.0, 165.0),
+            (205.0, 270.0),
+            (69.0, 270.0),
+            (29.0, 165.0),
+            (29.0, 60.0),
+        ],
+        _ => vec![
+            (137.0, 10.0),
+            (245.0, 55.0),
+            (245.0, 150.0),
+            (245.0, 250.0),
+            (137.0, 288.0),
+            (29.0, 250.0),
+            (29.0, 150.0),
+            (29.0, 55.0),
+        ],
+    }
+}
+
+fn to_relationship_row(relationship: &Relationship) -> RelationshipRow {
+    RelationshipRow {
+        id: i32::try_from(relationship.id).map_or(i32::MAX, |value| value),
+        source: SharedString::from(relationship.source_name.as_str()),
+        kind: SharedString::from(relationship.kind.label()),
+        target: SharedString::from(relationship.target_name.as_str()),
+    }
 }
 
 fn to_asset_row(asset: &Asset) -> AssetRow {
@@ -90,6 +189,7 @@ fn refresh(
     state.project_index = state.project_index.min(state.projects.len() - 1);
     let project = &state.projects[state.project_index];
     state.assets = repository.assets_for_project(project.id)?;
+    state.relationships = repository.relationships_for_project(project.id)?;
     let assets: Vec<AssetRow> = filter_assets(&state.assets, state.filter, &state.query)
         .into_iter()
         .map(to_asset_row)
@@ -103,6 +203,27 @@ fn refresh(
     )));
     window.set_result_count(assets.len() as i32);
     window.set_assets(ModelRc::new(VecModel::from(assets)));
+    let (graph_nodes, graph_edges) = graph_models(&state.assets, &state.relationships);
+    window.set_graph_nodes(ModelRc::new(VecModel::from(graph_nodes)));
+    window.set_graph_edges(ModelRc::new(VecModel::from(graph_edges)));
+    window.set_relationships(ModelRc::new(VecModel::from(
+        state
+            .relationships
+            .iter()
+            .map(to_relationship_row)
+            .collect::<Vec<_>>(),
+    )));
+    window.set_asset_options(ModelRc::new(VecModel::from(
+        state
+            .assets
+            .iter()
+            .map(|asset| SharedString::from(format!("{} · {}", asset.kind.label(), asset.name)))
+            .collect::<Vec<_>>(),
+    )));
+    let selected_graph_id = state.assets.first().map_or(0, |asset| {
+        i32::try_from(asset.id).map_or(i32::MAX, |value| value)
+    });
+    window.set_selected_graph_asset_id(selected_graph_id);
     window.set_selected_project(SharedString::from(project.name.as_str()));
     window.set_selected_project_index(state.project_index as i32);
     window.set_selected_asset(-1);
@@ -302,6 +423,83 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(error) => show_error(&window, &error),
         }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_save_relationship(move |source_index, target_index, kind_index| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let mut state = callback_state.borrow_mut();
+        let Some(project) = state.projects.get(state.project_index) else {
+            return;
+        };
+        let Some(source) = state.assets.get(source_index.max(0) as usize) else {
+            show_error(&window, &"请选择来源资源");
+            return;
+        };
+        let Some(target) = state.assets.get(target_index.max(0) as usize) else {
+            show_error(&window, &"请选择目标资源");
+            return;
+        };
+        let saved = callback_repository.borrow().save_relationship(
+            project.id,
+            source.id,
+            target.id,
+            RelationshipKind::from_index(kind_index),
+        );
+        match saved {
+            Ok(_) => {
+                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+                    show_error(&window, &error);
+                    return;
+                }
+                window.set_relationship_editor_open(false);
+                show_success(&window, "关系已添加到图谱");
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_archive_relationship(move |id| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let archived = callback_repository
+            .borrow()
+            .archive_relationship(i64::from(id));
+        match archived {
+            Ok(()) => {
+                let mut state = callback_state.borrow_mut();
+                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+                    show_error(&window, &error);
+                    return;
+                }
+                window.set_archive_confirm_open(false);
+                show_success(&window, "关系已从图谱移除");
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    window.on_graph_node_selected(move |id| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let state = callback_state.borrow();
+        let visible = filter_assets(&state.assets, state.filter, &state.query);
+        let index = visible
+            .iter()
+            .position(|asset| asset.id == i64::from(id))
+            .map_or(-1, |index| index as i32);
+        window.set_selected_asset(index);
     });
 
     window.run()?;

@@ -2,6 +2,25 @@
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
+## [0.0.4] - 2026-09-19
+
+### Added
+
+- Typed relationships between resources with create and confirmation-gated remove workflows.
+- A data-driven project graph whose nodes select the matching resource row.
+- A relationship list that shows source, type, and target for the current project.
+- Schema v2 migration with relationship archival and deterministic example relationships.
+
+### Changed
+
+- Database migrations now run sequentially in transactions and reject unknown newer schemas.
+- The relationship graph is generated from local assets and relationships instead of static UI content.
+
+### Migration
+
+- Upgrades schema v1 to schema v2 without removing projects, resources, tags, or relationships.
+- Releases through `v0.0.3` reject schema v2 safely; back up `itgla.db` before rolling back.
+
 ## [0.0.3] - 2026-09-19
 
 ### Added
@@ -60,3 +79,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.0.1]: https://github.com/ken-water/itgla/releases/tag/v0.0.1
 [0.0.2]: https://github.com/ken-water/itgla/releases/tag/v0.0.2
 [0.0.3]: https://github.com/ken-water/itgla/releases/tag/v0.0.3
+[0.0.4]: https://github.com/ken-water/itgla/releases/tag/v0.0.4

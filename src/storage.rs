@@ -6,10 +6,11 @@ use rusqlite::{Connection, ErrorCode, params};
 use thiserror::Error;
 
 use crate::domain::{
-    Asset, AssetDraft, Health, Project, ResourceKind, ValidationError, validate_name,
+    Asset, AssetDraft, Health, Project, Relationship, RelationshipKind, ResourceKind,
+    ValidationError, validate_name,
 };
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 #[derive(Debug, Error)]
 pub enum StorageError {
@@ -60,15 +61,20 @@ impl Repository {
     fn from_connection(connection: Connection) -> Result<Self, StorageError> {
         connection.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")?;
         let mut repository = Self { connection };
-        repository.migrate()?;
+        repository.migrate_initial()?;
         repository.seed_if_empty()?;
+        repository.migrate_remaining()?;
         Ok(repository)
     }
 
-    fn migrate(&mut self) -> Result<(), StorageError> {
-        let current: i64 = self
-            .connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    fn schema_version(&self) -> Result<i64, StorageError> {
+        self.connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .map_err(Into::into)
+    }
+
+    fn migrate_initial(&mut self) -> Result<(), StorageError> {
+        let current = self.schema_version()?;
         if current > SCHEMA_VERSION {
             return Err(StorageError::UnsupportedSchema {
                 found: current,
@@ -78,6 +84,17 @@ impl Repository {
         if current == 0 {
             let transaction = self.connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/001_initial.sql"))?;
+            transaction.pragma_update(None, "user_version", 1)?;
+            transaction.commit()?;
+        }
+        Ok(())
+    }
+
+    fn migrate_remaining(&mut self) -> Result<(), StorageError> {
+        if self.schema_version()? == 1 {
+            let transaction = self.connection.transaction()?;
+            transaction
+                .execute_batch(include_str!("../migrations/002_relationship_lifecycle.sql"))?;
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
@@ -249,11 +266,70 @@ impl Repository {
         Ok(())
     }
 
-    #[cfg(test)]
-    fn schema_version(&self) -> Result<i64, StorageError> {
+    pub fn relationships_for_project(
+        &self,
+        project_id: i64,
+    ) -> Result<Vec<Relationship>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT r.id, r.source_asset_id, source.name, r.target_asset_id, target.name, r.kind
+             FROM relationships r
+             JOIN assets source ON source.id = r.source_asset_id
+             JOIN assets target ON target.id = r.target_asset_id
+             WHERE source.project_id = ?1 AND target.project_id = ?1
+               AND source.archived_at IS NULL AND target.archived_at IS NULL
+               AND r.archived_at IS NULL
+             ORDER BY source.name COLLATE NOCASE, target.name COLLATE NOCASE, r.id",
+        )?;
+        let rows = statement.query_map([project_id], |row| {
+            let kind: String = row.get(5)?;
+            Ok(Relationship {
+                id: row.get(0)?,
+                source_asset_id: row.get(1)?,
+                source_name: row.get(2)?,
+                target_asset_id: row.get(3)?,
+                target_name: row.get(4)?,
+                kind: parse_relationship_kind(&kind),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn save_relationship(
+        &self,
+        project_id: i64,
+        source_asset_id: i64,
+        target_asset_id: i64,
+        kind: RelationshipKind,
+    ) -> Result<i64, StorageError> {
+        if source_asset_id == target_asset_id {
+            return Err(StorageError::Conflict);
+        }
+        let valid_endpoints: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM assets
+             WHERE id IN (?1, ?2) AND project_id = ?3 AND archived_at IS NULL",
+            params![source_asset_id, target_asset_id, project_id],
+            |row| row.get(0),
+        )?;
+        if valid_endpoints != 2 {
+            return Err(StorageError::Conflict);
+        }
         self.connection
-            .query_row("PRAGMA user_version", [], |row| row.get(0))
-            .map_err(Into::into)
+            .execute(
+                "INSERT INTO relationships (source_asset_id, target_asset_id, kind)
+                 VALUES (?1, ?2, ?3)",
+                params![source_asset_id, target_asset_id, kind.key()],
+            )
+            .map_err(map_write_error)?;
+        Ok(self.connection.last_insert_rowid())
+    }
+
+    pub fn archive_relationship(&self, id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE relationships SET archived_at = CURRENT_TIMESTAMP
+             WHERE id = ?1 AND archived_at IS NULL",
+            [id],
+        )?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -317,6 +393,16 @@ fn parse_health(value: &str) -> Health {
     }
 }
 
+fn parse_relationship_kind(value: &str) -> RelationshipKind {
+    match value {
+        "deploys_to" => RelationshipKind::DeploysTo,
+        "uses_domain" => RelationshipKind::UsesDomain,
+        "protected_by" => RelationshipKind::ProtectedBy,
+        "serves" => RelationshipKind::Serves,
+        _ => RelationshipKind::DependsOn,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -326,7 +412,7 @@ mod tests {
     #[test]
     fn migrates_and_seeds_an_empty_database() -> Result<(), StorageError> {
         let repository = Repository::in_memory()?;
-        assert_eq!(repository.schema_version()?, 1);
+        assert_eq!(repository.schema_version()?, 2);
         assert_eq!(repository.projects()?.len(), 3);
         assert_eq!(repository.assets_for_project(1)?.len(), 6);
         Ok(())
@@ -358,7 +444,7 @@ mod tests {
             error,
             Some(StorageError::UnsupportedSchema {
                 found: 99,
-                supported: 1
+                supported: 2
             })
         ));
         Ok(())
@@ -431,6 +517,47 @@ mod tests {
         assert!(matches!(
             repository.archive_project(remaining),
             Err(StorageError::LastProject)
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn migrates_v1_and_manages_typed_relationships() -> Result<(), StorageError> {
+        let connection = Connection::open_in_memory()?;
+        connection.execute_batch(include_str!("../migrations/001_initial.sql"))?;
+        connection.execute_batch(include_str!("../migrations/seed.sql"))?;
+        connection.pragma_update(None, "user_version", 1)?;
+        let repository = Repository::from_connection(connection)?;
+        assert_eq!(repository.schema_version()?, 2);
+        assert_eq!(repository.relationships_for_project(1)?.len(), 4);
+        let cross_project: i64 = repository.connection.query_row(
+            "SELECT COUNT(*) FROM relationships r
+             JOIN assets source ON source.id = r.source_asset_id
+             JOIN assets target ON target.id = r.target_asset_id
+             WHERE source.project_id != target.project_id",
+            [],
+            |row| row.get(0),
+        )?;
+        assert_eq!(cross_project, 0);
+
+        let id = repository.save_relationship(1, 5, 1, RelationshipKind::Serves)?;
+        assert!(
+            repository
+                .relationships_for_project(1)?
+                .iter()
+                .any(|relationship| relationship.id == id
+                    && relationship.kind == RelationshipKind::Serves)
+        );
+        repository.archive_relationship(id)?;
+        assert!(
+            repository
+                .relationships_for_project(1)?
+                .iter()
+                .all(|relationship| relationship.id != id)
+        );
+        assert!(matches!(
+            repository.save_relationship(1, 1, 1, RelationshipKind::DependsOn),
+            Err(StorageError::Conflict)
         ));
         Ok(())
     }

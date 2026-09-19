@@ -23,4 +23,4 @@ On an empty database, insert the deterministic prototype dataset once. Existing 
 
 ## Compatibility and rollback
 
-Schema v1 is additive relative to `v0.0.1`, which had no persisted data. Rollback to `v0.0.1` leaves `itgla.db` untouched but unused. Back up the database before any future destructive migration. Newer application versions must not lower `user_version` or open an unknown newer schema for writes.
+Schema v1 is additive relative to `v0.0.1`, which had no persisted data. Schema v2 adds relationship archival and deterministic example relationships without removing data. Rollback to `v0.0.1` leaves `itgla.db` untouched but unused; `v0.0.2` and `v0.0.3` reject schema v2 rather than opening it unsafely. Back up the database before any future destructive migration. Newer application versions must not lower `user_version` or open an unknown newer schema for writes.

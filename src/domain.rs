@@ -67,6 +67,52 @@ pub enum Health {
     Critical,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RelationshipKind {
+    DeploysTo,
+    UsesDomain,
+    ProtectedBy,
+    DependsOn,
+    Serves,
+}
+
+impl RelationshipKind {
+    pub const ALL: [Self; 5] = [
+        Self::DeploysTo,
+        Self::UsesDomain,
+        Self::ProtectedBy,
+        Self::DependsOn,
+        Self::Serves,
+    ];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::DeploysTo => "deploys_to",
+            Self::UsesDomain => "uses_domain",
+            Self::ProtectedBy => "protected_by",
+            Self::DependsOn => "depends_on",
+            Self::Serves => "serves",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::DeploysTo => "部署于",
+            Self::UsesDomain => "使用域名",
+            Self::ProtectedBy => "由证书保护",
+            Self::DependsOn => "依赖",
+            Self::Serves => "服务于",
+        }
+    }
+
+    pub fn from_index(index: i32) -> Self {
+        Self::ALL
+            .get(index.max(0) as usize)
+            .copied()
+            .map_or(Self::DependsOn, |kind| kind)
+    }
+}
+
 impl Health {
     pub fn label(self) -> &'static str {
         match self {
@@ -132,6 +178,16 @@ pub struct AssetDraft {
     pub environment: String,
     pub health: Health,
     pub tags: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Relationship {
+    pub id: i64,
+    pub source_asset_id: i64,
+    pub source_name: String,
+    pub target_asset_id: i64,
+    pub target_name: String,
+    pub kind: RelationshipKind,
 }
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
