@@ -190,6 +190,12 @@ pub struct Relationship {
     pub kind: RelationshipKind,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct GlobalAsset {
+    pub project_name: String,
+    pub asset: Asset,
+}
+
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ValidationError {
     #[error("名称不能为空")]

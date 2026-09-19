@@ -2,6 +2,27 @@
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
+## [0.1.0] - 2026-09-19
+
+### Added
+
+- Cross-project search across project names, resource names, types, tags, and descriptions.
+- Working All Resources and Needs Attention views with risk-first ordering and a 100-result bound.
+- Result navigation that opens the owning project, selects the resource, and highlights its graph node.
+- Distinct empty states for new projects, filtered results, missing relationships, and healthy workspaces.
+- Accessible roles, labels, and default actions for custom navigation, filters, resource rows, graph nodes, and relationship controls.
+
+### Changed
+
+- Replaced prototype sync and user placeholders with accurate local-save and version information.
+- Project search now includes tags and resets coherently after navigation from global results.
+- Empty repository refresh clears all derived graph, relationship, and option models.
+
+### Verification
+
+- Verified global, attention, result-navigation, empty-project, data-safety, and recoverable import-error states with real process interaction and 1440x900 software-renderer screenshots.
+- Confirmed a failed import leaves the existing three-project workspace unchanged.
+
 ## [0.0.5] - 2026-09-19
 
 ### Added
@@ -100,3 +121,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.0.3]: https://github.com/ken-water/itgla/releases/tag/v0.0.3
 [0.0.4]: https://github.com/ken-water/itgla/releases/tag/v0.0.4
 [0.0.5]: https://github.com/ken-water/itgla/releases/tag/v0.0.5
+[0.1.0]: https://github.com/ken-water/itgla/releases/tag/v0.1.0

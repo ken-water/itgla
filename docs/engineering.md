@@ -4,7 +4,7 @@
 
 ITGLA is currently a single desktop binary. `src/domain.rs` owns typed resource data and filtering rules, `src/storage.rs` owns SQLite migrations and persistence, `src/main.rs` coordinates the repository and translates domain values into the Slint model, and `ui/app.slint` owns presentation and transient interaction state. A multi-crate workspace would add ceremony without creating a meaningful runtime or ownership boundary at this stage.
 
-The application has no network, background work, concurrency, secrets, or production data. SQLite persistence and portability operations are synchronous on the UI thread while the dataset is local and bounded; JSON imports are capped at 10 MiB, 1,000 projects, 10,000 assets, and 50,000 relationships. Move expensive work off the UI thread before raising those limits. Relevant failure modes are migration or database access failure, unavailable window backends or fonts, invalid import files, and incorrect filtering. Errors remain typed through the storage boundary and are shown in the UI where recovery is possible.
+The application has no network, background work, concurrency, secrets, or production data. SQLite persistence, search, and portability operations are synchronous on the UI thread while the dataset is local and bounded; global search returns at most 100 resources, and JSON imports are capped at 10 MiB, 1,000 projects, 10,000 assets, and 50,000 relationships. Move expensive work off the UI thread before raising those limits. Relevant failure modes are migration or database access failure, unavailable window backends or fonts, invalid import files, and incorrect filtering. Errors remain typed through the storage boundary and are shown in the UI where recovery is possible.
 
 ## Dependencies
 
@@ -29,7 +29,7 @@ cargo test --all-features
 cargo build --release --locked
 ```
 
-The UI must also launch with the software renderer and pass a screenshot inspection at 1440x900. Coverage and dependency-policy tooling are not installed in the current environment; introducing CI or a release candidate should add `cargo llvm-cov` and `cargo deny` gates rather than claiming those checks here.
+The UI must also launch with the software renderer and pass a screenshot inspection at 1440x900. For `v0.1.0`, real X11 pointer interaction covers global resources, attention filtering, result navigation, data export/backup, empty-project rendering, and recoverable import failure. Coverage and dependency-policy tooling are not installed in the current environment; a later CI baseline should add `cargo llvm-cov` and `cargo deny` gates rather than claiming those checks here.
 
 ## Rollback
 

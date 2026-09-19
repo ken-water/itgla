@@ -4,7 +4,7 @@ mod storage;
 use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use domain::{
-    Asset, AssetDraft, Health, Project, Relationship, RelationshipKind, ResourceKind,
+    Asset, AssetDraft, GlobalAsset, Health, Project, Relationship, RelationshipKind, ResourceKind,
     filter_assets, kind_from_label, parse_tags,
 };
 use slint::{ModelRc, SharedString, VecModel};
@@ -173,6 +173,42 @@ fn to_project_row(project: &Project) -> ProjectRow {
     }
 }
 
+fn to_global_result(result: &GlobalAsset, projects: &[Project]) -> GlobalResultRow {
+    let project_index = projects
+        .iter()
+        .position(|project| project.id == result.asset.project_id)
+        .map_or(0, |index| index as i32);
+    GlobalResultRow {
+        asset_id: i32::try_from(result.asset.id).map_or(i32::MAX, |value| value),
+        project_index,
+        name: SharedString::from(result.asset.name.as_str()),
+        project: SharedString::from(result.project_name.as_str()),
+        kind: SharedString::from(result.asset.kind.label()),
+        mark: SharedString::from(result.asset.kind.mark()),
+        detail: SharedString::from(result.asset.detail.as_str()),
+        status: SharedString::from(result.asset.health.label()),
+        tone: result.asset.health.index(),
+        kind_tone: result.asset.kind.index(),
+    }
+}
+
+fn refresh_global_results(
+    window: &AppWindow,
+    state: &UiState,
+    repository: &Repository,
+    query: &str,
+    attention_only: bool,
+) -> Result<(), StorageError> {
+    let results = repository
+        .search_assets(query, attention_only)?
+        .iter()
+        .map(|result| to_global_result(result, &state.projects))
+        .collect::<Vec<_>>();
+    window.set_global_result_count(results.len() as i32);
+    window.set_global_results(ModelRc::new(VecModel::from(results)));
+    Ok(())
+}
+
 fn refresh(
     window: &AppWindow,
     state: &mut UiState,
@@ -181,8 +217,14 @@ fn refresh(
     state.projects = repository.projects()?;
     if state.projects.is_empty() {
         state.assets.clear();
+        state.relationships.clear();
         window.set_projects(ModelRc::new(VecModel::<ProjectRow>::default()));
         window.set_assets(ModelRc::new(VecModel::<AssetRow>::default()));
+        window.set_graph_nodes(ModelRc::new(VecModel::<GraphNodeRow>::default()));
+        window.set_graph_edges(ModelRc::new(VecModel::<GraphEdgeRow>::default()));
+        window.set_relationships(ModelRc::new(VecModel::<RelationshipRow>::default()));
+        window.set_asset_options(ModelRc::new(VecModel::<SharedString>::default()));
+        window.set_project_asset_count(0);
         window.set_result_count(0);
         return Ok(());
     }
@@ -202,6 +244,7 @@ fn refresh(
             .collect::<Vec<_>>(),
     )));
     window.set_result_count(assets.len() as i32);
+    window.set_project_asset_count(state.assets.len() as i32);
     window.set_assets(ModelRc::new(VecModel::from(assets)));
     let (graph_nodes, graph_edges) = graph_models(&state.assets, &state.relationships);
     window.set_graph_nodes(ModelRc::new(VecModel::from(graph_nodes)));
@@ -251,6 +294,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         backup_path.to_string_lossy().into_owned(),
     ));
     refresh(&window, &mut state.borrow_mut(), &repository.borrow())?;
+    refresh_global_results(&window, &state.borrow(), &repository.borrow(), "", false)?;
 
     let weak = window.as_weak();
     let callback_state = Rc::clone(&state);
@@ -505,6 +549,51 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .position(|asset| asset.id == i64::from(id))
             .map_or(-1, |index| index as i32);
         window.set_selected_asset(index);
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_global_search_changed(move |query, attention_only| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        if let Err(error) = refresh_global_results(
+            &window,
+            &callback_state.borrow(),
+            &callback_repository.borrow(),
+            &query,
+            attention_only,
+        ) {
+            show_error(&window, &error);
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_global_result_selected(move |project_index, asset_id| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let mut state = callback_state.borrow_mut();
+        state.project_index = project_index.max(0) as usize;
+        state.filter = None;
+        state.query.clear();
+        if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+            show_error(&window, &error);
+            return;
+        }
+        let selected = state
+            .assets
+            .iter()
+            .position(|asset| asset.id == i64::from(asset_id))
+            .map_or(-1, |index| index as i32);
+        window.set_active_filter(SharedString::from("全部"));
+        window.set_project_query(SharedString::new());
+        window.set_selected_asset(selected);
+        window.set_selected_graph_asset_id(asset_id);
+        window.set_global_search_open(false);
     });
 
     let weak = window.as_weak();

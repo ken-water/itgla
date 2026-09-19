@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::domain::{
-    Asset, AssetDraft, Health, Project, Relationship, RelationshipKind, ResourceKind,
+    Asset, AssetDraft, GlobalAsset, Health, Project, Relationship, RelationshipKind, ResourceKind,
     ValidationError, validate_name,
 };
 
@@ -254,6 +254,72 @@ impl Repository {
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn search_assets(
+        &self,
+        query: &str,
+        attention_only: bool,
+    ) -> Result<Vec<GlobalAsset>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT p.name, a.id, a.project_id, a.kind, a.name, a.detail, a.status_detail,
+                    a.environment, a.health,
+                    COALESCE((SELECT group_concat(name, ', ') FROM (
+                        SELECT t.name FROM tags t
+                        JOIN asset_tags at ON at.tag_id = t.id
+                        WHERE at.asset_id = a.id ORDER BY t.name COLLATE NOCASE
+                    )), '')
+             FROM assets a JOIN projects p ON p.id = a.project_id
+             WHERE a.archived_at IS NULL AND p.archived_at IS NULL
+             ORDER BY CASE a.health WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 ELSE 2 END,
+                      p.position, a.position, a.id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            let kind: String = row.get(3)?;
+            let health: String = row.get(8)?;
+            Ok(GlobalAsset {
+                project_name: row.get(0)?,
+                asset: Asset {
+                    id: row.get(1)?,
+                    project_id: row.get(2)?,
+                    kind: parse_kind(&kind),
+                    name: row.get(4)?,
+                    detail: row.get(5)?,
+                    status_detail: row.get(6)?,
+                    environment: row.get(7)?,
+                    health: parse_health(&health),
+                    tags: row
+                        .get::<_, String>(9)?
+                        .split(", ")
+                        .filter(|tag| !tag.is_empty())
+                        .map(ToOwned::to_owned)
+                        .collect(),
+                },
+            })
+        })?;
+        let normalized = query.trim().to_lowercase();
+        rows.filter_map(|row| match row {
+            Ok(result)
+                if (!attention_only || result.asset.health != Health::Healthy)
+                    && (normalized.is_empty()
+                        || result.asset.name.to_lowercase().contains(&normalized)
+                        || result.asset.detail.to_lowercase().contains(&normalized)
+                        || result.project_name.to_lowercase().contains(&normalized)
+                        || result.asset.kind.label().contains(&normalized)
+                        || result
+                            .asset
+                            .tags
+                            .iter()
+                            .any(|tag| tag.to_lowercase().contains(&normalized))) =>
+            {
+                Some(Ok(result))
+            }
+            Ok(_) => None,
+            Err(error) => Some(Err(error)),
+        })
+        .take(100)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(Into::into)
     }
 
     pub fn save_project(&mut self, id: Option<i64>, name: &str) -> Result<i64, StorageError> {
@@ -1039,6 +1105,27 @@ mod tests {
                 .assets_for_project(1)?
                 .iter()
                 .all(|asset| asset.id != id)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn global_search_crosses_projects_and_filters_attention() -> Result<(), StorageError> {
+        let repository = Repository::in_memory()?;
+        let northstar = repository.search_assets("northstar", false)?;
+        assert_eq!(northstar.len(), 4);
+        assert!(
+            northstar
+                .iter()
+                .all(|result| result.project_name == "Northstar API")
+        );
+
+        let attention = repository.search_assets("", true)?;
+        assert_eq!(attention.len(), 3);
+        assert!(
+            attention
+                .iter()
+                .all(|result| result.asset.health != Health::Healthy)
         );
         Ok(())
     }
