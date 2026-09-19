@@ -1,0 +1,12 @@
+/target/
+/dist/
+/.planning/
+/.plan-attestation
+/task_plan.md
+/findings.md
+/progress.md
+*.db
+*.db-shm
+*.db-wal
+/backups/
+.DS_Store

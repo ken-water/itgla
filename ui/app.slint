@@ -1,0 +1,256 @@
+import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct AssetRow {
+    kind: string,
+    mark: string,
+    name: string,
+    detail: string,
+    status: string,
+    status-detail: string,
+    environment: string,
+    tone: int,
+    kind-tone: int,
+}
+
+component KindMark inherits Rectangle {
+    in property <string> label;
+    in property <int> tone;
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: tone == 0 ? #e4f4ef : tone == 1 ? #e8eefb : tone == 2 ? #f6edda : tone == 3 ? #eee9f7 : #e8f3f5;
+    Text {
+        text: root.label;
+        color: root.tone == 0 ? #15745e : root.tone == 1 ? #3b5ca8 : root.tone == 2 ? #956516 : root.tone == 3 ? #68479b : #2c6973;
+        font-size: 12px;
+        font-weight: 700;
+        horizontal-alignment: center;
+        vertical-alignment: center;
+    }
+}
+
+component StatusDot inherits Rectangle {
+    in property <int> tone;
+    width: 7px;
+    height: 7px;
+    border-radius: 4px;
+    background: tone == 0 ? #2b8a68 : tone == 1 ? #c18428 : #c94f50;
+}
+
+component NavItem inherits Rectangle {
+    in property <string> mark;
+    in property <string> label;
+    in property <bool> selected;
+    callback chosen;
+    height: 36px;
+    border-radius: 6px;
+    background: selected ? #e7f2ef : touch.has-hover ? #f1f4f3 : #00000000;
+    Text { x: 10px; width: 24px; text: root.mark; color: selected ? #176d5a : #66706d; font-size: 12px; font-weight: 700; vertical-alignment: center; }
+    Text { x: 38px; width: parent.width - 46px; text: root.label; color: selected ? #153f36 : #404846; font-size: 13px; font-weight: selected ? 600 : 400; vertical-alignment: center; }
+    touch := TouchArea { clicked => { root.chosen(); } }
+}
+
+component ProjectItem inherits Rectangle {
+    in property <string> label;
+    in property <string> short-name;
+    in property <string> count;
+    in property <bool> selected;
+    callback chosen;
+    height: 48px;
+    border-radius: 6px;
+    background: selected ? #e7f2ef : touch.has-hover ? #f1f4f3 : #00000000;
+    Rectangle {
+        x: 8px; y: 9px; width: 30px; height: 30px; border-radius: 6px;
+        background: selected ? #176d5a : #e7ebe9;
+        Text { text: root.short-name; color: selected ? #ffffff : #46504d; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    Text { x: 48px; y: 7px; width: parent.width - 86px; height: 19px; text: root.label; color: #202725; font-size: 13px; font-weight: 600; overflow: elide; }
+    Text { x: 48px; y: 26px; text: root.count; color: #7a8380; font-size: 11px; }
+    touch := TouchArea { clicked => { root.chosen(); } }
+}
+
+component FilterChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    callback chosen;
+    width: max(54px, chip-label.preferred-width + 24px);
+    height: 30px;
+    border-radius: 6px;
+    border-width: 1px;
+    border-color: selected ? #1f7663 : #dfe4e2;
+    background: selected ? #e5f2ee : touch.has-hover ? #f5f7f6 : #ffffff;
+    chip-label := Text { text: root.label; color: selected ? #176d5a : #5a6360; font-size: 12px; font-weight: selected ? 600 : 400; horizontal-alignment: center; vertical-alignment: center; }
+    touch := TouchArea { clicked => { root.chosen(); } }
+}
+
+component ResourceRow inherits Rectangle {
+    in property <AssetRow> item;
+    in property <bool> selected;
+    callback chosen;
+    height: 66px;
+    background: selected ? #edf6f3 : touch.has-hover ? #f8faf9 : #ffffff;
+    Rectangle { x: 0; y: 65px; width: parent.width; height: 1px; background: #e9edeb; }
+    KindMark { x: 12px; y: 18px; label: root.item.mark; tone: root.item.kind-tone; }
+    Text { x: 54px; y: 11px; width: 190px; height: 21px; text: root.item.name; color: #202725; font-size: 13px; font-weight: 600; overflow: elide; }
+    Text { x: 54px; y: 34px; width: 210px; height: 18px; text: root.item.detail; color: #78817e; font-size: 11px; overflow: elide; }
+    Rectangle {
+        x: 274px; y: 13px; width: 50px; height: 20px; border-radius: 4px; background: #f0f2f1;
+        Text { text: root.item.environment; color: #59625f; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
+    }
+    StatusDot { x: 342px; y: 17px; tone: root.item.tone; }
+    Text { x: 355px; y: 10px; width: 54px; height: 20px; text: root.item.status; color: root.item.tone == 2 ? #a23839 : #4f5956; font-size: 11px; font-weight: 600; }
+    Text { x: 274px; y: 36px; width: parent.width - 298px; height: 18px; text: root.item.status-detail; color: #78817e; font-size: 11px; horizontal-alignment: right; overflow: elide; }
+    Text { x: parent.width - 18px; y: 22px; text: ">"; color: #a8afad; font-size: 12px; }
+    touch := TouchArea { clicked => { root.chosen(); } }
+}
+
+component GraphNode inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <string> mark;
+    in property <color> accent;
+    in property <bool> primary: false;
+    width: primary ? 138px : 142px;
+    height: primary ? 58px : 52px;
+    border-radius: 7px;
+    border-width: primary ? 2px : 1px;
+    border-color: primary ? accent : #dce2df;
+    background: #ffffff;
+    Rectangle { x: 8px; y: 10px; width: 28px; height: 28px; border-radius: 6px; background: root.accent; Text { text: root.mark; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+    Text { x: 43px; y: 9px; width: parent.width - 49px; height: 18px; text: root.title; color: #26302d; font-size: 10px; font-weight: 600; overflow: elide; }
+    Text { x: 43px; y: 28px; width: parent.width - 49px; height: 16px; text: root.subtitle; color: #828a87; font-size: 9px; overflow: elide; }
+}
+
+export component AppWindow inherits Window {
+    title: "ITGLA — IT 资源关系管理";
+    preferred-width: 1440px;
+    preferred-height: 900px;
+    min-width: 1120px;
+    min-height: 720px;
+    background: #f5f7f6;
+
+    in property <[AssetRow]> assets;
+    in-out property <string> selected-project: "Cloudnote";
+    in-out property <int> result-count: 0;
+    in-out property <int> selected-asset: -1;
+    private property <int> selected-project-index: 0;
+    private property <string> active-filter: "全部";
+
+    callback project-selected(int);
+    callback filter-selected(string);
+    callback search-changed(string);
+
+    // Persistent navigation
+    Rectangle {
+        x: 0; y: 0; width: 236px; height: parent.height; background: #f0f3f2;
+        Rectangle { x: 235px; y: 0; width: 1px; height: parent.height; background: #dfe5e2; }
+        Text { x: 20px; y: 18px; text: "ITGLA"; color: #173f36; font-size: 20px; font-weight: 800; }
+        Text { x: 80px; y: 24px; text: "LOCAL"; color: #7a8581; font-size: 9px; font-weight: 600; }
+        Rectangle {
+            x: 16px; y: 58px; width: 204px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #d8dfdc; background: #ffffff;
+            Text { x: 11px; width: 24px; text: "/"; color: #75807c; font-size: 14px; vertical-alignment: center; }
+            Text { x: 33px; width: parent.width - 71px; text: "搜索全部资源"; color: #8b9390; font-size: 12px; vertical-alignment: center; }
+            Rectangle { x: 172px; y: 8px; width: 23px; height: 20px; border-radius: 4px; background: #eef1f0; Text { text: "⌘K"; color: #76807d; font-size: 8px; horizontal-alignment: center; vertical-alignment: center; } }
+        }
+        Text { x: 20px; y: 116px; text: "工作区"; color: #8a9390; font-size: 10px; font-weight: 600; }
+        NavItem { x: 12px; y: 136px; width: 212px; mark: "O"; label: "概览"; selected: true; }
+        NavItem { x: 12px; y: 176px; width: 212px; mark: "R"; label: "全部资源"; selected: false; }
+        NavItem { x: 12px; y: 216px; width: 212px; mark: "!"; label: "需要关注"; selected: false; }
+        Text { x: 20px; y: 276px; text: "项目"; color: #8a9390; font-size: 10px; font-weight: 600; }
+        Text { x: 204px; y: 272px; text: "+"; color: #66706d; font-size: 17px; }
+        ProjectItem { x: 12px; y: 296px; width: 212px; label: "Cloudnote"; short-name: "CN"; count: "6 项资源 · 2 项关注"; selected: root.selected-project-index == 0; chosen => { root.selected-project-index = 0; root.project-selected(0); } }
+        ProjectItem { x: 12px; y: 348px; width: 212px; label: "Shipfast"; short-name: "SF"; count: "4 项资源 · 1 项关注"; selected: root.selected-project-index == 1; chosen => { root.selected-project-index = 1; root.project-selected(1); } }
+        ProjectItem { x: 12px; y: 400px; width: 212px; label: "Northstar API"; short-name: "NS"; count: "4 项资源 · 状态正常"; selected: root.selected-project-index == 2; chosen => { root.selected-project-index = 2; root.project-selected(2); } }
+        Rectangle { x: 16px; y: parent.height - 64px; width: 204px; height: 1px; background: #dde3e0; }
+        Rectangle { x: 20px; y: parent.height - 48px; width: 30px; height: 30px; border-radius: 15px; background: #263a35; Text { text: "RL"; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
+        Text { x: 60px; y: parent.height - 48px; text: "Rich"; color: #343c39; font-size: 12px; font-weight: 600; }
+        Text { x: 60px; y: parent.height - 31px; text: "个人工作区"; color: #87908d; font-size: 10px; }
+    }
+
+    // Page heading and controls
+    Rectangle {
+        x: 236px; y: 0; width: parent.width - 236px; height: 78px; background: #ffffff;
+        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #e3e7e5; }
+        Text { x: 24px; y: 14px; text: root.selected-project; color: #202725; font-size: 20px; font-weight: 700; }
+        Text { x: 24px; y: 44px; text: "项目资产与依赖关系"; color: #7c8582; font-size: 11px; }
+        Rectangle {
+            x: parent.width - 292px; y: 20px; width: 150px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #dce2df; background: #ffffff;
+            Text { x: 12px; text: "同步于 2 分钟前"; color: #65706c; font-size: 11px; vertical-alignment: center; }
+        }
+        Button { x: parent.width - 130px; y: 20px; width: 110px; height: 36px; text: "+  添加资源"; enabled: false; }
+    }
+
+    // Main inventory workspace
+    Rectangle {
+        x: 236px; y: 78px; width: parent.width - 236px - 430px; height: parent.height - 78px; background: #ffffff;
+        Rectangle { x: parent.width - 1px; y: 0; width: 1px; height: parent.height; background: #e1e6e3; }
+        Text { x: 24px; y: 22px; text: "资源"; color: #27302d; font-size: 14px; font-weight: 700; }
+        Text { x: 66px; y: 23px; text: root.result-count; color: #858e8b; font-size: 12px; }
+        HorizontalLayout {
+            x: 24px; y: 60px; width: parent.width - 48px; height: 30px; spacing: 7px;
+            FilterChip { label: "全部"; selected: root.active-filter == "全部"; chosen => { root.active-filter = "全部"; root.filter-selected("全部"); } }
+            FilterChip { label: "网站"; selected: root.active-filter == "网站"; chosen => { root.active-filter = "网站"; root.filter-selected("网站"); } }
+            FilterChip { label: "域名"; selected: root.active-filter == "域名"; chosen => { root.active-filter = "域名"; root.filter-selected("域名"); } }
+            FilterChip { label: "证书"; selected: root.active-filter == "证书"; chosen => { root.active-filter = "证书"; root.filter-selected("证书"); } }
+            FilterChip { label: "服务器"; selected: root.active-filter == "服务器"; chosen => { root.active-filter = "服务器"; root.filter-selected("服务器"); } }
+            FilterChip { label: "服务"; selected: root.active-filter == "服务"; chosen => { root.active-filter = "服务"; root.filter-selected("服务"); } }
+            Rectangle { horizontal-stretch: 1; }
+        }
+        LineEdit { x: 24px; y: 104px; width: parent.width - 48px; height: 36px; placeholder-text: "按名称、类型或描述筛选当前项目"; edited(text) => { root.search-changed(text); } }
+        Rectangle { x: 24px; y: 154px; width: parent.width - 48px; height: 28px; background: #f7f9f8; border-radius: 4px;
+            Text { x: 12px; width: 230px; text: "资源名称"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
+            Text { x: 274px; width: 70px; text: "环境"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
+            Text { x: 342px; width: parent.width - 354px; text: "状态 / 到期"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
+        }
+        if root.result-count > 0: ScrollView {
+            x: 24px; y: 184px; width: parent.width - 48px; height: parent.height - 206px;
+            VerticalLayout {
+                spacing: 0px;
+                for item[index] in root.assets: ResourceRow {
+                    item: item;
+                    selected: root.selected-asset == index;
+                    chosen => { root.selected-asset = index; }
+                }
+            }
+        }
+        if root.result-count == 0: Rectangle {
+            x: 24px; y: 184px; width: parent.width - 48px; height: parent.height - 206px; background: #fafbfa; border-radius: 6px; border-width: 1px; border-color: #e4e8e6;
+            Text { y: parent.height / 2 - 34px; width: parent.width; text: "没有匹配的资源"; color: #394440; font-size: 14px; font-weight: 600; horizontal-alignment: center; }
+            Text { y: parent.height / 2 - 7px; width: parent.width; text: "尝试清空搜索词或选择“全部”"; color: #87908d; font-size: 11px; horizontal-alignment: center; }
+        }
+    }
+
+    // Relationship context
+    Rectangle {
+        x: parent.width - 430px; y: 78px; width: 430px; height: parent.height - 78px; background: #f7f9f8;
+        Text { x: 22px; y: 22px; text: "关系图"; color: #27302d; font-size: 14px; font-weight: 700; }
+        Text { x: 22px; y: 45px; text: "当前项目的直接依赖"; color: #818a87; font-size: 10px; }
+        Rectangle { x: parent.width - 90px; y: 19px; width: 68px; height: 26px; border-radius: 5px; border-width: 1px; border-color: #dce2df; background: #ffffff; Text { text: "适合视图"; color: #66716d; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } }
+        Rectangle {
+            x: 20px; y: 76px; width: parent.width - 40px; height: 352px; border-radius: 8px; border-width: 1px; border-color: #e0e6e3; background: #fbfcfb;
+            Path { width: parent.width; height: parent.height; viewbox-width: 390; viewbox-height: 352; commands: "M 195 176 L 91 76 M 195 176 L 299 76 M 195 176 L 91 268 M 195 176 L 299 268"; stroke: #cbd5d1; stroke-width: 1.2px; }
+            Rectangle { x: 190px; y: 171px; width: 10px; height: 10px; border-radius: 5px; background: #267a66; }
+            GraphNode { x: 126px; y: 145px; title: root.selected-project; subtitle: "当前项目"; mark: "P"; accent: #267a66; primary: true; }
+            GraphNode { x: 20px; y: 48px; title: root.selected-project-index == 0 ? "cloudnote.io" : root.selected-project-index == 1 ? "shipfa.st" : "northstar.dev"; subtitle: "域名"; mark: "D"; accent: #5575b7; }
+            GraphNode { x: 228px; y: 48px; title: root.selected-project-index == 0 ? "app.cloudnote.io" : root.selected-project-index == 1 ? "shipfa.st" : "api.northstar.dev"; subtitle: "网站 / 入口"; mark: "W"; accent: #2d886d; }
+            GraphNode { x: 20px; y: 242px; title: root.selected-project-index == 0 ? "cn-prod-01" : root.selected-project-index == 1 ? "sf-prod-eu" : "ns-edge-01"; subtitle: "生产服务器"; mark: "S"; accent: #7a5bac; }
+            GraphNode { x: 228px; y: 242px; title: root.selected-project-index == 0 ? "notes-api" : root.selected-project-index == 1 ? "checkout-api" : "gateway"; subtitle: "核心服务"; mark: "A"; accent: #3f7b83; }
+            Text { x: 133px; y: parent.height - 26px; width: 120px; text: "4 个直接关系"; color: #8a9390; font-size: 9px; horizontal-alignment: center; }
+        }
+        Text { x: 22px; y: 456px; text: "项目健康"; color: #27302d; font-size: 12px; font-weight: 700; }
+        Rectangle { x: 20px; y: 482px; width: parent.width - 40px; height: 58px; background: #ffffff; border-radius: 6px; border-width: 1px; border-color: #e0e5e3;
+            StatusDot { x: 14px; y: 18px; tone: root.selected-project-index == 0 ? 2 : root.selected-project-index == 1 ? 1 : 0; }
+            Text { x: 32px; y: 10px; text: root.selected-project-index == 0 ? "1 项高风险需要处理" : root.selected-project-index == 1 ? "1 项资源即将到期" : "所有资源状态正常"; color: #35403c; font-size: 11px; font-weight: 600; }
+            Text { x: 32px; y: 31px; text: root.selected-project-index == 0 ? "sync-worker 队列积压持续升高" : root.selected-project-index == 1 ? "shipfa.st 域名 31 天后到期" : "最近一次检查没有发现问题"; color: #858e8b; font-size: 9px; }
+        }
+        Text { x: 22px; y: 570px; text: "资源分布"; color: #27302d; font-size: 12px; font-weight: 700; }
+        Rectangle { x: 22px; y: 602px; width: parent.width - 44px; height: 7px; border-radius: 4px; background: #e2e7e5;
+            Rectangle { x: 0; width: parent.width * 0.34; height: parent.height; border-radius: 4px; background: #2d886d; }
+            Rectangle { x: parent.width * 0.34; width: parent.width * 0.18; height: parent.height; background: #5575b7; }
+            Rectangle { x: parent.width * 0.52; width: parent.width * 0.16; height: parent.height; background: #d09a45; }
+            Rectangle { x: parent.width * 0.68; width: parent.width * 0.16; height: parent.height; background: #7a5bac; }
+            Rectangle { x: parent.width * 0.84; width: parent.width * 0.16; height: parent.height; border-radius: 4px; background: #3f7b83; }
+        }
+        Text { x: 22px; y: 622px; text: "网站  1    域名  1    证书  1    服务器  1    服务  2"; color: #7d8783; font-size: 10px; }
+    }
+}

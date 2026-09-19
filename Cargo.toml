@@ -1,0 +1,22 @@
+[package]
+name = "itgla"
+version = "0.0.1"
+edition = "2024"
+description = "Local-first IT resource relationship manager"
+license = "Proprietary"
+
+[dependencies]
+slint = { version = "1.18.0", default-features = false, features = [
+    "accessibility",
+    "backend-winit",
+    "compat-1-18",
+    "renderer-software",
+    "software-renderer-systemfonts",
+] }
+
+[build-dependencies]
+slint-build = "1.18.0"
+
+[profile.release]
+lto = "thin"
+strip = true
