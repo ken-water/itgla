@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>下载 ITGLA v0.1.1</title>
+    <meta name="description" content="下载 ITGLA v0.1.1 Windows 或 Linux 版本，并验证 SHA-256 校验值。" />
+    <link rel="canonical" href="https://itgla.com/downloads.html" />
+    <link rel="icon" href="/assets/itgla-node-map.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
+    <header class="site-header">
+      <a class="brand" href="/"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a>
+      <nav class="site-nav" aria-label="主导航"><a href="/">产品</a><a href="/privacy.html">隐私</a><a href="https://github.com/ken-water/itgla">GitHub</a></nav>
+    </header>
+    <main id="main" class="document-main">
+      <header class="page-heading">
+        <p class="eyebrow">当前稳定版本</p>
+        <h1>下载 ITGLA v0.1.1</h1>
+        <p>发布日期：2026-09-19。所有数据默认保存在本机；此版本不需要账号。</p>
+      </header>
+      <section class="download-list" aria-label="平台下载">
+        <article>
+          <div><p class="platform-label">Windows</p><h2>Windows 10 / 11</h2><p>x86_64 便携 ZIP。解压后运行 <code>itgla.exe</code>。</p></div>
+          <a class="button button-dark" href="/downloads/v0.1.1/itgla-v0.1.1-windows-x86_64.zip">下载 ZIP</a>
+        </article>
+        <article>
+          <div><p class="platform-label">Linux</p><h2>Linux x86_64</h2><p>通用 tar.gz 压缩包，需要 Slint 所需的桌面系统库。</p></div>
+          <a class="button button-dark" href="/downloads/v0.1.1/itgla-v0.1.1-linux-x86_64.tar.gz">下载 tar.gz</a>
+        </article>
+        <article class="muted-download">
+          <div><p class="platform-label">macOS</p><h2>尚未提供</h2><p>当前版本没有经过 macOS 构建、签名与验证，请勿从第三方来源下载。</p></div>
+          <span class="unavailable">计划中</span>
+        </article>
+      </section>
+      <section class="verification" aria-labelledby="verify-title">
+        <div><p class="eyebrow">验证下载</p><h2 id="verify-title">先校验，再运行。</h2></div>
+        <div class="command-block"><code>sha256sum -c SHA256SUMS</code><a href="/downloads/v0.1.1/SHA256SUMS">下载 SHA256SUMS</a></div>
+        <p>Windows 版本暂未代码签名，Microsoft Defender SmartScreen 可能显示未知发布者。校验值可以确认文件与官网发布版本一致，但不替代代码签名。</p>
+      </section>
+      <section class="release-notes" aria-labelledby="notes-title">
+        <p class="eyebrow">v0.1.1 更新</p><h2 id="notes-title">Windows 发布支持</h2>
+        <ul><li>Windows GUI 模式，不再伴随控制台窗口。</li><li>Windows 原生测试、release 构建与启动冒烟验证。</li><li>延续 SQLite schema v2，无需迁移。</li></ul>
+        <a class="text-link dark" href="https://github.com/ken-water/itgla/releases/tag/v0.1.1">查看完整发布记录 <span aria-hidden="true">→</span></a>
+      </section>
+    </main>
+    <footer class="site-footer compact-footer"><a class="brand footer-brand" href="/"><img src="/assets/itgla-node-map.svg" width="30" height="30" alt="" /><span>ITGLA</span></a><nav><a href="/privacy.html">隐私</a><a href="https://github.com/ken-water/itgla/issues">反馈</a></nav><p class="copyright">© 2026 ITGLA</p></footer>
+  </body>
+</html>

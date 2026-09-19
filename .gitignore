@@ -9,4 +9,10 @@
 *.db-shm
 *.db-wal
 /backups/
+/artifacts/website/
+/website/node_modules/
+/website/test-results/
+/website/playwright-report/
+/website/downloads/**/*.zip
+/website/downloads/**/*.tar.gz
 .DS_Store

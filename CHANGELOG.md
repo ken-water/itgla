@@ -2,6 +2,23 @@
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
+## [0.1.1] - 2026-09-19
+
+### Added
+
+- Reproducible Windows x86_64 portable packaging with a versioned ZIP and SHA-256 sidecar.
+- Windows-native CI tests, release build, and bounded GUI startup smoke validation.
+- Official website source and deployment documentation for current platform downloads.
+
+### Fixed
+
+- Windows builds now use the GUI subsystem and no longer open a separate console window.
+
+### Compatibility
+
+- Continues SQLite schema v2 and JSON exchange format 1 without migrations or configuration changes.
+- Windows packages are currently unsigned and may trigger Microsoft Defender SmartScreen.
+
 ## [0.1.0] - 2026-09-19
 
 ### Added
@@ -122,3 +139,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.0.4]: https://github.com/ken-water/itgla/releases/tag/v0.0.4
 [0.0.5]: https://github.com/ken-water/itgla/releases/tag/v0.0.5
 [0.1.0]: https://github.com/ken-water/itgla/releases/tag/v0.1.0
+[0.1.1]: https://github.com/ken-water/itgla/releases/tag/v0.1.1

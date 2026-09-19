@@ -1,0 +1,65 @@
+name: Windows package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-smoke:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Run Windows tests
+        run: cargo test --all-features --locked
+
+      - name: Build Windows release
+        run: cargo build --release --locked
+
+      - name: Smoke test Windows GUI
+        shell: pwsh
+        run: |
+          $dataDirectory = Join-Path $env:RUNNER_TEMP "itgla-smoke"
+          New-Item -ItemType Directory -Force -Path $dataDirectory | Out-Null
+          $env:ITGLA_DATA_DIR = $dataDirectory
+          $process = Start-Process -FilePath "target/release/itgla.exe" -PassThru
+          Start-Sleep -Seconds 8
+          if ($process.HasExited) {
+            throw "ITGLA exited during the Windows GUI smoke test with code $($process.ExitCode)"
+          }
+          if (-not (Test-Path (Join-Path $dataDirectory "itgla.db"))) {
+            Stop-Process -Id $process.Id -Force
+            throw "ITGLA did not initialize its local database"
+          }
+          Stop-Process -Id $process.Id -Force
+
+  package:
+    needs: windows-smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Rust target
+        run: rustup target add x86_64-pc-windows-gnu
+
+      - name: Install MinGW packaging tools
+        run: sudo apt-get update && sudo apt-get install --yes gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 zip file
+
+      - name: Build Windows package
+        run: ./scripts/package-windows.sh
+
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: itgla-windows-x86_64
+          path: |
+            dist/itgla-v*-windows-x86_64.zip
+            dist/itgla-v*-windows-x86_64.zip.sha256
+          if-no-files-found: error
