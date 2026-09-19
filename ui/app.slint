@@ -1,6 +1,14 @@
-import { Button, LineEdit, ScrollView } from "std-widgets.slint";
+import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+
+export struct ProjectRow {
+    id: int,
+    name: string,
+    short-name: string,
+    summary: string,
+}
 
 export struct AssetRow {
+    id: int,
     kind: string,
     mark: string,
     name: string,
@@ -10,6 +18,9 @@ export struct AssetRow {
     environment: string,
     tone: int,
     kind-tone: int,
+    kind-index: int,
+    health-index: int,
+    tags: string,
 }
 
 component KindMark inherits Rectangle {
@@ -86,7 +97,7 @@ component FilterChip inherits Rectangle {
 component ResourceRow inherits Rectangle {
     in property <AssetRow> item;
     in property <bool> selected;
-    callback chosen;
+    callback chosen(AssetRow);
     height: 66px;
     background: selected ? #edf6f3 : touch.has-hover ? #f8faf9 : #ffffff;
     Rectangle { x: 0; y: 65px; width: parent.width; height: 1px; background: #e9edeb; }
@@ -101,7 +112,7 @@ component ResourceRow inherits Rectangle {
     Text { x: 355px; y: 10px; width: 54px; height: 20px; text: root.item.status; color: root.item.tone == 2 ? #a23839 : #4f5956; font-size: 11px; font-weight: 600; }
     Text { x: 274px; y: 36px; width: parent.width - 298px; height: 18px; text: root.item.status-detail; color: #78817e; font-size: 11px; horizontal-alignment: right; overflow: elide; }
     Text { x: parent.width - 18px; y: 22px; text: ">"; color: #a8afad; font-size: 12px; }
-    touch := TouchArea { clicked => { root.chosen(); } }
+    touch := TouchArea { clicked => { root.chosen(root.item); } }
 }
 
 component GraphNode inherits Rectangle {
@@ -130,16 +141,35 @@ export component AppWindow inherits Window {
     background: #f5f7f6;
 
     in property <[AssetRow]> assets;
+    in property <[ProjectRow]> projects;
     in-out property <string> selected-project: "Cloudnote";
     in-out property <int> result-count: 0;
     in-out property <int> selected-asset: -1;
     in-out property <string> system-error: "";
-    private property <int> selected-project-index: 0;
+    in-out property <string> system-status: "";
+    in-out property <bool> resource-editor-open: false;
+    in-out property <bool> project-editor-open: false;
+    in-out property <bool> archive-confirm-open: false;
+    private property <int> editing-resource-id: 0;
+    private property <int> editing-project-id: 0;
+    private property <string> editing-name: "";
+    private property <string> editing-detail: "";
+    private property <string> editing-status-detail: "";
+    private property <string> editing-environment: "";
+    private property <string> editing-tags: "";
+    private property <int> editing-kind-index: 0;
+    private property <int> editing-health-index: 0;
+    private property <int> archive-target: 0;
+    in-out property <int> selected-project-index: 0;
     private property <string> active-filter: "全部";
 
     callback project-selected(int);
     callback filter-selected(string);
     callback search-changed(string);
+    callback save-resource(int, int, string, string, string, string, int, string);
+    callback archive-resource(int);
+    callback save-project(int, string);
+    callback archive-project(int);
 
     // Persistent navigation
     Rectangle {
@@ -158,10 +188,22 @@ export component AppWindow inherits Window {
         NavItem { x: 12px; y: 176px; width: 212px; mark: "R"; label: "全部资源"; selected: false; }
         NavItem { x: 12px; y: 216px; width: 212px; mark: "!"; label: "需要关注"; selected: false; }
         Text { x: 20px; y: 276px; text: "项目"; color: #8a9390; font-size: 10px; font-weight: 600; }
-        Text { x: 204px; y: 272px; text: "+"; color: #66706d; font-size: 17px; }
-        ProjectItem { x: 12px; y: 296px; width: 212px; label: "Cloudnote"; short-name: "CN"; count: "6 项资源 · 2 项关注"; selected: root.selected-project-index == 0; chosen => { root.selected-project-index = 0; root.project-selected(0); } }
-        ProjectItem { x: 12px; y: 348px; width: 212px; label: "Shipfast"; short-name: "SF"; count: "4 项资源 · 1 项关注"; selected: root.selected-project-index == 1; chosen => { root.selected-project-index = 1; root.project-selected(1); } }
-        ProjectItem { x: 12px; y: 400px; width: 212px; label: "Northstar API"; short-name: "NS"; count: "4 项资源 · 状态正常"; selected: root.selected-project-index == 2; chosen => { root.selected-project-index = 2; root.project-selected(2); } }
+        Rectangle {
+            x: 194px; y: 266px; width: 30px; height: 26px; border-radius: 5px; background: add-project-touch.has-hover ? #e2e8e5 : #00000000;
+            Text { text: "+"; color: #66706d; font-size: 17px; horizontal-alignment: center; vertical-alignment: center; }
+            add-project-touch := TouchArea { clicked => { root.editing-project-id = 0; root.editing-name = ""; root.system-error = ""; root.project-editor-open = true; } }
+        }
+        ScrollView {
+            x: 8px; y: 296px; width: 220px; height: parent.height - 370px;
+            VerticalLayout {
+                spacing: 4px;
+                for project[index] in root.projects: ProjectItem {
+                    width: 212px; label: project.name; short-name: project.short-name; count: project.summary;
+                    selected: root.selected-project-index == index;
+                    chosen => { root.selected-project-index = index; root.project-selected(index); }
+                }
+            }
+        }
         Rectangle { x: 16px; y: parent.height - 64px; width: 204px; height: 1px; background: #dde3e0; }
         Rectangle { x: 20px; y: parent.height - 48px; width: 30px; height: 30px; border-radius: 15px; background: #263a35; Text { text: "RL"; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
         Text { x: 60px; y: parent.height - 48px; text: "Rich"; color: #343c39; font-size: 12px; font-weight: 600; }
@@ -175,16 +217,22 @@ export component AppWindow inherits Window {
         Text { x: 24px; y: 14px; text: root.selected-project; color: #202725; font-size: 20px; font-weight: 700; }
         Text { x: 24px; y: 44px; text: "项目资产与依赖关系"; color: #7c8582; font-size: 11px; }
         Rectangle {
-            x: parent.width - 292px; y: 20px; width: 150px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #dce2df; background: #ffffff;
+            x: parent.width - 408px; y: 20px; width: 150px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #dce2df; background: #ffffff;
             Text { x: 12px; text: "同步于 2 分钟前"; color: #65706c; font-size: 11px; vertical-alignment: center; }
         }
-        Button { x: parent.width - 130px; y: 20px; width: 110px; height: 36px; text: "+  添加资源"; enabled: false; }
+        Button { x: parent.width - 246px; y: 20px; width: 104px; height: 36px; text: "编辑项目"; clicked => { root.editing-project-id = root.projects[root.selected-project-index].id; root.editing-name = root.selected-project; root.system-error = ""; root.project-editor-open = true; } }
+        Button { x: parent.width - 130px; y: 20px; width: 110px; height: 36px; text: "+  添加资源"; clicked => { root.editing-resource-id = 0; root.editing-name = ""; root.editing-detail = ""; root.editing-status-detail = ""; root.editing-environment = "生产"; root.editing-tags = ""; root.editing-kind-index = 0; root.editing-health-index = 0; root.system-error = ""; root.resource-editor-open = true; } }
     }
 
     if root.system-error != "": Rectangle {
         x: 252px; y: 86px; width: parent.width - 698px; height: 34px;
         border-radius: 6px; border-width: 1px; border-color: #e3b1b2; background: #fff1f1;
         Text { x: 12px; width: parent.width - 24px; text: root.system-error; color: #9d3436; font-size: 11px; vertical-alignment: center; overflow: elide; }
+    }
+    if root.system-status != "": Rectangle {
+        x: 252px; y: 86px; width: parent.width - 698px; height: 34px;
+        border-radius: 6px; border-width: 1px; border-color: #a8d3c7; background: #edf8f4;
+        Text { x: 12px; width: parent.width - 24px; text: root.system-status; color: #176d5a; font-size: 11px; vertical-alignment: center; overflow: elide; }
     }
 
     // Main inventory workspace
@@ -216,7 +264,19 @@ export component AppWindow inherits Window {
                 for item[index] in root.assets: ResourceRow {
                     item: item;
                     selected: root.selected-asset == index;
-                    chosen => { root.selected-asset = index; }
+                    chosen(item) => {
+                        root.selected-asset = index;
+                        root.editing-resource-id = item.id;
+                        root.editing-name = item.name;
+                        root.editing-detail = item.detail;
+                        root.editing-status-detail = item.status-detail;
+                        root.editing-environment = item.environment;
+                        root.editing-tags = item.tags;
+                        root.editing-kind-index = item.kind-index;
+                        root.editing-health-index = item.health-index;
+                        root.system-error = "";
+                        root.resource-editor-open = true;
+                    }
                 }
             }
         }
@@ -259,5 +319,63 @@ export component AppWindow inherits Window {
             Rectangle { x: parent.width * 0.84; width: parent.width * 0.16; height: parent.height; border-radius: 4px; background: #3f7b83; }
         }
         Text { x: 22px; y: 622px; text: "网站  1    域名  1    证书  1    服务器  1    服务  2"; color: #7d8783; font-size: 10px; }
+    }
+
+    if root.resource-editor-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
+        TouchArea { clicked => { } }
+        Rectangle {
+            x: (parent.width - 520px) / 2; y: max(30px, (parent.height - 620px) / 2); width: 520px; height: 620px;
+            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
+            Text { x: 24px; y: 20px; text: root.editing-resource-id == 0 ? "添加资源" : "编辑资源"; color: #202725; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 54px; text: "类型"; color: #59635f; font-size: 11px; font-weight: 600; }
+            ComboBox { x: 24px; y: 74px; width: 220px; height: 36px; model: ["网站", "域名", "证书", "服务器", "服务"]; current-index <=> root.editing-kind-index; }
+            Text { x: 264px; y: 54px; text: "健康状态"; color: #59635f; font-size: 11px; font-weight: 600; }
+            ComboBox { x: 264px; y: 74px; width: 232px; height: 36px; model: ["正常", "需关注", "高风险"]; current-index <=> root.editing-health-index; }
+            Text { x: 24px; y: 128px; text: "名称"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 24px; y: 148px; width: 472px; height: 36px; placeholder-text: "例如 api.example.com"; text <=> root.editing-name; }
+            Text { x: 24px; y: 202px; text: "描述"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 24px; y: 222px; width: 472px; height: 36px; placeholder-text: "托管商、配置或用途"; text <=> root.editing-detail; }
+            Text { x: 24px; y: 276px; text: "环境"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 24px; y: 296px; width: 220px; height: 36px; placeholder-text: "生产 / 预发布"; text <=> root.editing-environment; }
+            Text { x: 264px; y: 276px; text: "状态详情"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 264px; y: 296px; width: 232px; height: 36px; placeholder-text: "到期日或运行状态"; text <=> root.editing-status-detail; }
+            Text { x: 24px; y: 350px; text: "标签"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 24px; y: 370px; width: 472px; height: 36px; placeholder-text: "用逗号分隔，例如 production, customer-facing"; text <=> root.editing-tags; }
+            Text { x: 24px; y: 420px; width: 472px; text: "保存后会立即写入本地数据库。名称与同项目同类型资源不能重复。"; color: #818a87; font-size: 10px; wrap: word-wrap; }
+            if root.system-error != "": Text { x: 24px; y: 466px; width: 472px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
+            if root.editing-resource-id != 0: Button { x: 24px; y: 558px; width: 92px; height: 36px; text: "归档"; clicked => { root.archive-target = 1; root.archive-confirm-open = true; } }
+            Button { x: 300px; y: 558px; width: 92px; height: 36px; text: "取消"; clicked => { root.resource-editor-open = false; root.system-error = ""; } }
+            Button { x: 404px; y: 558px; width: 92px; height: 36px; text: "保存"; clicked => { root.save-resource(root.editing-resource-id, root.editing-kind-index, root.editing-name, root.editing-detail, root.editing-status-detail, root.editing-environment, root.editing-health-index, root.editing-tags); } }
+        }
+    }
+
+    if root.project-editor-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
+        TouchArea { clicked => { } }
+        Rectangle {
+            x: (parent.width - 440px) / 2; y: (parent.height - 270px) / 2; width: 440px; height: 270px;
+            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
+            Text { x: 24px; y: 20px; text: root.editing-project-id == 0 ? "创建项目" : "编辑项目"; color: #202725; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 62px; text: "项目名称"; color: #59635f; font-size: 11px; font-weight: 600; }
+            LineEdit { x: 24px; y: 84px; width: 392px; height: 36px; placeholder-text: "例如 Atlas Cloud"; text <=> root.editing-name; }
+            if root.system-error != "": Text { x: 24px; y: 136px; width: 392px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
+            if root.editing-project-id != 0: Button { x: 24px; y: 210px; width: 92px; height: 36px; text: "归档"; clicked => { root.archive-target = 2; root.archive-confirm-open = true; } }
+            Button { x: 220px; y: 210px; width: 92px; height: 36px; text: "取消"; clicked => { root.project-editor-open = false; root.system-error = ""; } }
+            Button { x: 324px; y: 210px; width: 92px; height: 36px; text: "保存"; clicked => { root.save-project(root.editing-project-id, root.editing-name); } }
+        }
+    }
+
+    if root.archive-confirm-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221faa;
+        TouchArea { clicked => { } }
+        Rectangle {
+            x: (parent.width - 400px) / 2; y: (parent.height - 210px) / 2; width: 400px; height: 210px;
+            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #e2d4d4;
+            Text { x: 24px; y: 22px; text: root.archive-target == 1 ? "归档这个资源？" : "归档这个项目？"; color: #252c2a; font-size: 17px; font-weight: 700; }
+            Text { x: 24px; y: 62px; width: 352px; text: root.archive-target == 1 ? "资源将从日常视图中隐藏。已有关系也将保留在数据库中。" : "项目及其资源将从日常视图中隐藏。至少需要保留一个项目。"; color: #68716e; font-size: 11px; wrap: word-wrap; }
+            Button { x: 184px; y: 150px; width: 92px; height: 36px; text: "取消"; clicked => { root.archive-confirm-open = false; } }
+            Button { x: 288px; y: 150px; width: 88px; height: 36px; text: "确认归档"; clicked => { if root.archive-target == 1 { root.archive-resource(root.editing-resource-id); } else { root.archive-project(root.editing-project-id); } } }
+        }
     }
 }

@@ -1,11 +1,13 @@
 use std::{env, fs, path::PathBuf};
 
-use rusqlite::Connection;
 #[cfg(test)]
 use rusqlite::OptionalExtension;
+use rusqlite::{Connection, ErrorCode, params};
 use thiserror::Error;
 
-use crate::domain::{Asset, Health, Project, ResourceKind};
+use crate::domain::{
+    Asset, AssetDraft, Health, Project, ResourceKind, ValidationError, validate_name,
+};
 
 const SCHEMA_VERSION: i64 = 1;
 
@@ -23,6 +25,12 @@ pub enum StorageError {
     UnsupportedSchema { found: i64, supported: i64 },
     #[error("database operation failed")]
     Database(#[from] rusqlite::Error),
+    #[error("{0}")]
+    Validation(#[from] ValidationError),
+    #[error("同一范围内已存在同名项目或资源")]
+    Conflict,
+    #[error("至少需要保留一个项目")]
+    LastProject,
 }
 
 pub struct Repository {
@@ -91,12 +99,20 @@ impl Repository {
 
     pub fn projects(&self) -> Result<Vec<Project>, StorageError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, name FROM projects WHERE archived_at IS NULL ORDER BY position, id",
+            "SELECT p.id, p.name, COUNT(a.id),
+                    COALESCE(SUM(CASE WHEN a.health != 'healthy' THEN 1 ELSE 0 END), 0)
+             FROM projects p
+             LEFT JOIN assets a ON a.project_id = p.id AND a.archived_at IS NULL
+             WHERE p.archived_at IS NULL
+             GROUP BY p.id, p.name, p.position
+             ORDER BY p.position, p.id",
         )?;
         let rows = statement.query_map([], |row| {
             Ok(Project {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                asset_count: row.get(2)?,
+                attention_count: row.get(3)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -104,8 +120,13 @@ impl Repository {
 
     pub fn assets_for_project(&self, project_id: i64) -> Result<Vec<Asset>, StorageError> {
         let mut statement = self.connection.prepare(
-            "SELECT id, project_id, kind, name, detail, status_detail, environment, health
-             FROM assets WHERE project_id = ?1 AND archived_at IS NULL ORDER BY position, id",
+            "SELECT a.id, a.project_id, a.kind, a.name, a.detail, a.status_detail, a.environment, a.health,
+                    COALESCE((SELECT group_concat(name, ', ') FROM (
+                        SELECT t.name FROM tags t
+                        JOIN asset_tags at ON at.tag_id = t.id
+                        WHERE at.asset_id = a.id ORDER BY t.name COLLATE NOCASE
+                    )), '')
+             FROM assets a WHERE a.project_id = ?1 AND a.archived_at IS NULL ORDER BY a.position, a.id",
         )?;
         let rows = statement.query_map([project_id], |row| {
             let kind: String = row.get(2)?;
@@ -119,9 +140,113 @@ impl Repository {
                 status_detail: row.get(5)?,
                 environment: row.get(6)?,
                 health: parse_health(&health),
+                tags: row
+                    .get::<_, String>(8)?
+                    .split(", ")
+                    .filter(|tag| !tag.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect(),
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn save_project(&mut self, id: Option<i64>, name: &str) -> Result<i64, StorageError> {
+        let name = validate_name(name, 120)?;
+        let result = if let Some(id) = id {
+            self.connection
+                .execute(
+                    "UPDATE projects SET name = ?1, updated_at = CURRENT_TIMESTAMP WHERE id = ?2 AND archived_at IS NULL",
+                    params![name, id],
+                )
+                .map(|_| id)
+        } else {
+            self.connection
+                .execute(
+                    "INSERT INTO projects (name, position) VALUES (?1, (SELECT COALESCE(MAX(position), -1) + 1 FROM projects))",
+                    [name],
+                )
+                .map(|_| self.connection.last_insert_rowid())
+        };
+        result.map_err(map_write_error)
+    }
+
+    pub fn archive_project(&mut self, id: i64) -> Result<(), StorageError> {
+        let active: i64 = self.connection.query_row(
+            "SELECT COUNT(*) FROM projects WHERE archived_at IS NULL",
+            [],
+            |row| row.get(0),
+        )?;
+        if active <= 1 {
+            return Err(StorageError::LastProject);
+        }
+        let transaction = self.connection.transaction()?;
+        transaction.execute(
+            "UPDATE assets SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE project_id = ?1 AND archived_at IS NULL",
+            [id],
+        )?;
+        transaction.execute(
+            "UPDATE projects SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?1 AND archived_at IS NULL",
+            [id],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn save_asset(&mut self, id: Option<i64>, draft: &AssetDraft) -> Result<i64, StorageError> {
+        let name = validate_name(&draft.name, 240)?;
+        let transaction = self.connection.transaction()?;
+        let write_result = if let Some(id) = id {
+            transaction
+                .execute(
+                    "UPDATE assets SET kind = ?1, name = ?2, detail = ?3, status_detail = ?4,
+                     environment = ?5, health = ?6, updated_at = CURRENT_TIMESTAMP
+                     WHERE id = ?7 AND project_id = ?8 AND archived_at IS NULL",
+                    params![
+                        draft.kind.key(),
+                        name,
+                        draft.detail.trim(),
+                        draft.status_detail.trim(),
+                        draft.environment.trim(),
+                        draft.health.key(),
+                        id,
+                        draft.project_id
+                    ],
+                )
+                .map(|_| id)
+        } else {
+            transaction
+                .execute(
+                    "INSERT INTO assets (project_id, kind, name, detail, status_detail, environment, health, position)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7,
+                       (SELECT COALESCE(MAX(position), -1) + 1 FROM assets WHERE project_id = ?1))",
+                    params![draft.project_id, draft.kind.key(), name, draft.detail.trim(), draft.status_detail.trim(), draft.environment.trim(), draft.health.key()],
+                )
+                .map(|_| transaction.last_insert_rowid())
+        };
+        let asset_id = write_result.map_err(map_write_error)?;
+        transaction.execute("DELETE FROM asset_tags WHERE asset_id = ?1", [asset_id])?;
+        for tag in &draft.tags {
+            transaction.execute(
+                "INSERT INTO tags (name) VALUES (?1) ON CONFLICT(name) DO NOTHING",
+                [tag],
+            )?;
+            transaction.execute(
+                "INSERT INTO asset_tags (asset_id, tag_id)
+                 SELECT ?1, id FROM tags WHERE name = ?2 COLLATE NOCASE",
+                params![asset_id, tag],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(asset_id)
+    }
+
+    pub fn archive_asset(&self, id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE assets SET archived_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = ?1 AND archived_at IS NULL",
+            [id],
+        )?;
+        Ok(())
     }
 
     #[cfg(test)]
@@ -139,6 +264,18 @@ impl Repository {
             })
             .optional()
             .map_err(Into::into)
+    }
+}
+
+fn map_write_error(error: rusqlite::Error) -> StorageError {
+    if matches!(
+        error,
+        rusqlite::Error::SqliteFailure(ref value, _)
+            if value.code == ErrorCode::ConstraintViolation
+    ) {
+        StorageError::Conflict
+    } else {
+        StorageError::Database(error)
     }
 }
 
@@ -223,6 +360,77 @@ mod tests {
                 found: 99,
                 supported: 1
             })
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn creates_updates_tags_and_archives_assets() -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        let draft = AssetDraft {
+            project_id: 1,
+            kind: ResourceKind::Service,
+            name: "webhook-worker".into(),
+            detail: "Docker".into(),
+            status_detail: "ready".into(),
+            environment: "staging".into(),
+            health: Health::Healthy,
+            tags: vec!["backend".into(), "payments".into()],
+        };
+        let id = repository.save_asset(None, &draft)?;
+        let created = repository
+            .assets_for_project(1)?
+            .into_iter()
+            .find(|asset| asset.id == id);
+        assert_eq!(created.map(|asset| asset.tags), Some(draft.tags.clone()));
+
+        let mut updated = draft;
+        updated.name = "webhook-consumer".into();
+        updated.tags = vec!["backend".into()];
+        repository.save_asset(Some(id), &updated)?;
+        assert_eq!(
+            repository
+                .assets_for_project(1)?
+                .into_iter()
+                .find(|asset| asset.id == id)
+                .map(|asset| (asset.name, asset.tags)),
+            Some((updated.name, updated.tags))
+        );
+
+        repository.archive_asset(id)?;
+        assert!(
+            repository
+                .assets_for_project(1)?
+                .iter()
+                .all(|asset| asset.id != id)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn project_crud_enforces_uniqueness_and_last_project_rule() -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        let id = repository.save_project(None, "Atlas")?;
+        repository.save_project(Some(id), "Atlas Cloud")?;
+        assert!(matches!(
+            repository.save_project(None, "Cloudnote"),
+            Err(StorageError::Conflict)
+        ));
+        repository.archive_project(id)?;
+        assert!(
+            repository
+                .projects()?
+                .iter()
+                .all(|project| project.id != id)
+        );
+
+        for project in repository.projects()?.into_iter().skip(1) {
+            repository.archive_project(project.id)?;
+        }
+        let remaining = repository.projects()?[0].id;
+        assert!(matches!(
+            repository.archive_project(remaining),
+            Err(StorageError::LastProject)
         ));
         Ok(())
     }

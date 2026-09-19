@@ -2,6 +2,26 @@
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
+## [0.0.3] - 2026-09-19
+
+### Added
+
+- Create, edit, and archive workflows for projects and resources.
+- Confirmation before archival and protection against archiving the final project.
+- Comma-separated resource tags with validation, deduplication, persistence, and search.
+- Dynamic project navigation with live resource and attention counts.
+- Success and recoverable validation feedback that preserves editor input.
+
+### Changed
+
+- Project and resource navigation now derive entirely from local database content.
+- Resource rows open the editor and show assigned tags alongside their description.
+
+### Known limitations
+
+- Archived records do not yet have a restore screen.
+- The relationship graph still uses the prototype layout and is not editable.
+
 ## [0.0.2] - 2026-09-19
 
 ### Added
@@ -39,3 +59,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 
 [0.0.1]: https://github.com/ken-water/itgla/releases/tag/v0.0.1
 [0.0.2]: https://github.com/ken-water/itgla/releases/tag/v0.0.2
+[0.0.3]: https://github.com/ken-water/itgla/releases/tag/v0.0.3

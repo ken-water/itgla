@@ -2,7 +2,7 @@
 
 ITGLA is a local-first desktop workspace for understanding how projects, websites, domains, certificates, servers, and services relate to one another.
 
-Current version: `0.0.2`
+Current version: `0.0.3`
 
 ## Run
 
@@ -22,7 +22,8 @@ The first build downloads and compiles Slint, so it takes longer than subsequent
 - Project relationship graph
 - Deterministic local sample data
 - Versioned SQLite persistence under the platform user-data directory
+- Project and resource creation, editing, archival, and tags
 
-Resource editing, cloud sync, authentication, billing, monitoring integrations, and destructive resource actions are intentionally outside this version.
+Cloud sync, authentication, billing, monitoring integrations, and destructive resource actions are intentionally outside this version.
 
 Rust architecture, dependency decisions, verification gates, and rollback behavior are documented in [docs/engineering.md](docs/engineering.md).
