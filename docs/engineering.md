@@ -2,9 +2,9 @@
 
 ## Boundary
 
-ITGLA is currently a single desktop binary. `src/domain.rs` owns typed resource data and filtering rules, `src/main.rs` translates domain values into the Slint model, and `ui/app.slint` owns presentation and transient interaction state. A multi-crate workspace would add ceremony without creating a meaningful runtime or ownership boundary at this stage.
+ITGLA is currently a single desktop binary. `src/domain.rs` owns typed resource data and filtering rules, `src/storage.rs` owns SQLite migrations and persistence, `src/main.rs` coordinates the repository and translates domain values into the Slint model, and `ui/app.slint` owns presentation and transient interaction state. A multi-crate workspace would add ceremony without creating a meaningful runtime or ownership boundary at this stage.
 
-The application has no network, filesystem persistence, background work, concurrency, secrets, or production data. Its relevant failure modes are UI compilation failure, unavailable window backends or fonts, and incorrect filtering. Build errors propagate through the build script; runtime platform errors propagate from `main`.
+The application has no network, background work, concurrency, secrets, or production data. SQLite persistence is synchronous on the UI thread while the dataset is local and small; this must be revisited before expensive imports or checks are introduced. Relevant failure modes are migration or database access failure, unavailable window backends or fonts, and incorrect filtering. Errors remain typed through the storage boundary and are shown in the UI where recovery is possible.
 
 ## Dependencies
 
@@ -12,6 +12,8 @@ The application has no network, filesystem persistence, background work, concurr
 |---|---|---|---|
 | `slint` 1.18 | Native declarative desktop UI and Rust bridge | egui and a webview stack; both diverge from the requested Slint implementation | GPL-3.0-or-later OR commercial license. Runtime features are limited to winit, software rendering, system fonts, accessibility, and the 1.18 compatibility level. Native windowing and font libraries are required. Slint is actively maintained; review advisories and licensing before distribution. |
 | `slint-build` 1.18 | Compile `ui/app.slint` into the Rust bridge | Runtime interpretation; rejected because compile-time validation is simpler and deterministic | Build-only dependency with the same licensing and maintenance review as Slint. |
+| `rusqlite` 0.37 | Versioned relational local storage | JSON and embedded key-value storage; rejected due to weaker integrity and migration ergonomics | MIT license. Uses bundled SQLite for reproducible desktop builds, increasing compile time and binary size while avoiding a runtime system-SQLite dependency. Actively maintained; malformed databases and SQL inputs remain error boundaries. |
+| `thiserror` 2 | Typed storage errors with causal sources | Manual `Display`/`Error` implementations | MIT OR Apache-2.0 license. Proc-macro build cost only; no native runtime dependency. Actively maintained and widely used. |
 
 `Cargo.lock` is retained because this repository produces an executable. New dependencies require an entry here covering purpose, alternatives, license, native requirements, maintenance, and security impact.
 
@@ -30,4 +32,4 @@ The UI must also launch with the software renderer and pass a screenshot inspect
 
 ## Rollback
 
-This MVP has no persistent or external state. Rollback consists of restoring the prior source and `Cargo.lock`, rebuilding, and launching the previous binary. Persistence or sync work must define compatibility and recovery before it is introduced.
+Schema v1 is created atomically and is compatible with all releases from `v0.0.2`. Rolling back to `v0.0.1` leaves the database untouched and unused. Before any future destructive migration, copy the database and verify restore against the target version. The application refuses to open a newer unknown schema rather than guessing compatibility.

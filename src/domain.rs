@@ -55,156 +55,31 @@ impl Health {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Project {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Asset {
-    pub project: &'static str,
+    pub id: i64,
+    pub project_id: i64,
     pub kind: ResourceKind,
-    pub name: &'static str,
-    pub detail: &'static str,
-    pub status_detail: &'static str,
-    pub environment: &'static str,
+    pub name: String,
+    pub detail: String,
+    pub status_detail: String,
+    pub environment: String,
     pub health: Health,
 }
 
-pub const PROJECTS: [&str; 3] = ["Cloudnote", "Shipfast", "Northstar API"];
-
-pub const ASSETS: [Asset; 14] = [
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Website,
-        name: "app.cloudnote.io",
-        detail: "生产站点 · Vercel",
-        status_detail: "刚刚检查",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Domain,
-        name: "cloudnote.io",
-        detail: "Cloudflare · 自动续费",
-        status_detail: "2027-08-16 到期",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Certificate,
-        name: "*.cloudnote.io",
-        detail: "Let's Encrypt · 自动续期",
-        status_detail: "12 天后续期",
-        environment: "生产",
-        health: Health::Warning,
-    },
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Server,
-        name: "cn-prod-01",
-        detail: "东京 · 2 vCPU / 4 GB",
-        status_detail: "CPU 34% · 运行 128 天",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Service,
-        name: "notes-api",
-        detail: "Docker · :8080",
-        status_detail: "v2.8.1 · 3 个实例",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Cloudnote",
-        kind: ResourceKind::Service,
-        name: "sync-worker",
-        detail: "Docker · 队列任务",
-        status_detail: "积压 1,248 项",
-        environment: "生产",
-        health: Health::Critical,
-    },
-    Asset {
-        project: "Shipfast",
-        kind: ResourceKind::Website,
-        name: "shipfa.st",
-        detail: "营销站点 · Netlify",
-        status_detail: "5 分钟前检查",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Shipfast",
-        kind: ResourceKind::Domain,
-        name: "shipfa.st",
-        detail: "Namecheap · 手动续费",
-        status_detail: "31 天后到期",
-        environment: "生产",
-        health: Health::Warning,
-    },
-    Asset {
-        project: "Shipfast",
-        kind: ResourceKind::Server,
-        name: "sf-prod-eu",
-        detail: "法兰克福 · 4 vCPU / 8 GB",
-        status_detail: "CPU 51% · 运行 46 天",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Shipfast",
-        kind: ResourceKind::Service,
-        name: "checkout-api",
-        detail: "systemd · :9000",
-        status_detail: "v1.14.0 · 正常",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Northstar API",
-        kind: ResourceKind::Domain,
-        name: "northstar.dev",
-        detail: "Cloudflare · 自动续费",
-        status_detail: "2027-11-04 到期",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Northstar API",
-        kind: ResourceKind::Certificate,
-        name: "api.northstar.dev",
-        detail: "Google Trust Services",
-        status_detail: "67 天后续期",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Northstar API",
-        kind: ResourceKind::Server,
-        name: "ns-edge-01",
-        detail: "新加坡 · 2 vCPU / 2 GB",
-        status_detail: "CPU 18% · 运行 19 天",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-    Asset {
-        project: "Northstar API",
-        kind: ResourceKind::Service,
-        name: "gateway",
-        detail: "Docker · :443",
-        status_detail: "v4.2.0 · 正常",
-        environment: "生产",
-        health: Health::Healthy,
-    },
-];
-
-pub fn filter_assets(
-    project: &str,
+pub fn filter_assets<'a>(
+    assets: &'a [Asset],
     kind: Option<ResourceKind>,
     query: &str,
-) -> Vec<&'static Asset> {
+) -> Vec<&'a Asset> {
     let normalized = query.trim().to_lowercase();
-    ASSETS
+    assets
         .iter()
-        .filter(|asset| asset.project == project)
         .filter(|asset| kind.is_none_or(|wanted| asset.kind == wanted))
         .filter(|asset| {
             normalized.is_empty()
@@ -225,9 +100,27 @@ pub fn kind_from_label(label: &str) -> Option<ResourceKind> {
 mod tests {
     use super::*;
 
+    fn asset(kind: ResourceKind, name: &str) -> Asset {
+        Asset {
+            id: 1,
+            project_id: 1,
+            kind,
+            name: name.into(),
+            detail: "Docker · production".into(),
+            status_detail: "healthy".into(),
+            environment: "生产".into(),
+            health: Health::Healthy,
+        }
+    }
+
     #[test]
     fn filters_by_project_kind_and_query() {
-        let services = filter_assets("Cloudnote", Some(ResourceKind::Service), "");
+        let assets = [
+            asset(ResourceKind::Service, "sync-worker"),
+            asset(ResourceKind::Service, "notes-api"),
+            asset(ResourceKind::Domain, "cloudnote.io"),
+        ];
+        let services = filter_assets(&assets, Some(ResourceKind::Service), "");
         assert_eq!(services.len(), 2);
         assert!(
             services
@@ -235,14 +128,14 @@ mod tests {
                 .all(|asset| asset.kind == ResourceKind::Service)
         );
 
-        let worker = filter_assets("Cloudnote", None, "WORKER");
+        let worker = filter_assets(&assets, None, "WORKER");
         assert_eq!(worker.len(), 1);
         assert_eq!(worker[0].name, "sync-worker");
     }
 
     #[test]
     fn empty_results_are_explicit() {
-        assert!(filter_assets("Cloudnote", None, "not-a-real-resource").is_empty());
-        assert!(filter_assets("Unknown", None, "").is_empty());
+        let assets = [asset(ResourceKind::Website, "cloudnote.io")];
+        assert!(filter_assets(&assets, None, "not-a-real-resource").is_empty());
     }
 }

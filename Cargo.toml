@@ -1,6 +1,6 @@
 [package]
 name = "itgla"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 description = "Local-first IT resource relationship manager"
 license = "Proprietary"
@@ -13,6 +13,8 @@ slint = { version = "1.18.0", default-features = false, features = [
     "renderer-software",
     "software-renderer-systemfonts",
 ] }
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+thiserror = "2.0.17"
 
 [build-dependencies]
 slint-build = "1.18.0"
