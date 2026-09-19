@@ -1,7 +1,7 @@
 mod domain;
 mod storage;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, path::PathBuf, rc::Rc};
 
 use domain::{
     Asset, AssetDraft, Health, Project, Relationship, RelationshipKind, ResourceKind,
@@ -245,6 +245,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repository = Rc::new(RefCell::new(Repository::open_default()?));
     let window = AppWindow::new()?;
     let state = Rc::new(RefCell::new(UiState::default()));
+    let (json_path, backup_path) = Repository::default_portability_paths()?;
+    window.set_json_exchange_path(SharedString::from(json_path.to_string_lossy().into_owned()));
+    window.set_database_backup_path(SharedString::from(
+        backup_path.to_string_lossy().into_owned(),
+    ));
     refresh(&window, &mut state.borrow_mut(), &repository.borrow())?;
 
     let weak = window.as_weak();
@@ -500,6 +505,86 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             .position(|asset| asset.id == i64::from(id))
             .map_or(-1, |index| index as i32);
         window.set_selected_asset(index);
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    window.on_export_json(move |path| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let path = PathBuf::from(path.to_string());
+        match callback_repository.borrow().export_json(&path) {
+            Ok(()) => show_success(&window, "JSON 已导出到指定路径"),
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_import_json(move |path| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let path = PathBuf::from(path.to_string());
+        let imported = callback_repository.borrow_mut().import_json(&path);
+        match imported {
+            Ok(()) => {
+                let mut state = callback_state.borrow_mut();
+                state.project_index = 0;
+                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+                    show_error(&window, &error);
+                    return;
+                }
+                window.set_data_confirm_open(false);
+                show_success(&window, "JSON 已导入，导入前恢复点已创建");
+            }
+            Err(error) => {
+                window.set_data_confirm_open(false);
+                show_error(&window, &error);
+            }
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    window.on_create_backup(move |path| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let path = PathBuf::from(path.to_string());
+        match callback_repository.borrow().create_backup(&path) {
+            Ok(()) => show_success(&window, "完整数据库备份已创建"),
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_state = Rc::clone(&state);
+    let callback_repository = Rc::clone(&repository);
+    window.on_restore_backup(move |path| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        let path = PathBuf::from(path.to_string());
+        let restored = callback_repository.borrow_mut().restore_backup(&path);
+        match restored {
+            Ok(()) => {
+                let mut state = callback_state.borrow_mut();
+                state.project_index = 0;
+                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+                    show_error(&window, &error);
+                    return;
+                }
+                window.set_data_confirm_open(false);
+                show_success(&window, "数据库已恢复，恢复前快照已保留");
+            }
+            Err(error) => {
+                window.set_data_confirm_open(false);
+                show_error(&window, &error);
+            }
+        }
     });
 
     window.run()?;

@@ -2180,9 +2180,11 @@ dependencies = [
 
 [[package]]
 name = "itgla"
-version = "0.0.4"
+version = "0.0.5"
 dependencies = [
  "rusqlite",
+ "serde",
+ "serde_json",
  "slint",
  "slint-build",
  "thiserror 2.0.20",

@@ -2,6 +2,25 @@
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
+## [0.0.5] - 2026-09-19
+
+### Added
+
+- Versioned JSON export and transactional import for active projects, resources, tags, and relationships.
+- Full SQLite backup and same-schema restore from editable local paths.
+- Automatic `pre-import.db` and `pre-restore.db` recovery points before replacement operations.
+- A data-safety panel with explicit confirmation before import or restore.
+
+### Safety
+
+- JSON imports are limited to 10 MiB and validate format version, counts, identifiers, types, tags, project ownership, and relationship references before writing.
+- Invalid imports leave the current workspace unchanged; database restores require schema v2 and a successful SQLite integrity check.
+
+### Known limitations
+
+- File paths are entered directly; a native file picker is not bundled in this release.
+- JSON exchange contains active records; use a database backup to retain archived records.
+
 ## [0.0.4] - 2026-09-19
 
 ### Added
@@ -80,3 +99,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.0.2]: https://github.com/ken-water/itgla/releases/tag/v0.0.2
 [0.0.3]: https://github.com/ken-water/itgla/releases/tag/v0.0.3
 [0.0.4]: https://github.com/ken-water/itgla/releases/tag/v0.0.4
+[0.0.5]: https://github.com/ken-water/itgla/releases/tag/v0.0.5

@@ -195,6 +195,10 @@ export component AppWindow inherits Window {
     in-out property <bool> project-editor-open: false;
     in-out property <bool> archive-confirm-open: false;
     in-out property <bool> relationship-editor-open: false;
+    in-out property <bool> data-tools-open: false;
+    in-out property <bool> data-confirm-open: false;
+    in-out property <string> json-exchange-path: "";
+    in-out property <string> database-backup-path: "";
     in-out property <int> selected-graph-asset-id: 0;
     private property <int> editing-resource-id: 0;
     private property <int> editing-project-id: 0;
@@ -210,6 +214,7 @@ export component AppWindow inherits Window {
     private property <int> relationship-source-index: 0;
     private property <int> relationship-target-index: 1;
     private property <int> relationship-kind-index: 3;
+    private property <int> data-confirm-target: 0;
     in-out property <int> selected-project-index: 0;
     private property <string> active-filter: "全部";
 
@@ -223,6 +228,10 @@ export component AppWindow inherits Window {
     callback save-relationship(int, int, int);
     callback archive-relationship(int);
     callback graph-node-selected(int);
+    callback export-json(string);
+    callback import-json(string);
+    callback create-backup(string);
+    callback restore-backup(string);
 
     // Persistent navigation
     Rectangle {
@@ -247,7 +256,7 @@ export component AppWindow inherits Window {
             add-project-touch := TouchArea { clicked => { root.editing-project-id = 0; root.editing-name = ""; root.system-error = ""; root.project-editor-open = true; } }
         }
         ScrollView {
-            x: 8px; y: 296px; width: 220px; height: parent.height - 370px;
+            x: 8px; y: 296px; width: 220px; height: parent.height - 420px;
             VerticalLayout {
                 spacing: 4px;
                 for project[index] in root.projects: ProjectItem {
@@ -257,6 +266,7 @@ export component AppWindow inherits Window {
                 }
             }
         }
+        Button { x: 16px; y: parent.height - 110px; width: 204px; height: 34px; text: "数据安全"; clicked => { root.system-error = ""; root.system-status = ""; root.data-tools-open = true; } }
         Rectangle { x: 16px; y: parent.height - 64px; width: 204px; height: 1px; background: #dde3e0; }
         Rectangle { x: 20px; y: parent.height - 48px; width: 30px; height: 30px; border-radius: 15px; background: #263a35; Text { text: "RL"; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
         Text { x: 60px; y: parent.height - 48px; text: "Rich"; color: #343c39; font-size: 12px; font-weight: 600; }
@@ -383,6 +393,34 @@ export component AppWindow inherits Window {
         }
     }
 
+    if root.data-tools-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
+        TouchArea { clicked => { } }
+        Rectangle {
+            x: (parent.width - 560px) / 2; y: (parent.height - 500px) / 2; width: 560px; height: 500px;
+            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
+            Text { x: 24px; y: 20px; text: "数据安全"; color: #202725; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 50px; width: 512px; text: "导入和恢复会替换当前工作区，并先在本地创建自动恢复点。"; color: #68716e; font-size: 11px; }
+
+            Text { x: 24px; y: 90px; text: "JSON 交换文件"; color: #35403c; font-size: 12px; font-weight: 700; }
+            LineEdit { x: 24px; y: 116px; width: 512px; height: 36px; text <=> root.json-exchange-path; }
+            Text { x: 24px; y: 160px; width: 300px; text: "用于跨设备迁移当前有效项目、资源、标签和关系"; color: #818a87; font-size: 10px; }
+            Button { x: 344px; y: 160px; width: 88px; height: 34px; text: "导出 JSON"; clicked => { root.export-json(root.json-exchange-path); } }
+            Button { x: 444px; y: 160px; width: 92px; height: 34px; text: "导入 JSON"; clicked => { root.data-confirm-target = 1; root.data-confirm-open = true; } }
+
+            Rectangle { x: 24px; y: 218px; width: 512px; height: 1px; background: #e5e9e7; }
+            Text { x: 24px; y: 242px; text: "完整数据库备份"; color: #35403c; font-size: 12px; font-weight: 700; }
+            LineEdit { x: 24px; y: 268px; width: 512px; height: 36px; text <=> root.database-backup-path; }
+            Text { x: 24px; y: 312px; width: 300px; text: "保留完整 SQLite 数据，可用于同版本灾难恢复"; color: #818a87; font-size: 10px; }
+            Button { x: 344px; y: 312px; width: 88px; height: 34px; text: "创建备份"; clicked => { root.create-backup(root.database-backup-path); } }
+            Button { x: 444px; y: 312px; width: 92px; height: 34px; text: "恢复备份"; clicked => { root.data-confirm-target = 2; root.data-confirm-open = true; } }
+
+            if root.system-error != "": Text { x: 24px; y: 376px; width: 512px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
+            if root.system-status != "": Text { x: 24px; y: 376px; width: 512px; text: root.system-status; color: #176d5a; font-size: 11px; wrap: word-wrap; }
+            Button { x: 444px; y: 440px; width: 92px; height: 36px; text: "关闭"; clicked => { root.data-tools-open = false; root.system-error = ""; root.system-status = ""; } }
+        }
+    }
+
     if root.resource-editor-open: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
         TouchArea { clicked => { } }
@@ -438,6 +476,19 @@ export component AppWindow inherits Window {
             Text { x: 24px; y: 62px; width: 352px; text: root.archive-target == 1 ? "资源将从日常视图中隐藏。已有关系也将保留在数据库中。" : root.archive-target == 2 ? "项目及其资源将从日常视图中隐藏。至少需要保留一个项目。" : "关系将从图谱中隐藏，来源和目标资源不受影响。"; color: #68716e; font-size: 11px; wrap: word-wrap; }
             Button { x: 184px; y: 150px; width: 92px; height: 36px; text: "取消"; clicked => { root.archive-confirm-open = false; } }
             Button { x: 288px; y: 150px; width: 88px; height: 36px; text: root.archive-target == 3 ? "确认移除" : "确认归档"; clicked => { if root.archive-target == 1 { root.archive-resource(root.editing-resource-id); } else if root.archive-target == 2 { root.archive-project(root.editing-project-id); } else { root.archive-relationship(root.editing-relationship-id); } } }
+        }
+    }
+
+    if root.data-confirm-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221faa;
+        TouchArea { clicked => { } }
+        Rectangle {
+            x: (parent.width - 420px) / 2; y: (parent.height - 230px) / 2; width: 420px; height: 230px;
+            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #e2d4d4;
+            Text { x: 24px; y: 22px; text: root.data-confirm-target == 1 ? "导入并替换工作区？" : "从备份恢复？"; color: #252c2a; font-size: 17px; font-weight: 700; }
+            Text { x: 24px; y: 62px; width: 372px; text: root.data-confirm-target == 1 ? "文件通过完整校验后会替换当前有效数据。操作前将自动创建 pre-import.db。" : "当前数据库会先保存为 pre-restore.db，再由所选备份完整替换。"; color: #68716e; font-size: 11px; wrap: word-wrap; }
+            Button { x: 204px; y: 170px; width: 92px; height: 36px; text: "取消"; clicked => { root.data-confirm-open = false; } }
+            Button { x: 308px; y: 170px; width: 88px; height: 36px; text: "确认替换"; clicked => { if root.data-confirm-target == 1 { root.import-json(root.json-exchange-path); } else { root.restore-backup(root.database-backup-path); } } }
         }
     }
 }
