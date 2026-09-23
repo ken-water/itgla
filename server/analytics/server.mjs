@@ -175,7 +175,7 @@ async function overview(days) {
 
 async function daily(days) {
   const result = await pool.query(
-    `select date_trunc('day',occurred_at)::date as day,
+    `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
        count(*) filter (where event_name='page_view')::int as page_views,
        count(distinct visitor_key) filter (where event_name='page_view')::int as unique_visitors,
        count(*) filter (where event_name='download')::int as downloads,
