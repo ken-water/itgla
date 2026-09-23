@@ -5,9 +5,12 @@ The official website is a dependency-free static site under `website/`. Product 
 ## Production
 
 - URL: `https://itgla.com`
-- Host: the Nginx server configured for `itgla.com`
-- Document root: `/var/www/itgla-app`
+- Host: `186.244.233.223` (shared with VeloWrite; keep separate virtual hosts and roots)
+- Document root: `/var/www/itgla-site/current`
 - Health check: `https://itgla.com/healthz`
+- `www.itgla.com` redirects to the apex; `app.itgla.com` redirects to downloads; `api.itgla.com` returns an explicit JSON 404 because v0.1.1 has no hosted API.
+- Dedicated certificate: `/etc/letsencrypt/live/itgla.com/`, covering apex, www, app, and api names.
+- Data services: none for this static/local-first product release. PostgreSQL and Redis are not ITGLA dependencies.
 - Release owner: `ken-water`
 
 ## Deploy contract
@@ -18,4 +21,4 @@ The official website is a dependency-free static site under `website/`. Product 
 4. Upload the candidate to a new directory, validate it through a temporary local Nginx server, then atomically switch the document-root directory.
 5. Run `nginx -t`, HTTPS health, page, asset, download, checksum, and responsive smoke checks.
 
-Rollback is an atomic directory rename back to the recorded backup, followed by the same health and download checks. The deployment changes no database, DNS, certificate, runtime service, or user data.
+Rollback is an atomic Nginx config/root switch back to the recorded backup, followed by the same health and download checks. The deployment must not edit the VeloWrite vhost, PostgreSQL cluster, Redis, DNS, or user data.
