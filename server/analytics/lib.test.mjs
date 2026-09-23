@@ -7,6 +7,7 @@ import {
   parseRequestLine,
   passwordDigest,
   safeEqual,
+  sanitizeReferrer,
 } from "./lib.mjs";
 
 test("parses request paths without query strings", () => {
@@ -15,6 +16,15 @@ test("parses request paths without query strings", () => {
     path: "/downloads.html",
   });
   assert.equal(parseRequestLine("not a request"), null);
+});
+
+test("removes query parameters and fragments from referrers", () => {
+  assert.equal(
+    sanitizeReferrer("https://example.com/download?token=secret&utm_source=test#section"),
+    "https://example.com/download",
+  );
+  assert.equal(sanitizeReferrer("-"), null);
+  assert.equal(sanitizeReferrer("not a URL"), null);
 });
 
 test("classifies only public page, download, and error events", () => {

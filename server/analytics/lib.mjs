@@ -28,6 +28,17 @@ export function eventName({ path, contentType, statusCode }) {
   return null;
 }
 
+export function sanitizeReferrer(value) {
+  const referrer = String(value || "").trim();
+  if (!referrer || referrer === "-") return null;
+  try {
+    const parsed = new URL(referrer);
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname}`.slice(0, 1000);
+  } catch {
+    return null;
+  }
+}
+
 export function parseLogLine(line, visitorSalt) {
   try {
     const entry = JSON.parse(line);
@@ -51,7 +62,7 @@ export function parseLogLine(line, visitorSalt) {
       method: parsed.method,
       statusCode,
       bytesSent: Number(entry.bytes_sent) || 0,
-      referrer: String(entry.referer || "").slice(0, 1000) || null,
+      referrer: sanitizeReferrer(entry.referer),
       userAgent,
       visitorKey: hash(`${visitorSalt}:${remoteAddress}:${userAgent || "unknown"}`).slice(0, 32),
       occurredAt,
