@@ -4,12 +4,16 @@ on:
   pull_request:
     paths:
       - "website/**"
+      - "server/analytics/**"
+      - "deploy/nginx/itgla.conf"
       - ".github/workflows/website.yml"
   push:
     branches:
       - main
     paths:
       - "website/**"
+      - "server/analytics/**"
+      - "deploy/nginx/itgla.conf"
       - ".github/workflows/website.yml"
 
 permissions:
@@ -39,3 +43,7 @@ jobs:
 
       - name: Run responsive smoke tests
         run: npm test
+
+      - name: Run analytics unit tests
+        working-directory: server/analytics
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm test

@@ -11,6 +11,7 @@
 /backups/
 /artifacts/website/
 /website/node_modules/
+/server/analytics/node_modules/
 /website/test-results/
 /website/playwright-report/
 /website/downloads/**/*.zip

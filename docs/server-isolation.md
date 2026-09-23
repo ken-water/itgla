@@ -2,7 +2,7 @@
 
 ## Current release boundary
 
-ITGLA v0.1.1 is a local-first Slint desktop application. The web component is a static product/download site. Neither component connects to a hosted API, PostgreSQL, or Redis. Consequently the current site deployment provisions no ITGLA database credentials, database, cache, or network listener.
+ITGLA v0.1.1 is a local-first Slint desktop application. The public web component remains a static product/download site. A separate website-analytics service reads the dedicated ITGLA Nginx log and exposes a protected `/admin/` dashboard; it does not provide product sync or asset-management APIs.
 
 The current-domain host is shared with VeloWrite. Its existing PostgreSQL 16 cluster is bound to loopback and contains a separate `velowrite_analytics` database. Redis is not installed. ITGLA must not use VeloWrite's database, role, analytics service, filesystem, credentials, or application port.
 
@@ -10,10 +10,15 @@ The current-domain host is shared with VeloWrite. Its existing PostgreSQL 16 clu
 
 - Dedicated static root: `/var/www/itgla-site/releases/<release>`
 - Dedicated Nginx file: `/etc/nginx/conf.d/itgla.conf`
+- Dedicated service/account: `itgla-analytics.service` running as the `itgla` system user on `127.0.0.1:3420`
+- Dedicated PostgreSQL role/database: `itgla_analytics`; the role owns only its database and has no superuser, database-creation, role-creation, or replication privileges
+- Dedicated log: `/var/log/itgla/nginx-access.log`; original IP addresses are converted to salted visitor hashes during ingestion and are not stored in PostgreSQL
+- Dedicated root-only secrets: `/etc/itgla/analytics.env`
 - `itgla.com` and `www.itgla.com`: static product/download site only
 - `app.itgla.com`: redirects to the website download page; no app service exists in v0.1.1
 - `api.itgla.com`: returns an explicit JSON 404; no hosted API exists in v0.1.1
-- No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
+- `/admin/` alone proxies to ITGLA analytics. No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
+- Redis is intentionally not installed: the single-instance dashboard keeps durable sessions in its isolated PostgreSQL database, so Redis would add operational surface without providing an isolation or availability benefit.
 
 ## Future backend requirements
 
