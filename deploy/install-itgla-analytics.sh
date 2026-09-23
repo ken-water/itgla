@@ -16,6 +16,11 @@ if (( ${#ADMIN_PASSWORD} < 10 )); then
   exit 1
 fi
 
+ssh -o BatchMode=yes "$REMOTE_HOST" "test ! -e /etc/itgla/analytics.env" || {
+  echo "ITGLA analytics is already installed; use a reviewed update or credential-rotation procedure" >&2
+  exit 1
+}
+
 DATABASE_PASSWORD="$(openssl rand -hex 32)"
 PASSWORD_SALT="$(openssl rand -hex 24)"
 VISITOR_SALT="$(openssl rand -hex 32)"

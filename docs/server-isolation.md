@@ -4,7 +4,7 @@
 
 ITGLA v0.1.1 is a local-first Slint desktop application. The public web component remains a static product/download site. A separate website-analytics service reads the dedicated ITGLA Nginx log and exposes a protected `/admin/` dashboard; it does not provide product sync or asset-management APIs.
 
-The current-domain host is shared with VeloWrite. Its existing PostgreSQL 16 cluster is bound to loopback and contains a separate `velowrite_analytics` database. Redis is not installed. ITGLA must not use VeloWrite's database, role, analytics service, filesystem, credentials, or application port.
+The current-domain host is shared with VeloWrite and OpsProbe. PostgreSQL 16 is bound to loopback and contains separate `itgla_analytics` and `velowrite_analytics` databases. A Redis service used by OpsProbe is also bound to loopback. ITGLA does not connect to that Redis instance and must not use another product's database, role, analytics service, cache, filesystem, credentials, or application port.
 
 ## Static-site boundary
 
@@ -18,7 +18,7 @@ The current-domain host is shared with VeloWrite. Its existing PostgreSQL 16 clu
 - `app.itgla.com`: redirects to the website download page; no app service exists in v0.1.1
 - `api.itgla.com`: returns an explicit JSON 404; no hosted API exists in v0.1.1
 - `/admin/` alone proxies to ITGLA analytics. No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
-- Redis is intentionally not installed: the single-instance dashboard keeps durable sessions in its isolated PostgreSQL database, so Redis would add operational surface without providing an isolation or availability benefit.
+- ITGLA intentionally has no Redis configuration: the single-instance dashboard keeps durable sessions in its isolated PostgreSQL database, so sharing OpsProbe's Redis would weaken isolation without providing an availability benefit.
 
 ## Future backend requirements
 
