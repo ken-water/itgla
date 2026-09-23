@@ -63,6 +63,8 @@ rm -f /tmp/itgla-analytics.env
 cd '$REMOTE_ROOT'
 npm ci --omit=dev --no-audit --no-fund
 chown -R itgla:itgla '$REMOTE_ROOT'
+find '$REMOTE_ROOT' -type d -exec chmod 0755 {} +
+find '$REMOTE_ROOT' -type f -exec chmod 0644 {} +
 systemctl daemon-reload
 systemctl enable itgla-analytics
 systemctl restart itgla-analytics
