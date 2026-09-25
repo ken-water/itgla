@@ -15,8 +15,8 @@ jobs:
     steps:
       - name: Check out source
         uses: actions/checkout@v5
-      - name: Install WiX
-        run: dotnet tool install --global wix --version 6.0.2
+      - name: Install WiX 3
+        run: choco install wixtoolset --version=3.14.1 --no-progress --yes
       - name: Run tests
         run: cargo test --all-features --locked
       - name: Build MSI
@@ -46,7 +46,7 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v5
       - name: Install packaging tools
-        run: sudo apt-get update && sudo apt-get install --yes rpm libfuse2
+        run: sudo apt-get update && sudo apt-get install --yes rpm libfuse2 pkg-config libfontconfig1-dev
       - name: Build Linux packages
         run: |
           cargo install cargo-packager --locked --version 0.11.8

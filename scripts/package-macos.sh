@@ -4,7 +4,7 @@ set -euo pipefail
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${repository_root}"
 
-for required_command in cargo cargo-packager python3 sha256sum; do
+for required_command in cargo cargo-packager python3 shasum; do
     if ! command -v "${required_command}" >/dev/null 2>&1; then
         echo "missing required command: ${required_command}" >&2
         exit 1
@@ -21,6 +21,6 @@ cargo packager --release --formats dmg --out-dir "${output_directory}"
 dmg="$(find "${output_directory}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
 [[ -n "${dmg}" ]] || { echo "cargo-packager did not produce a DMG" >&2; exit 1; }
 mv "${dmg}" "${output_directory}/${package_stem}.dmg"
-sha256sum "${output_directory}/${package_stem}.dmg" > "${output_directory}/${package_stem}.dmg.sha256"
+shasum -a 256 "${output_directory}/${package_stem}.dmg" > "${output_directory}/${package_stem}.dmg.sha256"
 
 echo "Created ${output_directory}/${package_stem}.dmg"
