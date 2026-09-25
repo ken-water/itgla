@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## [0.2.1] - 2026-09-25
+## [0.2.2] - 2026-09-25
 
 ### Added
 
@@ -185,4 +185,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.1.0]: https://github.com/ken-water/itgla/releases/tag/v0.1.0
 [0.1.1]: https://github.com/ken-water/itgla/releases/tag/v0.1.1
 [0.2.0]: https://github.com/ken-water/itgla/releases/tag/v0.2.0
-[0.2.1]: https://github.com/ken-water/itgla/releases/tag/v0.2.1
+[0.2.2]: https://github.com/ken-water/itgla/releases/tag/v0.2.2

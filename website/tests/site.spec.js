@@ -18,7 +18,7 @@ for (const viewport of viewports) {
 
     await expect(page.getByRole("heading", { name: "ITGLA", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Download Windows installer" })).toBeVisible();
-    await expect(page.getByText("Current stable download: v0.2.1", { exact: false })).toBeVisible();
+    await expect(page.getByText("Current stable download: v0.2.2", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Copy exactly" })).toBeVisible();
@@ -35,10 +35,10 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.2" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Download MSI" })).toHaveAttribute(
     "href",
-    "https://github.com/ken-water/itgla/releases/download/v0.2.1/itgla-v0.2.1-windows-x86_64.msi",
+    "https://github.com/ken-water/itgla/releases/download/v0.2.2/itgla-v0.2.2-windows-x86_64.msi",
   );
 
   for (const name of ["Portable ZIP", "DEB", "RPM", "AppImage", "Download DMG", "Download SHA256SUMS"]) {

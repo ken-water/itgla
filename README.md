@@ -2,7 +2,7 @@
 
 ITGLA is a local-first desktop inventory for keeping server details easy to find and copy.
 
-Current version: `0.2.1`
+Current version: `0.2.2`
 
 ## Run
 
