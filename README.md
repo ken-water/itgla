@@ -41,3 +41,5 @@ The script writes the versioned archive and SHA-256 checksum to `dist/`. See [do
 All server data remains local. Cloud sync, authentication, billing, monitoring integrations, and destructive infrastructure actions are not enabled.
 
 Rust architecture, dependency decisions, verification gates, and rollback behavior are documented in [docs/engineering.md](docs/engineering.md).
+
+The product and revenue path toward the first ten paid users is documented in [docs/roadmap-to-10-paid-users-2027-06.md](docs/roadmap-to-10-paid-users-2027-06.md).
