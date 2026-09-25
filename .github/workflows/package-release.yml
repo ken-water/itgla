@@ -21,12 +21,12 @@ jobs:
         shell: pwsh
         run: |
           cargo install cargo-packager --locked --version 0.11.8
+          cargo build --release --locked
           cargo packager --release --formats nsis --out-dir dist
           $installer = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
           if (-not $installer) { throw "Windows installer was not produced" }
           $version = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
           Move-Item $installer.FullName "dist/itgla-v$version-windows-x86_64-setup.exe"
-          cargo build --release --locked
           Compress-Archive -Path target/release/itgla.exe, README.md, CHANGELOG.md -DestinationPath "dist/itgla-v$version-windows-x86_64.zip"
           Get-ChildItem dist -File | Where-Object { $_.Name -like '*setup.exe' -or $_.Extension -eq '.zip' } | ForEach-Object {
             (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name | Set-Content "$($_.FullName).sha256"
