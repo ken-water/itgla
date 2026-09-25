@@ -41,13 +41,6 @@ jobs:
       - name: Install Chromium
         run: npx playwright install chromium
 
-      - name: Add release fixtures
-        run: |
-          mkdir -p downloads/v0.2.0
-          touch downloads/v0.2.0/itgla-v0.2.0-windows-x86_64.zip
-          touch downloads/v0.2.0/itgla-v0.2.0-linux-x86_64.tar.gz
-          touch downloads/v0.2.0/SHA256SUMS
-
       - name: Run responsive smoke tests
         run: npm test
 

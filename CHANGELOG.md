@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## [0.2.1] - 2026-09-25
+
+### Added
+
+- Added Overview, Traffic, Downloads, and Errors tabs to the protected analytics dashboard.
+- Each tab now presents focused core metrics, a trend chart, and the relevant data table.
+- Added Windows MSI, Linux DEB/RPM/AppImage, and macOS DMG release packages.
+
+### Changed
+
+- Dashboard data is loaded once per reporting-period change and reused across tabs.
+- Preserved the existing authentication, retention, privacy, and service-isolation boundaries.
+- Added SHA-256 checksums for every release artifact and a combined release manifest.
+
 ## [0.2.0] - 2026-09-25
 
 ### Added
@@ -171,3 +185,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.1.0]: https://github.com/ken-water/itgla/releases/tag/v0.1.0
 [0.1.1]: https://github.com/ken-water/itgla/releases/tag/v0.1.1
 [0.2.0]: https://github.com/ken-water/itgla/releases/tag/v0.2.0
+[0.2.1]: https://github.com/ken-water/itgla/releases/tag/v0.2.1

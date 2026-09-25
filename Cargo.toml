@@ -1,9 +1,18 @@
 [package]
 name = "itgla"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "Local-first IT resource relationship manager"
 license = "Proprietary"
+
+[package.metadata.packager]
+product-name = "ITGLA"
+identifier = "com.itgla.desktop"
+publisher = "ITGLA"
+homepage = "https://itgla.com"
+description = "Local-first IT resource relationship manager"
+formats = ["wix", "deb", "appimage", "dmg"]
+icons = ["assets/itgla.png"]
 
 [dependencies]
 arboard = { version = "3.6.1", default-features = false }

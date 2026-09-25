@@ -2,7 +2,7 @@
 
 ITGLA is a local-first desktop inventory for keeping server details easy to find and copy.
 
-Current version: `0.2.0`
+Current version: `0.2.1`
 
 ## Run
 
@@ -14,9 +14,11 @@ cargo run
 
 The first build downloads and compiles Slint, so it takes longer than subsequent runs.
 
-## Windows package
+## Packages
 
-Windows x86_64 releases are distributed as portable ZIP archives. Extract the archive and run `itgla.exe`; application data remains in the current user's local data directory.
+Releases include a Windows x86_64 MSI installer and portable ZIP, Linux x86_64 DEB, RPM, and AppImage packages, and a macOS universal DMG. Windows and macOS artifacts are currently unsigned. Every artifact has a matching SHA-256 file and the release includes a combined `SHA256SUMS` manifest.
+
+Application data remains in the current user's local data directory.
 
 From Linux, install the Rust Windows GNU target and MinGW toolchain, then run:
 

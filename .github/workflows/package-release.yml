@@ -1,0 +1,97 @@
+name: Package release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Install WiX
+        run: dotnet tool install --global wix --version 6.0.2
+      - name: Run tests
+        run: cargo test --all-features --locked
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          cargo install cargo-packager --locked --version 0.11.8
+          cargo packager --release --formats wix --out-dir dist
+          $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
+          if (-not $msi) { throw "MSI was not produced" }
+          $version = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
+          Move-Item $msi.FullName "dist/itgla-v$version-windows-x86_64.msi"
+          cargo build --release --locked
+          Compress-Archive -Path target/release/itgla.exe, README.md, CHANGELOG.md -DestinationPath "dist/itgla-v$version-windows-x86_64.zip"
+          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.msi','.zip' } | ForEach-Object {
+            (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name | Set-Content "$($_.FullName).sha256"
+          }
+      - name: Upload Windows packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: itgla-windows-x86_64
+          path: dist/*
+          if-no-files-found: error
+
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Install packaging tools
+        run: sudo apt-get update && sudo apt-get install --yes rpm libfuse2
+      - name: Build Linux packages
+        run: |
+          cargo install cargo-packager --locked --version 0.11.8
+          chmod +x scripts/package-linux-installers.sh
+          scripts/package-linux-installers.sh
+      - name: Upload Linux packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: itgla-linux-x86_64
+          path: dist/*
+          if-no-files-found: error
+
+  macos:
+    runs-on: macos-14
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v5
+      - name: Build unsigned DMG
+        run: |
+          cargo install cargo-packager --locked --version 0.11.8
+          chmod +x scripts/package-macos.sh
+          scripts/package-macos.sh
+      - name: Upload macOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: itgla-macos-arm64
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packages
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create checksums manifest
+        run: cat dist/*.sha256 > dist/SHA256SUMS
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          body: |
+            macOS DMG is unsigned and not notarized in this release. macOS may require opening it from Finder with Control-click > Open.
