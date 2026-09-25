@@ -1,578 +1,211 @@
 import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
 
-export struct ProjectRow {
-    id: int,
-    name: string,
-    short-name: string,
-    summary: string,
+export struct ServerRow { id: int, tags: string, ip-address: string, ports: string, custom-values: [string] }
+export struct ImportColumnRow { index: int, source-name: string, sample: string, mapping-index: int }
+
+component DataCell inherits Rectangle {
+    in property <string> value;
+    in property <string> copy-label;
+    callback copy(string, string);
+    background: transparent;
+    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #edf0ef; }
+    Text { x: 8px; y: 0; width: parent.width - 58px; height: parent.height; text: root.value; color: #27312d; font-size: 11px; vertical-alignment: center; overflow: elide; }
+    Button { x: parent.width - 50px; y: 6px; width: 44px; height: 28px; text: "Copy"; clicked => { root.copy(root.value, root.copy-label); } }
 }
 
-export struct AssetRow {
-    id: int,
-    kind: string,
-    mark: string,
-    name: string,
-    detail: string,
-    status: string,
-    status-detail: string,
-    environment: string,
-    tone: int,
-    kind-tone: int,
-    kind-index: int,
-    health-index: int,
-    tags: string,
-}
-
-export struct GraphNodeRow {
-    id: int,
-    title: string,
-    subtitle: string,
-    mark: string,
-    kind-tone: int,
-    x: float,
-    y: float,
-}
-
-export struct GraphEdgeRow {
-    path: string,
-}
-
-export struct RelationshipRow {
-    id: int,
-    source: string,
-    kind: string,
-    target: string,
-}
-
-export struct GlobalResultRow {
-    asset-id: int,
-    project-index: int,
-    name: string,
-    project: string,
-    kind: string,
-    mark: string,
-    detail: string,
-    status: string,
-    tone: int,
-    kind-tone: int,
-}
-
-component KindMark inherits Rectangle {
-    in property <string> label;
-    in property <int> tone;
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    background: tone == 0 ? #e4f4ef : tone == 1 ? #e8eefb : tone == 2 ? #f6edda : tone == 3 ? #eee9f7 : #e8f3f5;
-    Text {
-        text: root.label;
-        color: root.tone == 0 ? #15745e : root.tone == 1 ? #3b5ca8 : root.tone == 2 ? #956516 : root.tone == 3 ? #68479b : #2c6973;
-        font-size: 12px;
-        font-weight: 700;
-        horizontal-alignment: center;
-        vertical-alignment: center;
-    }
-}
-
-component StatusDot inherits Rectangle {
-    in property <int> tone;
-    width: 7px;
-    height: 7px;
-    border-radius: 4px;
-    background: tone == 0 ? #2b8a68 : tone == 1 ? #c18428 : #c94f50;
-}
-
-component NavItem inherits Rectangle {
-    in property <string> mark;
-    in property <string> label;
-    in property <bool> selected;
-    callback chosen;
-    accessible-role: button;
-    accessible-label: root.label;
-    accessible-action-default => { touch.clicked(); }
-    height: 36px;
-    border-radius: 6px;
-    background: selected ? #e7f2ef : touch.has-hover ? #f1f4f3 : #00000000;
-    Text { x: 10px; width: 24px; text: root.mark; color: selected ? #176d5a : #66706d; font-size: 12px; font-weight: 700; vertical-alignment: center; }
-    Text { x: 38px; width: parent.width - 46px; text: root.label; color: selected ? #153f36 : #404846; font-size: 13px; font-weight: selected ? 600 : 400; vertical-alignment: center; }
-    touch := TouchArea { clicked => { root.chosen(); } }
-}
-
-component ProjectItem inherits Rectangle {
-    in property <string> label;
-    in property <string> short-name;
-    in property <string> count;
-    in property <bool> selected;
-    callback chosen;
-    accessible-role: button;
-    accessible-label: root.label + "，" + root.count;
-    accessible-action-default => { touch.clicked(); }
-    height: 48px;
-    border-radius: 6px;
-    background: selected ? #e7f2ef : touch.has-hover ? #f1f4f3 : #00000000;
-    Rectangle {
-        x: 8px; y: 9px; width: 30px; height: 30px; border-radius: 6px;
-        background: selected ? #176d5a : #e7ebe9;
-        Text { text: root.short-name; color: selected ? #ffffff : #46504d; font-size: 11px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
-    }
-    Text { x: 48px; y: 7px; width: parent.width - 86px; height: 19px; text: root.label; color: #202725; font-size: 13px; font-weight: 600; overflow: elide; }
-    Text { x: 48px; y: 26px; text: root.count; color: #7a8380; font-size: 11px; }
-    touch := TouchArea { clicked => { root.chosen(); } }
-}
-
-component FilterChip inherits Rectangle {
-    in property <string> label;
-    in property <bool> selected;
-    callback chosen;
-    accessible-role: button;
-    accessible-label: "筛选：" + root.label;
-    accessible-action-default => { touch.clicked(); }
-    width: max(54px, chip-label.preferred-width + 24px);
-    height: 30px;
-    border-radius: 6px;
-    border-width: 1px;
-    border-color: selected ? #1f7663 : #dfe4e2;
-    background: selected ? #e5f2ee : touch.has-hover ? #f5f7f6 : #ffffff;
-    chip-label := Text { text: root.label; color: selected ? #176d5a : #5a6360; font-size: 12px; font-weight: selected ? 600 : 400; horizontal-alignment: center; vertical-alignment: center; }
-    touch := TouchArea { clicked => { root.chosen(); } }
-}
-
-component ResourceRow inherits Rectangle {
-    in property <AssetRow> item;
-    in property <bool> selected;
-    callback chosen(AssetRow);
-    accessible-role: button;
-    accessible-label: root.item.name + "，" + root.item.kind + "，" + root.item.status;
-    accessible-action-default => { touch.clicked(); }
-    height: 66px;
-    background: selected ? #edf6f3 : touch.has-hover ? #f8faf9 : #ffffff;
-    Rectangle { x: 0; y: 65px; width: parent.width; height: 1px; background: #e9edeb; }
-    KindMark { x: 12px; y: 18px; label: root.item.mark; tone: root.item.kind-tone; }
-    Text { x: 54px; y: 11px; width: 190px; height: 21px; text: root.item.name; color: #202725; font-size: 13px; font-weight: 600; overflow: elide; }
-    Text { x: 54px; y: 34px; width: 210px; height: 18px; text: root.item.detail; color: #78817e; font-size: 11px; overflow: elide; }
-    Rectangle {
-        x: 274px; y: 13px; width: 50px; height: 20px; border-radius: 4px; background: #f0f2f1;
-        Text { text: root.item.environment; color: #59625f; font-size: 10px; horizontal-alignment: center; vertical-alignment: center; }
-    }
-    StatusDot { x: 342px; y: 17px; tone: root.item.tone; }
-    Text { x: 355px; y: 10px; width: 54px; height: 20px; text: root.item.status; color: root.item.tone == 2 ? #a23839 : #4f5956; font-size: 11px; font-weight: 600; }
-    Text { x: 274px; y: 36px; width: parent.width - 298px; height: 18px; text: root.item.status-detail; color: #78817e; font-size: 11px; horizontal-alignment: right; overflow: elide; }
-    Text { x: parent.width - 18px; y: 22px; text: ">"; color: #a8afad; font-size: 12px; }
-    touch := TouchArea { clicked => { root.chosen(root.item); } }
-}
-
-component GraphNode inherits Rectangle {
-    in property <int> node-id;
+component HeaderCell inherits Rectangle {
     in property <string> title;
-    in property <string> subtitle;
-    in property <string> mark;
-    in property <color> accent;
-    in property <bool> primary: false;
-    callback chosen(int);
-    accessible-role: button;
-    accessible-label: root.title + "，" + root.subtitle;
-    accessible-action-default => { node-touch.clicked(); }
-    width: 116px;
-    height: primary ? 58px : 52px;
-    border-radius: 7px;
-    border-width: primary ? 2px : 1px;
-    border-color: primary ? accent : #dce2df;
-    background: #ffffff;
-    Rectangle { x: 8px; y: 10px; width: 28px; height: 28px; border-radius: 6px; background: root.accent; Text { text: root.mark; color: #ffffff; font-size: 10px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-    Text { x: 43px; y: 9px; width: parent.width - 49px; height: 18px; text: root.title; color: #26302d; font-size: 9px; font-weight: 600; overflow: elide; }
-    Text { x: 43px; y: 28px; width: parent.width - 49px; height: 16px; text: root.subtitle; color: #828a87; font-size: 9px; overflow: elide; }
-    node-touch := TouchArea { clicked => { root.chosen(root.node-id); } }
+    background: #edf2ef;
+    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #dce3e0; }
+    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.title; color: #61706a; font-size: 9px; font-weight: 700; vertical-alignment: center; overflow: elide; }
 }
 
-component RelationshipItem inherits Rectangle {
-    in property <RelationshipRow> item;
-    callback archive(int);
-    height: 42px;
-    background: #ffffff;
-    Rectangle { x: 0; y: 41px; width: parent.width; height: 1px; background: #e7ebe9; }
-    Text { x: 10px; y: 6px; width: 118px; text: root.item.source; color: #303936; font-size: 10px; font-weight: 600; overflow: elide; }
-    Text { x: 132px; y: 6px; width: 74px; text: root.item.kind; color: #267a66; font-size: 10px; horizontal-alignment: center; overflow: elide; }
-    Text { x: 210px; y: 6px; width: 124px; text: root.item.target; color: #303936; font-size: 10px; font-weight: 600; overflow: elide; }
-    Text { x: 10px; y: 23px; text: "来源"; color: #969d9a; font-size: 8px; }
-    Rectangle { x: parent.width - 34px; y: 7px; width: 28px; height: 28px; border-radius: 5px; background: remove-touch.has-hover ? #fbeeee : #00000000;
-        accessible-role: button;
-        accessible-label: "移除关系：" + root.item.source + " " + root.item.kind + " " + root.item.target;
-        accessible-action-default => { remove-touch.clicked(); }
-        Text { text: "×"; color: #a34b4d; font-size: 15px; horizontal-alignment: center; vertical-alignment: center; }
-        remove-touch := TouchArea { clicked => { root.archive(root.item.id); } }
+component ServerTableRow inherits Rectangle {
+    in property <ServerRow> item;
+    in property <[string]> custom-headers;
+    in property <length> table-width;
+    callback edit; callback archive; callback copy(string, string);
+    width: root.table-width; height: 40px; background: #ffffff;
+    Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #e6ebe8; }
+    HorizontalLayout {
+        spacing: 0px;
+        DataCell { width: 180px; value: root.item.tags; copy-label: "Tags"; copy(value, label) => { root.copy(value, label); } }
+        DataCell { width: 160px; value: root.item.ip-address; copy-label: "IP address"; copy(value, label) => { root.copy(value, label); } }
+        DataCell { width: 130px; value: root.item.ports; copy-label: "Ports"; copy(value, label) => { root.copy(value, label); } }
+        for value[index] in root.item.custom-values: DataCell { width: 160px; value: value; copy-label: root.custom-headers[index]; copy(cell-value, label) => { root.copy(cell-value, label); } }
+        Rectangle {
+            width: 116px; background: transparent;
+            Button { x: 5px; y: 6px; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
+            Button { x: 53px; y: 6px; width: 58px; height: 28px; text: "Archive"; clicked => { root.archive(); } }
+        }
     }
 }
 
-component GlobalResultItem inherits Rectangle {
-    in property <GlobalResultRow> item;
-    callback chosen(int, int);
-    accessible-role: button;
-    accessible-label: root.item.name + "，项目 " + root.item.project + "，" + root.item.status;
-    accessible-action-default => { result-touch.clicked(); }
-    height: 60px;
-    background: result-touch.has-hover ? #f7faf9 : #ffffff;
-    Rectangle { x: 0; y: 59px; width: parent.width; height: 1px; background: #e7ebe9; }
-    KindMark { x: 12px; y: 15px; label: root.item.mark; tone: root.item.kind-tone; }
-    Text { x: 54px; y: 8px; width: 220px; height: 20px; text: root.item.name; color: #202725; font-size: 12px; font-weight: 600; overflow: elide; }
-    Text { x: 54px; y: 31px; width: 250px; height: 17px; text: root.item.project + " · " + root.item.kind + " · " + root.item.detail; color: #78817e; font-size: 10px; overflow: elide; }
-    StatusDot { x: parent.width - 112px; y: 19px; tone: root.item.tone; }
-    Text { x: parent.width - 98px; y: 11px; width: 72px; height: 24px; text: root.item.status; color: root.item.tone == 2 ? #a23839 : #4f5956; font-size: 11px; font-weight: 600; vertical-alignment: center; }
-    Text { x: parent.width - 18px; y: 20px; text: ">"; color: #a8afad; font-size: 12px; }
-    result-touch := TouchArea { clicked => { root.chosen(root.item.project-index, root.item.asset-id); } }
+component TableHeader inherits Rectangle {
+    in property <[string]> custom-headers;
+    in property <length> table-width;
+    width: root.table-width; height: 32px; background: #edf2ef; border-width: 1px; border-color: #dce3e0;
+    HorizontalLayout {
+        spacing: 0px;
+        HeaderCell { width: 180px; title: "TAGS"; }
+        HeaderCell { width: 160px; title: "IP ADDRESS"; }
+        HeaderCell { width: 130px; title: "PORTS"; }
+        for header in root.custom-headers: HeaderCell { width: 160px; title: header; }
+        HeaderCell { width: 116px; title: "ACTIONS"; }
+    }
+}
+
+component TagChoice inherits Rectangle {
+    in property <string> label; in property <bool> selected; callback chosen;
+    height: 32px; background: root.selected ? #dceee8 : transparent; border-radius: 4px;
+    Text { x: 10px; width: parent.width - 20px; height: parent.height; text: root.label; color: root.selected ? #0f5f50 : #44504b; font-size: 11px; font-weight: root.selected ? 700 : 500; vertical-alignment: center; overflow: elide; }
+    TouchArea { clicked => { root.chosen(); } }
+}
+
+component ImportMappingRow inherits Rectangle {
+    in property <ImportColumnRow> column;
+    in property <[string]> mapping-options;
+    callback mapping-changed(int, int);
+    height: 62px; background: #ffffff;
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e5e9e7; }
+    Text { x: 8px; y: 8px; width: 210px; text: root.column.source-name; color: #26312d; font-size: 11px; font-weight: 700; overflow: elide; }
+    Text { x: 8px; y: 31px; width: 300px; text: root.column.sample == "" ? "No sample value" : root.column.sample; color: #7a8581; font-size: 9px; overflow: elide; }
+    mapping-box := ComboBox {
+        x: parent.width - 250px; y: 13px; width: 242px; height: 36px;
+        model: root.mapping-options; current-index: root.column.mapping-index;
+        selected(value) => { root.mapping-changed(root.column.index, mapping-box.current-index); }
+    }
 }
 
 export component AppWindow inherits Window {
-    title: "ITGLA — IT 资源关系管理";
-    preferred-width: 1440px;
-    preferred-height: 900px;
-    min-width: 1120px;
-    min-height: 720px;
-    background: #f5f7f6;
-
-    in property <[AssetRow]> assets;
-    in property <[ProjectRow]> projects;
-    in property <[GraphNodeRow]> graph-nodes;
-    in property <[GraphEdgeRow]> graph-edges;
-    in property <[RelationshipRow]> relationships;
-    in property <[GlobalResultRow]> global-results;
-    in property <[string]> asset-options;
-    in-out property <string> selected-project: "Cloudnote";
-    in-out property <int> result-count: 0;
-    in-out property <int> project-asset-count: 0;
-    in-out property <int> global-result-count: 0;
-    in-out property <int> selected-asset: -1;
-    in-out property <string> system-error: "";
-    in-out property <string> system-status: "";
-    in-out property <bool> resource-editor-open: false;
-    in-out property <bool> project-editor-open: false;
-    in-out property <bool> archive-confirm-open: false;
-    in-out property <bool> relationship-editor-open: false;
-    in-out property <bool> data-tools-open: false;
-    in-out property <bool> data-confirm-open: false;
-    in-out property <bool> global-search-open: false;
-    in-out property <bool> global-attention-only: false;
-    in-out property <string> global-search-query: "";
-    in-out property <string> project-query: "";
-    in-out property <string> json-exchange-path: "";
-    in-out property <string> database-backup-path: "";
-    in-out property <int> selected-graph-asset-id: 0;
-    private property <int> editing-resource-id: 0;
-    private property <int> editing-project-id: 0;
-    private property <string> editing-name: "";
-    private property <string> editing-detail: "";
-    private property <string> editing-status-detail: "";
-    private property <string> editing-environment: "";
-    private property <string> editing-tags: "";
-    private property <int> editing-kind-index: 0;
-    private property <int> editing-health-index: 0;
-    private property <int> archive-target: 0;
-    private property <int> editing-relationship-id: 0;
-    private property <int> relationship-source-index: 0;
-    private property <int> relationship-target-index: 1;
-    private property <int> relationship-kind-index: 3;
-    private property <int> data-confirm-target: 0;
-    in-out property <int> selected-project-index: 0;
-    in-out property <string> active-filter: "全部";
-
-    callback project-selected(int);
-    callback filter-selected(string);
+    title: "ITGLA - Server Inventory";
+    preferred-width: 1180px; preferred-height: 760px; min-width: 1000px; min-height: 640px; background: #f4f7f5;
+    in property <[ServerRow]> servers;
+    in property <[string]> available-tags;
+    in property <[string]> custom-headers;
+    in property <int> custom-column-count;
+    in property <[string]> sort-options;
+    in property <int> server-count;
+    in-out property <string> active-tag;
+    in-out property <int> sort-mode-index: 0;
+    in-out property <int> editing-id: 0;
+    in-out property <string> editing-tags;
+    in-out property <string> editing-ip-address;
+    in-out property <string> editing-ports;
+    in-out property <int> archive-target-id: 0;
+    in-out property <string> status-message;
+    in-out property <bool> status-is-error: false;
+    in-out property <bool> import-dialog-open: false;
+    in-out property <string> import-file-path;
+    in-out property <[ImportColumnRow]> import-columns;
+    in-out property <[string]> import-mapping-options;
+    in-out property <int> import-row-count;
+    in-out property <bool> import-ready: false;
+    in-out property <string> import-error;
+    property <length> table-width: 586px + root.custom-column-count * 160px;
     callback search-changed(string);
-    callback save-resource(int, int, string, string, string, string, int, string);
-    callback archive-resource(int);
-    callback save-project(int, string);
-    callback archive-project(int);
-    callback save-relationship(int, int, int);
-    callback archive-relationship(int);
-    callback graph-node-selected(int);
-    callback export-json(string);
-    callback import-json(string);
-    callback create-backup(string);
-    callback restore-backup(string);
-    callback global-search-changed(string, bool);
-    callback global-result-selected(int, int);
+    callback tag-selected(string);
+    callback sort-mode-selected(int);
+    callback save-server(int, string, string, string);
+    callback archive-server(int);
+    callback copy-value(string, string);
+    callback choose-import-file;
+    callback load-import(string);
+    callback import-mapping-changed(int, int);
+    callback confirm-import;
 
-    // Persistent navigation
     Rectangle {
-        x: 0; y: 0; width: 236px; height: parent.height; background: #f0f3f2;
-        Rectangle { x: 235px; y: 0; width: 1px; height: parent.height; background: #dfe5e2; }
-        Text { x: 20px; y: 18px; text: "ITGLA"; color: #173f36; font-size: 20px; font-weight: 800; }
-        Text { x: 80px; y: 24px; text: "LOCAL"; color: #7a8581; font-size: 9px; font-weight: 600; }
-        Rectangle {
-            x: 16px; y: 58px; width: 204px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #d8dfdc; background: #ffffff;
-            accessible-role: button;
-            accessible-label: "搜索全部资源";
-            accessible-action-default => { global-search-touch.clicked(); }
-            Text { x: 11px; width: 24px; text: "/"; color: #75807c; font-size: 14px; vertical-alignment: center; }
-            Text { x: 33px; width: parent.width - 71px; text: "搜索全部资源"; color: #8b9390; font-size: 12px; vertical-alignment: center; }
-            Rectangle { x: 172px; y: 8px; width: 23px; height: 20px; border-radius: 4px; background: #eef1f0; Text { text: "查"; color: #76807d; font-size: 9px; horizontal-alignment: center; vertical-alignment: center; } }
-            global-search-touch := TouchArea { clicked => { root.system-error = ""; root.global-attention-only = false; root.global-search-query = ""; root.global-search-open = true; root.global-search-changed("", false); } }
-        }
-        Text { x: 20px; y: 116px; text: "工作区"; color: #8a9390; font-size: 10px; font-weight: 600; }
-        NavItem { x: 12px; y: 136px; width: 212px; mark: "O"; label: "概览"; selected: !root.global-search-open; chosen => { root.global-search-open = false; } }
-        NavItem { x: 12px; y: 176px; width: 212px; mark: "R"; label: "全部资源"; selected: root.global-search-open && !root.global-attention-only; chosen => { root.system-error = ""; root.global-attention-only = false; root.global-search-query = ""; root.global-search-open = true; root.global-search-changed("", false); } }
-        NavItem { x: 12px; y: 216px; width: 212px; mark: "!"; label: "需要关注"; selected: root.global-search-open && root.global-attention-only; chosen => { root.system-error = ""; root.global-attention-only = true; root.global-search-query = ""; root.global-search-open = true; root.global-search-changed("", true); } }
-        Text { x: 20px; y: 276px; text: "项目"; color: #8a9390; font-size: 10px; font-weight: 600; }
-        Rectangle {
-            x: 194px; y: 266px; width: 30px; height: 26px; border-radius: 5px; background: add-project-touch.has-hover ? #e2e8e5 : #00000000;
-            Text { text: "+"; color: #66706d; font-size: 17px; horizontal-alignment: center; vertical-alignment: center; }
-            add-project-touch := TouchArea { clicked => { root.editing-project-id = 0; root.editing-name = ""; root.system-error = ""; root.project-editor-open = true; } }
-        }
-        ScrollView {
-            x: 8px; y: 296px; width: 220px; height: parent.height - 420px;
-            VerticalLayout {
-                spacing: 4px;
-                for project[index] in root.projects: ProjectItem {
-                    width: 212px; label: project.name; short-name: project.short-name; count: project.summary;
-                    selected: root.selected-project-index == index;
-                    chosen => { root.global-search-open = false; root.selected-project-index = index; root.project-selected(index); }
-                }
-            }
-        }
-        Button { x: 16px; y: parent.height - 110px; width: 204px; height: 34px; text: "数据安全"; clicked => { root.system-error = ""; root.system-status = ""; root.data-tools-open = true; } }
-        Rectangle { x: 16px; y: parent.height - 64px; width: 204px; height: 1px; background: #dde3e0; }
-        Rectangle { x: 20px; y: parent.height - 48px; width: 30px; height: 30px; border-radius: 15px; background: #263a35; Text { text: "0.1"; color: #ffffff; font-size: 9px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; } }
-        Text { x: 60px; y: parent.height - 48px; text: "ITGLA 0.1.1"; color: #343c39; font-size: 12px; font-weight: 600; }
-        Text { x: 60px; y: parent.height - 31px; text: "本地工作区"; color: #87908d; font-size: 10px; }
+        x: 0; y: 0; width: parent.width; height: 64px; background: #ffffff;
+        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #dce3e0; }
+        Text { x: 28px; y: 12px; text: "ITGLA"; color: #102f29; font-size: 19px; font-weight: 800; }
+        Text { x: 28px; y: 37px; text: "Server inventory"; color: #6d7874; font-size: 10px; }
+        Text { x: parent.width - 266px; y: 23px; width: 90px; text: root.server-count + (root.server-count == 1 ? " server" : " servers"); color: #52605b; font-size: 11px; horizontal-alignment: right; }
+        Button { x: parent.width - 164px; y: 14px; width: 136px; height: 36px; text: "Import table"; clicked => { root.import-error = ""; root.import-dialog-open = true; } }
     }
 
-    // Page heading and controls
     Rectangle {
-        x: 236px; y: 0; width: parent.width - 236px; height: 78px; background: #ffffff;
-        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #e3e7e5; }
-        Text { x: 24px; y: 14px; text: root.selected-project; color: #202725; font-size: 20px; font-weight: 700; }
-        Text { x: 24px; y: 44px; text: "项目资产与依赖关系"; color: #7c8582; font-size: 11px; }
+        x: 28px; y: 84px; width: parent.width - 412px; height: parent.height - 108px; background: transparent;
+        Text { x: 0; y: 0; text: root.active-tag == "" ? "All servers" : "Servers tagged " + root.active-tag; color: #17201d; font-size: 20px; font-weight: 700; }
+        LineEdit { x: 0; y: 38px; width: parent.width - 214px; height: 34px; placeholder-text: "Search any cell"; edited(value) => { root.search-changed(value); } }
+        sort-box := ComboBox { x: parent.width - 204px; y: 38px; width: 204px; height: 34px; model: root.sort-options; current-index <=> root.sort-mode-index; selected(value) => { root.sort-mode-selected(sort-box.current-index); } }
         Rectangle {
-            x: parent.width - 408px; y: 20px; width: 150px; height: 36px; border-radius: 6px; border-width: 1px; border-color: #dce2df; background: #ffffff;
-            Text { x: 12px; text: "本地自动保存"; color: #65706c; font-size: 11px; vertical-alignment: center; }
-        }
-        Button { x: parent.width - 246px; y: 20px; width: 104px; height: 36px; text: "编辑项目"; clicked => { root.editing-project-id = root.projects[root.selected-project-index].id; root.editing-name = root.selected-project; root.system-error = ""; root.project-editor-open = true; } }
-        Button { x: parent.width - 130px; y: 20px; width: 110px; height: 36px; text: "+  添加资源"; clicked => { root.editing-resource-id = 0; root.editing-name = ""; root.editing-detail = ""; root.editing-status-detail = ""; root.editing-environment = "生产"; root.editing-tags = ""; root.editing-kind-index = 0; root.editing-health-index = 0; root.system-error = ""; root.resource-editor-open = true; } }
-    }
-
-    if root.system-error != "": Rectangle {
-        x: 252px; y: 86px; width: parent.width - 698px; height: 34px;
-        border-radius: 6px; border-width: 1px; border-color: #e3b1b2; background: #fff1f1;
-        Text { x: 12px; width: parent.width - 24px; text: root.system-error; color: #9d3436; font-size: 11px; vertical-alignment: center; overflow: elide; }
-    }
-    if root.system-status != "": Rectangle {
-        x: 252px; y: 86px; width: parent.width - 698px; height: 34px;
-        border-radius: 6px; border-width: 1px; border-color: #a8d3c7; background: #edf8f4;
-        Text { x: 12px; width: parent.width - 24px; text: root.system-status; color: #176d5a; font-size: 11px; vertical-alignment: center; overflow: elide; }
-    }
-
-    // Main inventory workspace
-    Rectangle {
-        x: 236px; y: 78px; width: parent.width - 236px - 430px; height: parent.height - 78px; background: #ffffff;
-        Rectangle { x: parent.width - 1px; y: 0; width: 1px; height: parent.height; background: #e1e6e3; }
-        Text { x: 24px; y: 22px; text: "资源"; color: #27302d; font-size: 14px; font-weight: 700; }
-        Text { x: 66px; y: 23px; text: root.result-count; color: #858e8b; font-size: 12px; }
-        HorizontalLayout {
-            x: 24px; y: 60px; width: parent.width - 48px; height: 30px; spacing: 7px;
-            FilterChip { label: "全部"; selected: root.active-filter == "全部"; chosen => { root.active-filter = "全部"; root.filter-selected("全部"); } }
-            FilterChip { label: "网站"; selected: root.active-filter == "网站"; chosen => { root.active-filter = "网站"; root.filter-selected("网站"); } }
-            FilterChip { label: "域名"; selected: root.active-filter == "域名"; chosen => { root.active-filter = "域名"; root.filter-selected("域名"); } }
-            FilterChip { label: "证书"; selected: root.active-filter == "证书"; chosen => { root.active-filter = "证书"; root.filter-selected("证书"); } }
-            FilterChip { label: "服务器"; selected: root.active-filter == "服务器"; chosen => { root.active-filter = "服务器"; root.filter-selected("服务器"); } }
-            FilterChip { label: "服务"; selected: root.active-filter == "服务"; chosen => { root.active-filter = "服务"; root.filter-selected("服务"); } }
-            Rectangle { horizontal-stretch: 1; }
-        }
-        LineEdit { x: 24px; y: 104px; width: parent.width - 48px; height: 36px; placeholder-text: "按名称、类型、标签或描述筛选当前项目"; text <=> root.project-query; edited(text) => { root.search-changed(text); } }
-        Rectangle { x: 24px; y: 154px; width: parent.width - 48px; height: 28px; background: #f7f9f8; border-radius: 4px;
-            Text { x: 12px; width: 230px; text: "资源名称"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
-            Text { x: 274px; width: 70px; text: "环境"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
-            Text { x: 342px; width: parent.width - 354px; text: "状态 / 到期"; color: #7a8480; font-size: 10px; font-weight: 600; vertical-alignment: center; }
-        }
-        if root.result-count > 0: ScrollView {
-            x: 24px; y: 184px; width: parent.width - 48px; height: parent.height - 206px;
-            VerticalLayout {
-                spacing: 0px;
-                for item[index] in root.assets: ResourceRow {
-                    item: item;
-                    selected: root.selected-asset == index;
-                    chosen(item) => {
-                        root.selected-asset = index;
-                        root.editing-resource-id = item.id;
-                        root.editing-name = item.name;
-                        root.editing-detail = item.detail;
-                        root.editing-status-detail = item.status-detail;
-                        root.editing-environment = item.environment;
-                        root.editing-tags = item.tags;
-                        root.editing-kind-index = item.kind-index;
-                        root.editing-health-index = item.health-index;
-                        root.system-error = "";
-                        root.resource-editor-open = true;
+            x: 0; y: 84px; width: parent.width; height: parent.height - 84px; background: #ffffff; border-width: 1px; border-color: #dce3e0;
+            ScrollView {
+                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                VerticalLayout {
+                    width: root.table-width; spacing: 0px;
+                    TableHeader { custom-headers: root.custom-headers; table-width: root.table-width; }
+                    for server in root.servers: ServerTableRow {
+                        item: server; custom-headers: root.custom-headers; table-width: root.table-width;
+                        edit => { root.editing-id = server.id; root.editing-tags = server.tags; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.status-message = ""; }
+                        archive => { root.archive-target-id = server.id; }
+                        copy(value, label) => { root.copy-value(value, label); }
                     }
                 }
             }
-        }
-        if root.result-count == 0: Rectangle {
-            x: 24px; y: 184px; width: parent.width - 48px; height: parent.height - 206px; background: #fafbfa; border-radius: 6px; border-width: 1px; border-color: #e4e8e6;
-            Text { y: parent.height / 2 - 34px; width: parent.width; text: root.project-asset-count == 0 ? "这个项目还没有资源" : "没有匹配的资源"; color: #394440; font-size: 14px; font-weight: 600; horizontal-alignment: center; }
-            Text { y: parent.height / 2 - 7px; width: parent.width; text: root.project-asset-count == 0 ? "使用右上角“添加资源”开始整理" : "尝试清空搜索词或选择“全部”"; color: #87908d; font-size: 11px; horizontal-alignment: center; }
+            if root.server-count == 0: Text { y: 94px; width: parent.width; text: "No servers match the current filters."; color: #77817d; font-size: 11px; horizontal-alignment: center; }
         }
     }
 
-    // Relationship context
     Rectangle {
-        x: parent.width - 430px; y: 78px; width: 430px; height: parent.height - 78px; background: #f7f9f8;
-        Text { x: 22px; y: 22px; text: "关系图"; color: #27302d; font-size: 14px; font-weight: 700; }
-        Text { x: 22px; y: 45px; text: "当前项目的直接依赖"; color: #818a87; font-size: 10px; }
-        Button { x: parent.width - 106px; y: 16px; width: 84px; height: 30px; text: "管理关系"; enabled: root.asset-options.length > 1; clicked => { root.system-error = ""; root.relationship-editor-open = true; } }
-        Rectangle {
-            x: 20px; y: 76px; width: parent.width - 40px; height: 352px; border-radius: 8px; border-width: 1px; border-color: #e0e6e3; background: #fbfcfb;
-            for edge in root.graph-edges: Path { width: parent.width; height: parent.height; viewbox-width: 390; viewbox-height: 352; commands: edge.path; stroke: #c4d0cc; stroke-width: 1.4px; }
-            for node in root.graph-nodes: GraphNode {
-                x: node.x * 1px; y: node.y * 1px; node-id: node.id; title: node.title; subtitle: node.subtitle; mark: node.mark;
-                accent: node.kind-tone == 0 ? #2d886d : node.kind-tone == 1 ? #5575b7 : node.kind-tone == 2 ? #d09a45 : node.kind-tone == 3 ? #7a5bac : #3f7b83;
-                primary: root.selected-graph-asset-id == node.id;
-                chosen(id) => { root.selected-graph-asset-id = id; root.graph-node-selected(id); }
+        x: parent.width - 356px; y: 84px; width: 328px; height: parent.height - 108px; background: #ffffff; border-width: 1px; border-color: #dce3e0; border-radius: 6px;
+        Text { x: 18px; y: 16px; text: root.editing-id == 0 ? "Add server" : "Edit server"; color: #17201d; font-size: 17px; font-weight: 700; }
+        if root.editing-id != 0: Button { x: 224px; y: 10px; width: 84px; height: 30px; text: "New"; clicked => { root.editing-id = 0; root.editing-tags = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.status-message = ""; } }
+        Text { x: 18px; y: 58px; text: "TAGS"; color: #5f6b67; font-size: 9px; font-weight: 700; }
+        LineEdit { x: 18px; y: 76px; width: 292px; height: 34px; placeholder-text: "production, api, customer-facing"; text <=> root.editing-tags; }
+        Text { x: 18px; y: 120px; text: "IP ADDRESS"; color: #5f6b67; font-size: 9px; font-weight: 700; }
+        LineEdit { x: 18px; y: 138px; width: 292px; height: 34px; placeholder-text: "203.0.113.10"; text <=> root.editing-ip-address; }
+        Text { x: 18px; y: 182px; text: "PORTS"; color: #5f6b67; font-size: 9px; font-weight: 700; }
+        LineEdit { x: 18px; y: 200px; width: 292px; height: 34px; placeholder-text: "22, 80, 443"; text <=> root.editing-ports; }
+        Text { x: 18px; y: 242px; width: 292px; text: "Separate tags and ports with commas. Duplicates are removed."; color: #7a8581; font-size: 9px; wrap: word-wrap; }
+        Button { x: 18px; y: 278px; width: 292px; height: 36px; text: root.editing-id == 0 ? "Add server" : "Save changes"; clicked => { root.save-server(root.editing-id, root.editing-tags, root.editing-ip-address, root.editing-ports); } }
+        if root.status-message != "": Text { x: 18px; y: 322px; width: 292px; text: root.status-message; color: root.status-is-error ? #a33a32 : #16715e; font-size: 10px; wrap: word-wrap; }
+        Rectangle { x: 18px; y: 364px; width: 292px; height: 1px; background: #e2e7e5; }
+        Text { x: 18px; y: 382px; text: "FILTER BY TAG"; color: #5f6b67; font-size: 9px; font-weight: 700; }
+        ScrollView {
+            x: 18px; y: 406px; width: 292px; height: parent.height - 424px;
+            VerticalLayout {
+                spacing: 3px;
+                TagChoice { label: "All servers"; selected: root.active-tag == ""; chosen => { root.tag-selected(""); } }
+                for tag in root.available-tags: TagChoice { label: tag; selected: root.active-tag == tag; chosen => { root.tag-selected(tag); } }
             }
-            if root.graph-nodes.length == 0: Text { y: 154px; width: parent.width; text: "添加资源后可绘制关系"; color: #87908d; font-size: 11px; horizontal-alignment: center; }
-            Text { x: 133px; y: parent.height - 26px; width: 120px; text: root.relationships.length + " 个直接关系"; color: #8a9390; font-size: 9px; horizontal-alignment: center; }
-        }
-        Text { x: 22px; y: 456px; text: "关系清单"; color: #27302d; font-size: 12px; font-weight: 700; }
-        ScrollView { x: 20px; y: 480px; width: parent.width - 40px; height: parent.height - 500px;
-            VerticalLayout { spacing: 0px; for relation in root.relationships: RelationshipItem { item: relation; archive(id) => { root.editing-relationship-id = id; root.archive-target = 3; root.archive-confirm-open = true; } } }
-        }
-        if root.relationships.length == 0: Text { x: 22px; y: 490px; width: parent.width - 44px; text: root.project-asset-count > 1 ? "尚未建立资源关系" : "至少添加两个资源后可建立关系"; color: #87908d; font-size: 11px; horizontal-alignment: center; }
-    }
-
-    if root.global-search-open: Rectangle {
-        x: 236px; y: 0; width: parent.width - 236px; height: parent.height; background: #f7f9f8;
-        Rectangle { x: 0; y: 0; width: parent.width; height: 78px; background: #ffffff; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e3e7e5; } }
-        Text { x: 28px; y: 16px; text: root.global-attention-only ? "需要关注" : "全部资源"; color: #202725; font-size: 20px; font-weight: 700; }
-        Text { x: 28px; y: 47px; text: root.global-attention-only ? "跨项目查看需关注和高风险资源" : "跨项目搜索网站、域名、证书、服务器与服务"; color: #7c8582; font-size: 11px; }
-        Button { x: parent.width - 116px; y: 20px; width: 88px; height: 36px; text: "返回概览"; clicked => { root.global-search-open = false; } }
-        LineEdit { x: 28px; y: 104px; width: parent.width - 56px; height: 40px; placeholder-text: root.global-attention-only ? "筛选需要关注的资源" : "搜索项目、资源、类型、标签或描述"; text <=> root.global-search-query; edited(text) => { root.global-search-changed(text, root.global-attention-only); } }
-        Text { x: 28px; y: 164px; text: "结果"; color: #35403c; font-size: 13px; font-weight: 700; }
-        Text { x: 72px; y: 165px; text: root.global-result-count; color: #858e8b; font-size: 11px; }
-        if root.system-error != "": Text { x: 130px; y: 162px; width: parent.width - 158px; text: root.system-error; color: #a23839; font-size: 11px; horizontal-alignment: right; overflow: elide; }
-        if root.global-result-count > 0: ScrollView {
-            x: 28px; y: 194px; width: parent.width - 56px; height: parent.height - 222px;
-            VerticalLayout { spacing: 0px; for result in root.global-results: GlobalResultItem { item: result; chosen(project-index, asset-id) => { root.global-result-selected(project-index, asset-id); } } }
-        }
-        if root.global-result-count == 0: Rectangle {
-            x: 28px; y: 194px; width: parent.width - 56px; height: parent.height - 222px; background: #ffffff; border-radius: 6px; border-width: 1px; border-color: #e3e8e5;
-            Text { y: parent.height / 2 - 28px; width: parent.width; text: root.global-attention-only && root.global-search-query == "" ? "目前没有需要关注的资源" : "没有找到匹配资源"; color: #394440; font-size: 14px; font-weight: 600; horizontal-alignment: center; }
-            Text { y: parent.height / 2; width: parent.width; text: root.global-search-query == "" ? "资源状态保持正常时会显示为空" : "尝试使用更短的名称、项目或标签"; color: #87908d; font-size: 11px; horizontal-alignment: center; }
         }
     }
 
-    if root.relationship-editor-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
-        TouchArea { clicked => { } }
+    if root.archive-target-id != 0: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
         Rectangle {
-            x: (parent.width - 500px) / 2; y: (parent.height - 390px) / 2; width: 500px; height: 390px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
-            Text { x: 24px; y: 20px; text: "添加资源关系"; color: #202725; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 62px; text: "来源资源"; color: #59635f; font-size: 11px; font-weight: 600; }
-            ComboBox { x: 24px; y: 84px; width: 452px; height: 36px; model: root.asset-options; current-index <=> root.relationship-source-index; }
-            Text { x: 24px; y: 138px; text: "关系类型"; color: #59635f; font-size: 11px; font-weight: 600; }
-            ComboBox { x: 24px; y: 160px; width: 452px; height: 36px; model: ["部署于", "使用域名", "由证书保护", "依赖", "服务于"]; current-index <=> root.relationship-kind-index; }
-            Text { x: 24px; y: 214px; text: "目标资源"; color: #59635f; font-size: 11px; font-weight: 600; }
-            ComboBox { x: 24px; y: 236px; width: 452px; height: 36px; model: root.asset-options; current-index <=> root.relationship-target-index; }
-            if root.system-error != "": Text { x: 24px; y: 286px; width: 452px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
-            Button { x: 280px; y: 330px; width: 92px; height: 36px; text: "取消"; clicked => { root.relationship-editor-open = false; root.system-error = ""; } }
-            Button { x: 384px; y: 330px; width: 92px; height: 36px; text: "添加关系"; clicked => { root.save-relationship(root.relationship-source-index, root.relationship-target-index, root.relationship-kind-index); } }
+            x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: #ffffff; border-radius: 6px;
+            Text { x: 24px; y: 24px; text: "Archive this server?"; color: #17201d; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 64px; width: 332px; text: "It will be hidden from the inventory. The record remains in your local database."; color: #65706c; font-size: 11px; wrap: word-wrap; }
+            Button { x: 172px; y: 146px; width: 84px; height: 36px; text: "Cancel"; clicked => { root.archive-target-id = 0; } }
+            Button { x: 268px; y: 146px; width: 88px; height: 36px; text: "Archive"; clicked => { root.archive-server(root.archive-target-id); } }
         }
     }
 
-    if root.data-tools-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
-        TouchArea { clicked => { } }
+    if root.import-dialog-open: Rectangle {
+        x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
         Rectangle {
-            x: (parent.width - 560px) / 2; y: (parent.height - 500px) / 2; width: 560px; height: 500px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
-            Text { x: 24px; y: 20px; text: "数据安全"; color: #202725; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 50px; width: 512px; text: "导入和恢复会替换当前工作区，并先在本地创建自动恢复点。"; color: #68716e; font-size: 11px; }
-
-            Text { x: 24px; y: 90px; text: "JSON 交换文件"; color: #35403c; font-size: 12px; font-weight: 700; }
-            LineEdit { x: 24px; y: 116px; width: 512px; height: 36px; text <=> root.json-exchange-path; }
-            Text { x: 24px; y: 160px; width: 300px; text: "用于跨设备迁移当前有效项目、资源、标签和关系"; color: #818a87; font-size: 10px; }
-            Button { x: 344px; y: 160px; width: 88px; height: 34px; text: "导出 JSON"; clicked => { root.export-json(root.json-exchange-path); } }
-            Button { x: 444px; y: 160px; width: 92px; height: 34px; text: "导入 JSON"; clicked => { root.data-confirm-target = 1; root.data-confirm-open = true; } }
-
-            Rectangle { x: 24px; y: 218px; width: 512px; height: 1px; background: #e5e9e7; }
-            Text { x: 24px; y: 242px; text: "完整数据库备份"; color: #35403c; font-size: 12px; font-weight: 700; }
-            LineEdit { x: 24px; y: 268px; width: 512px; height: 36px; text <=> root.database-backup-path; }
-            Text { x: 24px; y: 312px; width: 300px; text: "保留完整 SQLite 数据，可用于同版本灾难恢复"; color: #818a87; font-size: 10px; }
-            Button { x: 344px; y: 312px; width: 88px; height: 34px; text: "创建备份"; clicked => { root.create-backup(root.database-backup-path); } }
-            Button { x: 444px; y: 312px; width: 92px; height: 34px; text: "恢复备份"; clicked => { root.data-confirm-target = 2; root.data-confirm-open = true; } }
-
-            if root.system-error != "": Text { x: 24px; y: 376px; width: 512px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
-            if root.system-status != "": Text { x: 24px; y: 376px; width: 512px; text: root.system-status; color: #176d5a; font-size: 11px; wrap: word-wrap; }
-            Button { x: 444px; y: 440px; width: 92px; height: 36px; text: "关闭"; clicked => { root.data-tools-open = false; root.system-error = ""; root.system-status = ""; } }
-        }
-    }
-
-    if root.resource-editor-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
-        TouchArea { clicked => { } }
-        Rectangle {
-            x: (parent.width - 520px) / 2; y: max(30px, (parent.height - 620px) / 2); width: 520px; height: 620px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
-            Text { x: 24px; y: 20px; text: root.editing-resource-id == 0 ? "添加资源" : "编辑资源"; color: #202725; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 54px; text: "类型"; color: #59635f; font-size: 11px; font-weight: 600; }
-            ComboBox { x: 24px; y: 74px; width: 220px; height: 36px; model: ["网站", "域名", "证书", "服务器", "服务"]; current-index <=> root.editing-kind-index; }
-            Text { x: 264px; y: 54px; text: "健康状态"; color: #59635f; font-size: 11px; font-weight: 600; }
-            ComboBox { x: 264px; y: 74px; width: 232px; height: 36px; model: ["正常", "需关注", "高风险"]; current-index <=> root.editing-health-index; }
-            Text { x: 24px; y: 128px; text: "名称"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 24px; y: 148px; width: 472px; height: 36px; placeholder-text: "例如 api.example.com"; text <=> root.editing-name; }
-            Text { x: 24px; y: 202px; text: "描述"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 24px; y: 222px; width: 472px; height: 36px; placeholder-text: "托管商、配置或用途"; text <=> root.editing-detail; }
-            Text { x: 24px; y: 276px; text: "环境"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 24px; y: 296px; width: 220px; height: 36px; placeholder-text: "生产 / 预发布"; text <=> root.editing-environment; }
-            Text { x: 264px; y: 276px; text: "状态详情"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 264px; y: 296px; width: 232px; height: 36px; placeholder-text: "到期日或运行状态"; text <=> root.editing-status-detail; }
-            Text { x: 24px; y: 350px; text: "标签"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 24px; y: 370px; width: 472px; height: 36px; placeholder-text: "用逗号分隔，例如 production, customer-facing"; text <=> root.editing-tags; }
-            Text { x: 24px; y: 420px; width: 472px; text: "保存后会立即写入本地数据库。名称与同项目同类型资源不能重复。"; color: #818a87; font-size: 10px; wrap: word-wrap; }
-            if root.system-error != "": Text { x: 24px; y: 466px; width: 472px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
-            if root.editing-resource-id != 0: Button { x: 24px; y: 558px; width: 92px; height: 36px; text: "归档"; clicked => { root.archive-target = 1; root.archive-confirm-open = true; } }
-            Button { x: 300px; y: 558px; width: 92px; height: 36px; text: "取消"; clicked => { root.resource-editor-open = false; root.system-error = ""; } }
-            Button { x: 404px; y: 558px; width: 92px; height: 36px; text: "保存"; clicked => { root.save-resource(root.editing-resource-id, root.editing-kind-index, root.editing-name, root.editing-detail, root.editing-status-detail, root.editing-environment, root.editing-health-index, root.editing-tags); } }
-        }
-    }
-
-    if root.project-editor-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221f88;
-        TouchArea { clicked => { } }
-        Rectangle {
-            x: (parent.width - 440px) / 2; y: (parent.height - 270px) / 2; width: 440px; height: 270px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #dce2df;
-            Text { x: 24px; y: 20px; text: root.editing-project-id == 0 ? "创建项目" : "编辑项目"; color: #202725; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 62px; text: "项目名称"; color: #59635f; font-size: 11px; font-weight: 600; }
-            LineEdit { x: 24px; y: 84px; width: 392px; height: 36px; placeholder-text: "例如 Atlas Cloud"; text <=> root.editing-name; }
-            if root.system-error != "": Text { x: 24px; y: 136px; width: 392px; text: root.system-error; color: #a23839; font-size: 11px; wrap: word-wrap; }
-            if root.editing-project-id != 0: Button { x: 24px; y: 210px; width: 92px; height: 36px; text: "归档"; clicked => { root.archive-target = 2; root.archive-confirm-open = true; } }
-            Button { x: 220px; y: 210px; width: 92px; height: 36px; text: "取消"; clicked => { root.project-editor-open = false; root.system-error = ""; } }
-            Button { x: 324px; y: 210px; width: 92px; height: 36px; text: "保存"; clicked => { root.save-project(root.editing-project-id, root.editing-name); } }
-        }
-    }
-
-    if root.archive-confirm-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221faa;
-        TouchArea { clicked => { } }
-        Rectangle {
-            x: (parent.width - 400px) / 2; y: (parent.height - 210px) / 2; width: 400px; height: 210px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #e2d4d4;
-            Text { x: 24px; y: 22px; text: root.archive-target == 1 ? "归档这个资源？" : root.archive-target == 2 ? "归档这个项目？" : "移除这条关系？"; color: #252c2a; font-size: 17px; font-weight: 700; }
-            Text { x: 24px; y: 62px; width: 352px; text: root.archive-target == 1 ? "资源将从日常视图中隐藏。已有关系也将保留在数据库中。" : root.archive-target == 2 ? "项目及其资源将从日常视图中隐藏。至少需要保留一个项目。" : "关系将从图谱中隐藏，来源和目标资源不受影响。"; color: #68716e; font-size: 11px; wrap: word-wrap; }
-            Button { x: 184px; y: 150px; width: 92px; height: 36px; text: "取消"; clicked => { root.archive-confirm-open = false; } }
-            Button { x: 288px; y: 150px; width: 88px; height: 36px; text: root.archive-target == 3 ? "确认移除" : "确认归档"; clicked => { if root.archive-target == 1 { root.archive-resource(root.editing-resource-id); } else if root.archive-target == 2 { root.archive-project(root.editing-project-id); } else { root.archive-relationship(root.editing-relationship-id); } } }
-        }
-    }
-
-    if root.data-confirm-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #17221faa;
-        TouchArea { clicked => { } }
-        Rectangle {
-            x: (parent.width - 420px) / 2; y: (parent.height - 230px) / 2; width: 420px; height: 230px;
-            border-radius: 8px; background: #ffffff; border-width: 1px; border-color: #e2d4d4;
-            Text { x: 24px; y: 22px; text: root.data-confirm-target == 1 ? "导入并替换工作区？" : "从备份恢复？"; color: #252c2a; font-size: 17px; font-weight: 700; }
-            Text { x: 24px; y: 62px; width: 372px; text: root.data-confirm-target == 1 ? "文件通过完整校验后会替换当前有效数据。操作前将自动创建 pre-import.db。" : "当前数据库会先保存为 pre-restore.db，再由所选备份完整替换。"; color: #68716e; font-size: 11px; wrap: word-wrap; }
-            Button { x: 204px; y: 170px; width: 92px; height: 36px; text: "取消"; clicked => { root.data-confirm-open = false; } }
-            Button { x: 308px; y: 170px; width: 88px; height: 36px; text: "确认替换"; clicked => { if root.data-confirm-target == 1 { root.import-json(root.json-exchange-path); } else { root.restore-backup(root.database-backup-path); } } }
+            x: (parent.width - 760px) / 2; y: (parent.height - 590px) / 2; width: 760px; height: 590px; background: #ffffff; border-radius: 6px;
+            Text { x: 24px; y: 20px; text: "Import a table"; color: #17201d; font-size: 19px; font-weight: 700; }
+            Text { x: 24px; y: 49px; text: "Excel, OpenDocument, CSV, or TSV · first row contains column names"; color: #6d7874; font-size: 10px; }
+            LineEdit { x: 24px; y: 78px; width: 474px; height: 36px; placeholder-text: "Choose a table or enter its full path"; text <=> root.import-file-path; }
+            Button { x: 510px; y: 78px; width: 102px; height: 36px; text: "Browse"; clicked => { root.choose-import-file(); } }
+            Button { x: 624px; y: 78px; width: 112px; height: 36px; text: "Load file"; clicked => { root.load-import(root.import-file-path); } }
+            Text { x: 24px; y: 132px; text: root.import-ready ? root.import-row-count + " rows ready · map every source column" : "Load a file to configure column mapping"; color: #46534e; font-size: 11px; font-weight: 600; }
+            if root.import-ready: Rectangle {
+                x: 24px; y: 156px; width: 712px; height: 328px; background: #ffffff; border-width: 1px; border-color: #dce3e0;
+                ScrollView {
+                    x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                    VerticalLayout {
+                        spacing: 0px;
+                        for column in root.import-columns: ImportMappingRow { column: column; mapping-options: root.import-mapping-options; mapping-changed(source-index, mapping-index) => { root.import-mapping-changed(source-index, mapping-index); } }
+                    }
+                }
+            }
+            if root.import-error != "": Text { x: 24px; y: 498px; width: 530px; text: root.import-error; color: #a33a32; font-size: 10px; wrap: word-wrap; }
+            Button { x: 532px; y: 532px; width: 94px; height: 36px; text: "Cancel"; clicked => { root.import-dialog-open = false; } }
+            Button { x: 638px; y: 532px; width: 98px; height: 36px; text: "Import"; enabled: root.import-ready; clicked => { root.confirm-import(); } }
         }
     }
 }

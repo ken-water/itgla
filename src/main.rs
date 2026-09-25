@@ -1,683 +1,555 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+#[allow(dead_code)]
 mod domain;
+mod import_data;
+#[allow(dead_code)]
 mod storage;
 
-use std::{cell::RefCell, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, net::IpAddr, path::PathBuf, rc::Rc};
 
-use domain::{
-    Asset, AssetDraft, GlobalAsset, Health, Project, Relationship, RelationshipKind, ResourceKind,
-    filter_assets, kind_from_label, parse_tags,
-};
+use domain::{ServerColumn, ServerDraft, ServerRecord, server_tags_from_input};
+use import_data::{TabularData, read_tabular};
 use slint::{ModelRc, SharedString, VecModel};
-use storage::{Repository, StorageError};
+use storage::{Repository, ServerImportTarget, StorageError};
 
 slint::include_modules!();
 
 #[derive(Default)]
-struct UiState {
-    project_index: usize,
-    filter: Option<ResourceKind>,
+struct TableState {
     query: String,
-    projects: Vec<Project>,
-    assets: Vec<Asset>,
-    relationships: Vec<Relationship>,
+    tag: String,
+    sort_mode: usize,
 }
 
-fn graph_models(
-    assets: &[Asset],
-    relationships: &[Relationship],
-) -> (Vec<GraphNodeRow>, Vec<GraphEdgeRow>) {
-    let positions = graph_positions(assets.len().min(8));
-    let visible = assets.iter().take(positions.len()).collect::<Vec<_>>();
-    let nodes = visible
-        .iter()
-        .zip(&positions)
-        .map(|(asset, &(x, y))| GraphNodeRow {
-            id: i32::try_from(asset.id).map_or(i32::MAX, |value| value),
-            title: SharedString::from(asset.name.as_str()),
-            subtitle: SharedString::from(asset.kind.label()),
-            mark: SharedString::from(asset.kind.mark()),
-            kind_tone: asset.kind.index(),
-            x,
-            y,
-        })
-        .collect();
-    let edges = relationships
-        .iter()
-        .filter_map(|relationship| {
-            let source = visible
+#[derive(Default)]
+struct ImportSession {
+    data: Option<TabularData>,
+    mappings: Vec<usize>,
+    existing_columns: Vec<ServerColumn>,
+}
+
+fn to_row(server: &ServerRecord) -> ServerRow {
+    ServerRow {
+        id: i32::try_from(server.id).unwrap_or(i32::MAX),
+        tags: server.tags.join(", ").into(),
+        ip_address: server.ip_address.as_str().into(),
+        ports: server.ports.as_str().into(),
+        custom_values: ModelRc::new(VecModel::from(
+            server
+                .custom_values
                 .iter()
-                .position(|asset| asset.id == relationship.source_asset_id)?;
-            let target = visible
-                .iter()
-                .position(|asset| asset.id == relationship.target_asset_id)?;
-            let (source_x, source_y) = positions[source];
-            let (target_x, target_y) = positions[target];
-            Some(GraphEdgeRow {
-                path: SharedString::from(format!(
-                    "M {} {} L {} {}",
-                    source_x + 58.0,
-                    source_y + 26.0,
-                    target_x + 58.0,
-                    target_y + 26.0
-                )),
-            })
-        })
-        .collect();
-    (nodes, edges)
-}
-
-fn graph_positions(count: usize) -> Vec<(f32, f32)> {
-    match count {
-        0 => vec![],
-        1 => vec![(137.0, 150.0)],
-        2 => vec![(54.0, 150.0), (220.0, 150.0)],
-        3 => vec![(137.0, 45.0), (220.0, 225.0), (54.0, 225.0)],
-        4 => vec![(45.0, 65.0), (229.0, 65.0), (229.0, 235.0), (45.0, 235.0)],
-        5 => vec![
-            (137.0, 25.0),
-            (245.0, 105.0),
-            (205.0, 245.0),
-            (69.0, 245.0),
-            (29.0, 105.0),
-        ],
-        6 => vec![
-            (137.0, 18.0),
-            (245.0, 75.0),
-            (245.0, 225.0),
-            (137.0, 282.0),
-            (29.0, 225.0),
-            (29.0, 75.0),
-        ],
-        7 => vec![
-            (137.0, 15.0),
-            (245.0, 60.0),
-            (245.0, 165.0),
-            (205.0, 270.0),
-            (69.0, 270.0),
-            (29.0, 165.0),
-            (29.0, 60.0),
-        ],
-        _ => vec![
-            (137.0, 10.0),
-            (245.0, 55.0),
-            (245.0, 150.0),
-            (245.0, 250.0),
-            (137.0, 288.0),
-            (29.0, 250.0),
-            (29.0, 150.0),
-            (29.0, 55.0),
-        ],
+                .map(SharedString::from)
+                .collect::<Vec<_>>(),
+        )),
     }
 }
 
-fn to_relationship_row(relationship: &Relationship) -> RelationshipRow {
-    RelationshipRow {
-        id: i32::try_from(relationship.id).map_or(i32::MAX, |value| value),
-        source: SharedString::from(relationship.source_name.as_str()),
-        kind: SharedString::from(relationship.kind.label()),
-        target: SharedString::from(relationship.target_name.as_str()),
+fn matches_filters(server: &ServerRecord, state: &TableState) -> bool {
+    let query = state.query.trim().to_lowercase();
+    let selected_tag = state.tag.trim();
+    let matches_tag = selected_tag.is_empty()
+        || server
+            .tags
+            .iter()
+            .any(|tag| tag.eq_ignore_ascii_case(selected_tag));
+    let matches_query = query.is_empty()
+        || server
+            .tags
+            .iter()
+            .any(|tag| tag.to_lowercase().contains(&query))
+        || server.ip_address.to_lowercase().contains(&query)
+        || server.ports.to_lowercase().contains(&query)
+        || server
+            .custom_values
+            .iter()
+            .any(|value| value.to_lowercase().contains(&query));
+    matches_tag && matches_query
+}
+
+fn sort_records(records: &mut [ServerRecord], mode: usize) {
+    records.sort_by(|left, right| {
+        let (ordering, ascending) = match mode {
+            0 => (
+                text_compare(&left.tags.join(", "), &right.tags.join(", ")),
+                true,
+            ),
+            1 => (
+                text_compare(&left.tags.join(", "), &right.tags.join(", ")),
+                false,
+            ),
+            2 => (ip_compare(&left.ip_address, &right.ip_address), true),
+            3 => (ip_compare(&left.ip_address, &right.ip_address), false),
+            4 => (first_port(&left.ports).cmp(&first_port(&right.ports)), true),
+            5 => (
+                first_port(&left.ports).cmp(&first_port(&right.ports)),
+                false,
+            ),
+            6 => (left.id.cmp(&right.id), false),
+            7 => (left.id.cmp(&right.id), true),
+            custom => {
+                let column_index = (custom - 8) / 2;
+                let ascending = (custom - 8).is_multiple_of(2);
+                let left_value = left
+                    .custom_values
+                    .get(column_index)
+                    .map_or("", String::as_str);
+                let right_value = right
+                    .custom_values
+                    .get(column_index)
+                    .map_or("", String::as_str);
+                (text_compare(left_value, right_value), ascending)
+            }
+        };
+        let ordering = if ascending {
+            ordering
+        } else {
+            ordering.reverse()
+        };
+        ordering.then_with(|| left.id.cmp(&right.id))
+    });
+}
+
+fn text_compare(left: &str, right: &str) -> Ordering {
+    left.to_ascii_lowercase().cmp(&right.to_ascii_lowercase())
+}
+
+fn ip_compare(left: &str, right: &str) -> Ordering {
+    match (left.parse::<IpAddr>(), right.parse::<IpAddr>()) {
+        (Ok(left), Ok(right)) => left.cmp(&right),
+        _ => text_compare(left, right),
     }
 }
 
-fn to_asset_row(asset: &Asset) -> AssetRow {
-    let detail = if asset.tags.is_empty() {
-        asset.detail.clone()
-    } else {
-        format!("{} · #{}", asset.detail, asset.tags.join("  #"))
-    };
-    AssetRow {
-        id: i32::try_from(asset.id).map_or(i32::MAX, |value| value),
-        kind: SharedString::from(asset.kind.label()),
-        mark: SharedString::from(asset.kind.mark()),
-        name: SharedString::from(asset.name.as_str()),
-        detail: SharedString::from(detail),
-        status: SharedString::from(asset.health.label()),
-        status_detail: SharedString::from(asset.status_detail.as_str()),
-        environment: SharedString::from(asset.environment.as_str()),
-        tone: asset.health.index(),
-        kind_tone: asset.kind.index(),
-        kind_index: asset.kind.index(),
-        health_index: asset.health.index(),
-        tags: SharedString::from(asset.tags.join(", ")),
-    }
+fn first_port(value: &str) -> u16 {
+    value
+        .split(',')
+        .next()
+        .and_then(|port| port.trim().parse().ok())
+        .unwrap_or(u16::MAX)
 }
 
-fn project_initials(name: &str) -> String {
-    let initials: String = name
-        .split_whitespace()
-        .filter_map(|part| part.chars().next())
-        .take(2)
-        .flat_map(char::to_uppercase)
-        .collect();
-    if initials.chars().count() == 1 {
-        name.chars().take(2).flat_map(char::to_uppercase).collect()
-    } else {
-        initials
+fn sort_options(columns: &[ServerColumn]) -> Vec<SharedString> {
+    let mut options = vec![
+        "Tags: A to Z".into(),
+        "Tags: Z to A".into(),
+        "IP address: ascending".into(),
+        "IP address: descending".into(),
+        "Ports: low to high".into(),
+        "Ports: high to low".into(),
+        "Recently added".into(),
+        "Oldest first".into(),
+    ];
+    for column in columns {
+        options.push(format!("{}: A to Z", column.name).into());
+        options.push(format!("{}: Z to A", column.name).into());
     }
-}
-
-fn to_project_row(project: &Project) -> ProjectRow {
-    let summary = if project.attention_count == 0 {
-        format!("{} 项资源 · 状态正常", project.asset_count)
-    } else {
-        format!(
-            "{} 项资源 · {} 项关注",
-            project.asset_count, project.attention_count
-        )
-    };
-    ProjectRow {
-        id: i32::try_from(project.id).map_or(i32::MAX, |value| value),
-        name: SharedString::from(project.name.as_str()),
-        short_name: SharedString::from(project_initials(&project.name)),
-        summary: SharedString::from(summary),
-    }
-}
-
-fn to_global_result(result: &GlobalAsset, projects: &[Project]) -> GlobalResultRow {
-    let project_index = projects
-        .iter()
-        .position(|project| project.id == result.asset.project_id)
-        .map_or(0, |index| index as i32);
-    GlobalResultRow {
-        asset_id: i32::try_from(result.asset.id).map_or(i32::MAX, |value| value),
-        project_index,
-        name: SharedString::from(result.asset.name.as_str()),
-        project: SharedString::from(result.project_name.as_str()),
-        kind: SharedString::from(result.asset.kind.label()),
-        mark: SharedString::from(result.asset.kind.mark()),
-        detail: SharedString::from(result.asset.detail.as_str()),
-        status: SharedString::from(result.asset.health.label()),
-        tone: result.asset.health.index(),
-        kind_tone: result.asset.kind.index(),
-    }
-}
-
-fn refresh_global_results(
-    window: &AppWindow,
-    state: &UiState,
-    repository: &Repository,
-    query: &str,
-    attention_only: bool,
-) -> Result<(), StorageError> {
-    let results = repository
-        .search_assets(query, attention_only)?
-        .iter()
-        .map(|result| to_global_result(result, &state.projects))
-        .collect::<Vec<_>>();
-    window.set_global_result_count(results.len() as i32);
-    window.set_global_results(ModelRc::new(VecModel::from(results)));
-    Ok(())
+    options
 }
 
 fn refresh(
     window: &AppWindow,
-    state: &mut UiState,
     repository: &Repository,
+    state: &TableState,
 ) -> Result<(), StorageError> {
-    state.projects = repository.projects()?;
-    if state.projects.is_empty() {
-        state.assets.clear();
-        state.relationships.clear();
-        window.set_projects(ModelRc::new(VecModel::<ProjectRow>::default()));
-        window.set_assets(ModelRc::new(VecModel::<AssetRow>::default()));
-        window.set_graph_nodes(ModelRc::new(VecModel::<GraphNodeRow>::default()));
-        window.set_graph_edges(ModelRc::new(VecModel::<GraphEdgeRow>::default()));
-        window.set_relationships(ModelRc::new(VecModel::<RelationshipRow>::default()));
-        window.set_asset_options(ModelRc::new(VecModel::<SharedString>::default()));
-        window.set_project_asset_count(0);
-        window.set_result_count(0);
-        return Ok(());
-    }
-    state.project_index = state.project_index.min(state.projects.len() - 1);
-    let project = &state.projects[state.project_index];
-    state.assets = repository.assets_for_project(project.id)?;
-    state.relationships = repository.relationships_for_project(project.id)?;
-    let assets: Vec<AssetRow> = filter_assets(&state.assets, state.filter, &state.query)
-        .into_iter()
-        .map(to_asset_row)
-        .collect();
-    window.set_projects(ModelRc::new(VecModel::from(
-        state
-            .projects
+    let columns = repository.server_columns()?;
+    let mut records = repository.server_records()?;
+    let mut tags = records
+        .iter()
+        .flat_map(|server| server.tags.iter().cloned())
+        .collect::<Vec<_>>();
+    tags.sort_by_key(|tag| tag.to_lowercase());
+    tags.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    sort_records(&mut records, state.sort_mode);
+    let rows = records
+        .iter()
+        .filter(|server| matches_filters(server, state))
+        .map(to_row)
+        .collect::<Vec<_>>();
+
+    window.set_server_count(rows.len() as i32);
+    window.set_servers(ModelRc::new(VecModel::from(rows)));
+    window.set_available_tags(ModelRc::new(VecModel::from(
+        tags.into_iter().map(SharedString::from).collect::<Vec<_>>(),
+    )));
+    window.set_custom_headers(ModelRc::new(VecModel::from(
+        columns
             .iter()
-            .map(to_project_row)
+            .map(|column| SharedString::from(column.name.as_str()))
             .collect::<Vec<_>>(),
     )));
-    window.set_result_count(assets.len() as i32);
-    window.set_project_asset_count(state.assets.len() as i32);
-    window.set_assets(ModelRc::new(VecModel::from(assets)));
-    let (graph_nodes, graph_edges) = graph_models(&state.assets, &state.relationships);
-    window.set_graph_nodes(ModelRc::new(VecModel::from(graph_nodes)));
-    window.set_graph_edges(ModelRc::new(VecModel::from(graph_edges)));
-    window.set_relationships(ModelRc::new(VecModel::from(
-        state
-            .relationships
-            .iter()
-            .map(to_relationship_row)
-            .collect::<Vec<_>>(),
-    )));
-    window.set_asset_options(ModelRc::new(VecModel::from(
-        state
-            .assets
-            .iter()
-            .map(|asset| SharedString::from(format!("{} · {}", asset.kind.label(), asset.name)))
-            .collect::<Vec<_>>(),
-    )));
-    let selected_graph_id = state.assets.first().map_or(0, |asset| {
-        i32::try_from(asset.id).map_or(i32::MAX, |value| value)
-    });
-    window.set_selected_graph_asset_id(selected_graph_id);
-    window.set_selected_project(SharedString::from(project.name.as_str()));
-    window.set_selected_project_index(state.project_index as i32);
-    window.set_selected_asset(-1);
-    window.set_system_error(SharedString::new());
+    window.set_custom_column_count(columns.len() as i32);
+    window.set_sort_options(ModelRc::new(VecModel::from(sort_options(&columns))));
     Ok(())
 }
 
-fn show_error(window: &AppWindow, error: &dyn std::fmt::Display) {
-    window.set_system_error(SharedString::from(error.to_string()));
-    window.set_system_status(SharedString::new());
+fn mapping_options(columns: &[ServerColumn]) -> Vec<SharedString> {
+    let mut options = vec![
+        "Skip".into(),
+        "Tags".into(),
+        "IP Address".into(),
+        "Ports".into(),
+    ];
+    options.extend(
+        columns
+            .iter()
+            .map(|column| SharedString::from(format!("Existing: {}", column.name))),
+    );
+    options.push("New custom column".into());
+    options
 }
 
-fn show_success(window: &AppWindow, message: &str) {
-    window.set_system_error(SharedString::new());
-    window.set_system_status(SharedString::from(message));
+fn default_mapping(header: &str, columns: &[ServerColumn]) -> usize {
+    let normalized = header
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase();
+    if matches!(normalized.as_str(), "tag" | "tags" | "label" | "labels") {
+        return 1;
+    }
+    if matches!(normalized.as_str(), "ip" | "ipaddress" | "address" | "host") {
+        return 2;
+    }
+    if matches!(normalized.as_str(), "port" | "ports" | "openports") {
+        return 3;
+    }
+    if let Some(index) = columns
+        .iter()
+        .position(|column| column.name.eq_ignore_ascii_case(header.trim()))
+    {
+        return 4 + index;
+    }
+    4 + columns.len()
+}
+
+fn import_target(
+    source_index: usize,
+    mapping_index: usize,
+    session: &ImportSession,
+) -> Option<ServerImportTarget> {
+    match mapping_index {
+        0 => Some(ServerImportTarget::Skip),
+        1 => Some(ServerImportTarget::Tags),
+        2 => Some(ServerImportTarget::IpAddress),
+        3 => Some(ServerImportTarget::Ports),
+        index if index < 4 + session.existing_columns.len() => session
+            .existing_columns
+            .get(index - 4)
+            .map(|column| ServerImportTarget::ExistingCustom(column.id)),
+        index if index == 4 + session.existing_columns.len() => session
+            .data
+            .as_ref()
+            .and_then(|data| data.headers.get(source_index))
+            .map(|header| ServerImportTarget::NewCustom(header.clone())),
+        _ => None,
+    }
+}
+
+fn show_error(window: &AppWindow, error: &dyn std::fmt::Display) {
+    window.set_status_message(SharedString::from(error.to_string()));
+    window.set_status_is_error(true);
+}
+
+fn show_status(window: &AppWindow, message: &str) {
+    window.set_status_message(message.into());
+    window.set_status_is_error(false);
+}
+
+fn clear_editor(window: &AppWindow) {
+    window.set_editing_id(0);
+    window.set_editing_tags(SharedString::new());
+    window.set_editing_ip_address(SharedString::new());
+    window.set_editing_ports(SharedString::new());
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let repository = Rc::new(RefCell::new(Repository::open_default()?));
+    let table_state = Rc::new(RefCell::new(TableState::default()));
+    let import_session = Rc::new(RefCell::new(ImportSession::default()));
     let window = AppWindow::new()?;
-    let state = Rc::new(RefCell::new(UiState::default()));
-    let (json_path, backup_path) = Repository::default_portability_paths()?;
-    window.set_json_exchange_path(SharedString::from(json_path.to_string_lossy().into_owned()));
-    window.set_database_backup_path(SharedString::from(
-        backup_path.to_string_lossy().into_owned(),
-    ));
-    refresh(&window, &mut state.borrow_mut(), &repository.borrow())?;
-    refresh_global_results(&window, &state.borrow(), &repository.borrow(), "", false)?;
+    refresh(&window, &repository.borrow(), &table_state.borrow())?;
 
     let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
     let callback_repository = Rc::clone(&repository);
-    window.on_project_selected(move |index| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let mut state = callback_state.borrow_mut();
-        state.project_index = index.max(0) as usize;
-        if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-            show_error(&window, &error);
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_filter_selected(move |label| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let mut state = callback_state.borrow_mut();
-        state.filter = if label == "全部" {
-            None
-        } else {
-            kind_from_label(&label)
-        };
-        if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-            show_error(&window, &error);
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_search_changed(move |query| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let mut state = callback_state.borrow_mut();
-        state.query = query.to_string();
-        if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-            show_error(&window, &error);
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_save_resource(
-        move |id, kind, name, detail, status_detail, environment, health, tags| {
-            let Some(window) = weak.upgrade() else {
-                return;
-            };
-            let mut state = callback_state.borrow_mut();
-            let Some(project) = state.projects.get(state.project_index) else {
-                return;
-            };
-            let tags = match parse_tags(&tags) {
-                Ok(tags) => tags,
-                Err(error) => {
-                    show_error(&window, &error);
-                    return;
-                }
-            };
-            let draft = AssetDraft {
-                project_id: project.id,
-                kind: ResourceKind::from_index(kind),
-                name: name.to_string(),
-                detail: detail.to_string(),
-                status_detail: status_detail.to_string(),
-                environment: environment.to_string(),
-                health: Health::from_index(health),
-                tags,
-            };
-            let saved = callback_repository
-                .borrow_mut()
-                .save_asset((id != 0).then_some(i64::from(id)), &draft);
-            match saved {
-                Ok(_) => {
-                    if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow())
-                    {
-                        show_error(&window, &error);
-                        return;
-                    }
-                    window.set_resource_editor_open(false);
-                    show_success(&window, "资源已保存到本地");
-                }
-                Err(error) => show_error(&window, &error),
-            }
-        },
-    );
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_archive_resource(move |id| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let archived = callback_repository.borrow().archive_asset(i64::from(id));
-        match archived {
-            Ok(()) => {
-                let mut state = callback_state.borrow_mut();
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_archive_confirm_open(false);
-                window.set_resource_editor_open(false);
-                show_success(&window, "资源已归档");
-            }
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_save_project(move |id, name| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let saved = callback_repository
-            .borrow_mut()
-            .save_project((id != 0).then_some(i64::from(id)), &name);
-        match saved {
-            Ok(saved_id) => {
-                let mut state = callback_state.borrow_mut();
-                match callback_repository.borrow().projects() {
-                    Ok(projects) => {
-                        state.project_index = projects
-                            .iter()
-                            .position(|project| project.id == saved_id)
-                            .map_or(0, |index| index);
-                    }
-                    Err(error) => {
-                        show_error(&window, &error);
-                        return;
-                    }
-                }
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_project_editor_open(false);
-                show_success(&window, "项目已保存到本地");
-            }
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_archive_project(move |id| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let archived = callback_repository
-            .borrow_mut()
-            .archive_project(i64::from(id));
-        match archived {
-            Ok(()) => {
-                let mut state = callback_state.borrow_mut();
-                state.project_index = 0;
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_archive_confirm_open(false);
-                window.set_project_editor_open(false);
-                show_success(&window, "项目及其资源已归档");
-            }
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_save_relationship(move |source_index, target_index, kind_index| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let mut state = callback_state.borrow_mut();
-        let Some(project) = state.projects.get(state.project_index) else {
-            return;
-        };
-        let Some(source) = state.assets.get(source_index.max(0) as usize) else {
-            show_error(&window, &"请选择来源资源");
-            return;
-        };
-        let Some(target) = state.assets.get(target_index.max(0) as usize) else {
-            show_error(&window, &"请选择目标资源");
-            return;
-        };
-        let saved = callback_repository.borrow().save_relationship(
-            project.id,
-            source.id,
-            target.id,
-            RelationshipKind::from_index(kind_index),
-        );
-        match saved {
-            Ok(_) => {
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_relationship_editor_open(false);
-                show_success(&window, "关系已添加到图谱");
-            }
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_archive_relationship(move |id| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let archived = callback_repository
-            .borrow()
-            .archive_relationship(i64::from(id));
-        match archived {
-            Ok(()) => {
-                let mut state = callback_state.borrow_mut();
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_archive_confirm_open(false);
-                show_success(&window, "关系已从图谱移除");
-            }
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    window.on_graph_node_selected(move |id| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let state = callback_state.borrow();
-        let visible = filter_assets(&state.assets, state.filter, &state.query);
-        let index = visible
-            .iter()
-            .position(|asset| asset.id == i64::from(id))
-            .map_or(-1, |index| index as i32);
-        window.set_selected_asset(index);
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_global_search_changed(move |query, attention_only| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        if let Err(error) = refresh_global_results(
+    let callback_state = Rc::clone(&table_state);
+    window.on_search_changed(move |value| {
+        let Some(window) = weak.upgrade() else { return };
+        callback_state.borrow_mut().query = value.to_string();
+        if let Err(error) = refresh(
             &window,
-            &callback_state.borrow(),
             &callback_repository.borrow(),
-            &query,
-            attention_only,
+            &callback_state.borrow(),
         ) {
             show_error(&window, &error);
         }
     });
 
     let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
     let callback_repository = Rc::clone(&repository);
-    window.on_global_result_selected(move |project_index, asset_id| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let mut state = callback_state.borrow_mut();
-        state.project_index = project_index.max(0) as usize;
-        state.filter = None;
-        state.query.clear();
-        if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+    let callback_state = Rc::clone(&table_state);
+    window.on_tag_selected(move |value| {
+        let Some(window) = weak.upgrade() else { return };
+        callback_state.borrow_mut().tag = value.to_string();
+        window.set_active_tag(value);
+        if let Err(error) = refresh(
+            &window,
+            &callback_repository.borrow(),
+            &callback_state.borrow(),
+        ) {
             show_error(&window, &error);
-            return;
         }
-        let selected = state
-            .assets
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    window.on_sort_mode_selected(move |index| {
+        let Some(window) = weak.upgrade() else { return };
+        callback_state.borrow_mut().sort_mode = index.max(0) as usize;
+        if let Err(error) = refresh(
+            &window,
+            &callback_repository.borrow(),
+            &callback_state.borrow(),
+        ) {
+            show_error(&window, &error);
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    window.on_save_server(move |id, tags, ip_address, ports| {
+        let Some(window) = weak.upgrade() else { return };
+        let draft = ServerDraft {
+            tags: server_tags_from_input(tags.as_str()),
+            ip_address: ip_address.to_string(),
+            ports: ports.to_string(),
+        };
+        let id = (id > 0).then_some(i64::from(id));
+        match callback_repository.borrow_mut().save_server(id, &draft) {
+            Ok(_) => {
+                if let Err(error) = refresh(
+                    &window,
+                    &callback_repository.borrow(),
+                    &callback_state.borrow(),
+                ) {
+                    show_error(&window, &error);
+                    return;
+                }
+                clear_editor(&window);
+                show_status(&window, "Server saved");
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    window.on_archive_server(move |id| {
+        let Some(window) = weak.upgrade() else { return };
+        match callback_repository.borrow().archive_server(i64::from(id)) {
+            Ok(()) => {
+                window.set_archive_target_id(0);
+                clear_editor(&window);
+                if let Err(error) = refresh(
+                    &window,
+                    &callback_repository.borrow(),
+                    &callback_state.borrow(),
+                ) {
+                    show_error(&window, &error);
+                    return;
+                }
+                show_status(&window, "Server archived");
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_copy_value(move |value, label| {
+        let Some(window) = weak.upgrade() else { return };
+        match arboard::Clipboard::new()
+            .and_then(|mut clipboard| clipboard.set_text(value.to_string()))
+        {
+            Ok(()) => show_status(&window, &format!("{label} copied")),
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_choose_import_file(move || {
+        let Some(window) = weak.upgrade() else { return };
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("Tables", &["xlsx", "xls", "xlsb", "ods", "csv", "tsv"])
+            .pick_file()
+        {
+            window.set_import_file_path(path.to_string_lossy().into_owned().into());
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_import = Rc::clone(&import_session);
+    window.on_load_import(move |path| {
+        let Some(window) = weak.upgrade() else { return };
+        window.set_import_error(SharedString::new());
+        match read_tabular(&PathBuf::from(path.as_str())) {
+            Ok(data) => match callback_repository.borrow().server_columns() {
+                Ok(columns) => {
+                    let mappings = data
+                        .headers
+                        .iter()
+                        .map(|header| default_mapping(header, &columns))
+                        .collect::<Vec<_>>();
+                    let column_rows = data
+                        .headers
+                        .iter()
+                        .enumerate()
+                        .map(|(index, header)| ImportColumnRow {
+                            index: index as i32,
+                            source_name: header.as_str().into(),
+                            sample: data
+                                .rows
+                                .iter()
+                                .take(3)
+                                .filter_map(|row| row.get(index))
+                                .filter(|value| !value.is_empty())
+                                .cloned()
+                                .collect::<Vec<_>>()
+                                .join(" | ")
+                                .into(),
+                            mapping_index: mappings[index] as i32,
+                        })
+                        .collect::<Vec<_>>();
+                    window.set_import_mapping_options(ModelRc::new(VecModel::from(
+                        mapping_options(&columns),
+                    )));
+                    window.set_import_columns(ModelRc::new(VecModel::from(column_rows)));
+                    window.set_import_row_count(data.rows.len() as i32);
+                    window.set_import_ready(true);
+                    *callback_import.borrow_mut() = ImportSession {
+                        data: Some(data),
+                        mappings,
+                        existing_columns: columns,
+                    };
+                }
+                Err(error) => window.set_import_error(error.to_string().into()),
+            },
+            Err(error) => window.set_import_error(error.to_string().into()),
+        }
+    });
+
+    let callback_import = Rc::clone(&import_session);
+    window.on_import_mapping_changed(move |source_index, mapping_index| {
+        let mut session = callback_import.borrow_mut();
+        if let Some(mapping) = session.mappings.get_mut(source_index.max(0) as usize) {
+            *mapping = mapping_index.max(0) as usize;
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    let callback_import = Rc::clone(&import_session);
+    window.on_confirm_import(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let session = callback_import.borrow();
+        let Some(data) = session.data.as_ref() else {
+            window.set_import_error("Load a file before importing".into());
+            return;
+        };
+        let targets = session
+            .mappings
             .iter()
-            .position(|asset| asset.id == i64::from(asset_id))
-            .map_or(-1, |index| index as i32);
-        window.set_active_filter(SharedString::from("全部"));
-        window.set_project_query(SharedString::new());
-        window.set_selected_asset(selected);
-        window.set_selected_graph_asset_id(asset_id);
-        window.set_global_search_open(false);
-    });
-
-    let weak = window.as_weak();
-    let callback_repository = Rc::clone(&repository);
-    window.on_export_json(move |path| {
-        let Some(window) = weak.upgrade() else {
+            .enumerate()
+            .map(|(index, mapping)| import_target(index, *mapping, &session))
+            .collect::<Option<Vec<_>>>();
+        let Some(targets) = targets else {
+            window.set_import_error("A column mapping is no longer valid".into());
             return;
         };
-        let path = PathBuf::from(path.to_string());
-        match callback_repository.borrow().export_json(&path) {
-            Ok(()) => show_success(&window, "JSON 已导出到指定路径"),
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_import_json(move |path| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let path = PathBuf::from(path.to_string());
-        let imported = callback_repository.borrow_mut().import_json(&path);
-        match imported {
-            Ok(()) => {
-                let mut state = callback_state.borrow_mut();
-                state.project_index = 0;
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
+        match callback_repository
+            .borrow_mut()
+            .import_servers(data, &targets)
+        {
+            Ok(count) => {
+                drop(session);
+                if let Err(error) = refresh(
+                    &window,
+                    &callback_repository.borrow(),
+                    &callback_state.borrow(),
+                ) {
                     show_error(&window, &error);
                     return;
                 }
-                window.set_data_confirm_open(false);
-                show_success(&window, "JSON 已导入，导入前恢复点已创建");
+                window.set_import_dialog_open(false);
+                window.set_import_ready(false);
+                show_status(&window, &format!("Imported {count} servers"));
+                *callback_import.borrow_mut() = ImportSession::default();
             }
-            Err(error) => {
-                window.set_data_confirm_open(false);
-                show_error(&window, &error);
-            }
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_repository = Rc::clone(&repository);
-    window.on_create_backup(move |path| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let path = PathBuf::from(path.to_string());
-        match callback_repository.borrow().create_backup(&path) {
-            Ok(()) => show_success(&window, "完整数据库备份已创建"),
-            Err(error) => show_error(&window, &error),
-        }
-    });
-
-    let weak = window.as_weak();
-    let callback_state = Rc::clone(&state);
-    let callback_repository = Rc::clone(&repository);
-    window.on_restore_backup(move |path| {
-        let Some(window) = weak.upgrade() else {
-            return;
-        };
-        let path = PathBuf::from(path.to_string());
-        let restored = callback_repository.borrow_mut().restore_backup(&path);
-        match restored {
-            Ok(()) => {
-                let mut state = callback_state.borrow_mut();
-                state.project_index = 0;
-                if let Err(error) = refresh(&window, &mut state, &callback_repository.borrow()) {
-                    show_error(&window, &error);
-                    return;
-                }
-                window.set_data_confirm_open(false);
-                show_success(&window, "数据库已恢复，恢复前快照已保留");
-            }
-            Err(error) => {
-                window.set_data_confirm_open(false);
-                show_error(&window, &error);
-            }
+            Err(error) => window.set_import_error(error.to_string().into()),
         }
     });
 
     window.run()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn server(tags: &[&str], ip_address: &str, ports: &str, custom: &[&str]) -> ServerRecord {
+        ServerRecord {
+            id: 1,
+            tags: tags.iter().map(|tag| (*tag).into()).collect(),
+            ip_address: ip_address.into(),
+            ports: ports.into(),
+            custom_values: custom.iter().map(|value| (*value).into()).collect(),
+        }
+    }
+
+    #[test]
+    fn combines_exact_tag_filter_with_free_text_search() {
+        let record = server(
+            &["production", "api"],
+            "203.0.113.10",
+            "22, 443",
+            &["Platform"],
+        );
+        assert!(matches_filters(
+            &record,
+            &TableState {
+                query: "platform".into(),
+                tag: "PRODUCTION".into(),
+                sort_mode: 0
+            }
+        ));
+        assert!(!matches_filters(
+            &record,
+            &TableState {
+                query: "443".into(),
+                tag: "database".into(),
+                sort_mode: 0
+            }
+        ));
+    }
+
+    #[test]
+    fn default_sort_is_ascii_case_insensitive_and_other_modes_are_numeric() {
+        let mut records = vec![
+            server(&["beta"], "10.0.0.10", "443", &["west"]),
+            server(&["Alpha"], "10.0.0.2", "22", &["east"]),
+        ];
+        sort_records(&mut records, 0);
+        assert_eq!(records[0].tags, ["Alpha"]);
+        sort_records(&mut records, 2);
+        assert_eq!(records[0].ip_address, "10.0.0.2");
+        sort_records(&mut records, 5);
+        assert_eq!(records[0].ports, "443");
+        sort_records(&mut records, 8);
+        assert_eq!(records[0].custom_values, ["east"]);
+    }
 }

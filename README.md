@@ -1,6 +1,6 @@
 # ITGLA
 
-ITGLA is a local-first desktop workspace for understanding how projects, websites, domains, certificates, servers, and services relate to one another.
+ITGLA is a local-first desktop inventory for keeping server details easy to find and copy.
 
 Current version: `0.1.1`
 
@@ -29,20 +29,15 @@ The script writes the versioned archive and SHA-256 checksum to `dist/`. See [do
 
 ## Current capabilities
 
-- Project-centered resource inventory
-- Search and resource-type filtering
-- Cross-project search and a consolidated attention view
-- Health and expiry context
-- Project relationship graph
-- Deterministic local sample data
+- Dense server table with tags, IP addresses, ports, and custom columns
+- Independent copy action for every cell
+- Tag filters and search across every visible field
+- Alphabetical, IP, port, date-added, and custom-column sorting
+- Excel, OpenDocument, CSV, and TSV import with per-column mapping
+- Transactional imports with bounded files, rows, columns, and values
 - Versioned SQLite persistence under the platform user-data directory
-- Project and resource creation, editing, archival, and tags
-- Typed relationship creation and confirmation-gated removal
-- Data-driven interactive project graph and relationship list
-- Versioned JSON import/export and complete SQLite backup/restore
+- Server creation, editing, and confirmation-gated archival
 
-Open **数据安全** in the lower-left sidebar to use the default local export and backup paths or enter another path. Import and restore replace the current workspace only after confirmation and create an automatic recovery point first.
-
-All data remains local. Cloud sync, authentication, billing, monitoring integrations, native file pickers, and destructive infrastructure actions are intentionally outside `0.1.1`.
+All server data remains local. Cloud sync, authentication, billing, monitoring integrations, and destructive infrastructure actions are not enabled.
 
 Rust architecture, dependency decisions, verification gates, and rollback behavior are documented in [docs/engineering.md](docs/engineering.md).

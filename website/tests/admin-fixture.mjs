@@ -33,14 +33,14 @@ const server = http.createServer(async (request, response) => {
     let body = "";
     for await (const chunk of request) body += chunk;
     const credentials = JSON.parse(body || "{}");
-    if (credentials.username !== "admin" || credentials.password !== "test-password") return json(response, 401, { message: "用户名或密码错误。" });
+    if (credentials.username !== "admin" || credentials.password !== "test-password") return json(response, 401, { message: "Incorrect username or password." });
     return json(response, 200, { status: "ok" }, { "Set-Cookie": `${sessionCookie}; Path=/admin; HttpOnly; SameSite=Strict` });
   }
   if (request.method === "POST" && url.pathname === "/admin/api/logout") return json(response, 200, { status: "ok" });
   const authenticated = String(request.headers.cookie || "").includes(sessionCookie);
   if (url.pathname === "/admin/api/me") return json(response, 200, { authenticated, username: authenticated ? "admin" : null });
   const fixtureKey = Object.keys(fixtures).find((key) => url.pathname === key);
-  if (fixtureKey) return authenticated ? json(response, 200, fixtures[fixtureKey]) : json(response, 401, { message: "需要管理员登录。" });
+  if (fixtureKey) return authenticated ? json(response, 200, fixtures[fixtureKey]) : json(response, 401, { message: "Administrator sign-in required." });
 
   const assets = {
     "/admin": ["admin.html", "text/html; charset=utf-8"],

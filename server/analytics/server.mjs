@@ -223,11 +223,11 @@ async function handle(request, response) {
   if (request.method === "POST" && !sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
 
   if (request.method === "POST" && pathname === "/admin/api/login") {
-    if (!allowLogin(request)) return json(response, 429, { message: "登录尝试过多，请稍后重试。" }, { "Retry-After": "900" });
+    if (!allowLogin(request)) return json(response, 429, { message: "Too many sign-in attempts. Try again later." }, { "Retry-After": "900" });
     const payload = await readBody(request).catch(() => null);
     const supplied = payload ? passwordDigest(payload.password || "", config.adminPasswordSalt) : "";
     if (!payload || String(payload.username || "").trim() !== config.adminUsername || !safeEqual(supplied, config.adminPasswordScrypt)) {
-      return json(response, 401, { message: "用户名或密码错误。" });
+      return json(response, 401, { message: "Incorrect username or password." });
     }
     const token = crypto.randomBytes(32).toString("hex");
     await pool.query(
@@ -253,7 +253,7 @@ async function handle(request, response) {
   }
 
   if (pathname.startsWith("/admin/api/")) {
-    if (!(await authenticated(request))) return json(response, 401, { message: "需要管理员登录。" });
+    if (!(await authenticated(request))) return json(response, 401, { message: "Administrator sign-in required." });
     const days = daysFromUrl(url);
     if (pathname === "/admin/api/overview") return json(response, 200, await overview(days));
     if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));

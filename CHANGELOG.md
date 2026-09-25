@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Dense server inventory with multi-tag filtering and per-cell copy actions.
+- Excel, OpenDocument, CSV, and TSV import with per-column mapping.
+- Persistent custom columns and values through SQLite schema v5.
+- Alphabetical, IP-address, port, date-added, and custom-column sorting.
+
+### Changed
+
+- The current desktop experience focuses on server tags, IP addresses, ports, and imported tabular data.
+- Existing schema-v3 purpose values migrate into tags without deleting legacy records.
+
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
 ## [0.1.1] - 2026-09-19

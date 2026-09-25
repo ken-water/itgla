@@ -2,7 +2,7 @@
 
 ITGLA's Windows x86_64 release is a portable package. Extract the ZIP to a writable directory and run `itgla.exe`. Windows may show a SmartScreen warning because the executable is not currently code-signed.
 
-Application data is stored under the Windows local application-data directory. Back up or export the workspace from the Data Safety panel before replacing or removing an installation.
+Application data is stored under the Windows local application-data directory. Preserve that directory before replacing or removing an installation.
 
 ## Build from Linux
 

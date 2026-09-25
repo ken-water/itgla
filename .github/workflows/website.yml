@@ -5,6 +5,9 @@ on:
     paths:
       - "website/**"
       - "server/analytics/**"
+      - "scripts/check-english-ui.mjs"
+      - "ui/app.slint"
+      - "src/**"
       - "deploy/nginx/itgla.conf"
       - ".github/workflows/website.yml"
   push:
@@ -13,6 +16,9 @@ on:
     paths:
       - "website/**"
       - "server/analytics/**"
+      - "scripts/check-english-ui.mjs"
+      - "ui/app.slint"
+      - "src/**"
       - "deploy/nginx/itgla.conf"
       - ".github/workflows/website.yml"
 

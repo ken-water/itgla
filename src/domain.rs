@@ -1,4 +1,113 @@
+use std::net::IpAddr;
+
 use thiserror::Error;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerRecord {
+    pub id: i64,
+    pub tags: Vec<String>,
+    pub ip_address: String,
+    pub ports: String,
+    pub custom_values: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerColumn {
+    pub id: i64,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ServerDraft {
+    pub tags: Vec<String>,
+    pub ip_address: String,
+    pub ports: String,
+}
+
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ServerValidationError {
+    #[error("Enter at least one tag")]
+    EmptyTags,
+    #[error("Tags must be 48 characters or fewer")]
+    TagTooLong,
+    #[error("A server can have at most 20 tags")]
+    TooManyTags,
+    #[error("Enter a valid IPv4 or IPv6 address")]
+    InvalidIpAddress,
+    #[error("Enter at least one port")]
+    EmptyPorts,
+    #[error("Ports must be numbers from 1 to 65535, separated by commas")]
+    InvalidPort,
+    #[error("A server can have at most 32 ports")]
+    TooManyPorts,
+}
+
+pub fn validate_server(draft: &ServerDraft) -> Result<ServerDraft, ServerValidationError> {
+    let mut tags = Vec::new();
+    for candidate in &draft.tags {
+        let tag = candidate.trim();
+        if tag.is_empty()
+            || tags
+                .iter()
+                .any(|existing: &String| existing.eq_ignore_ascii_case(tag))
+        {
+            continue;
+        }
+        if tag.chars().count() > 48 {
+            return Err(ServerValidationError::TagTooLong);
+        }
+        tags.push(tag.to_owned());
+    }
+    if tags.is_empty() {
+        return Err(ServerValidationError::EmptyTags);
+    }
+    if tags.len() > 20 {
+        return Err(ServerValidationError::TooManyTags);
+    }
+    let ip_address = draft.ip_address.trim();
+    if ip_address.parse::<IpAddr>().is_err() {
+        return Err(ServerValidationError::InvalidIpAddress);
+    }
+    let ports = normalize_ports(&draft.ports)?;
+    Ok(ServerDraft {
+        tags,
+        ip_address: ip_address.to_owned(),
+        ports,
+    })
+}
+
+pub fn server_tags_from_input(value: &str) -> Vec<String> {
+    value.split(',').map(str::to_owned).collect()
+}
+
+fn normalize_ports(value: &str) -> Result<String, ServerValidationError> {
+    let mut ports = Vec::new();
+    for candidate in value.split(',') {
+        let candidate = candidate.trim();
+        if candidate.is_empty() {
+            continue;
+        }
+        let port = candidate
+            .parse::<u16>()
+            .ok()
+            .filter(|port| *port > 0)
+            .ok_or(ServerValidationError::InvalidPort)?;
+        if !ports.contains(&port) {
+            ports.push(port);
+        }
+    }
+    if ports.is_empty() {
+        return Err(ServerValidationError::EmptyPorts);
+    }
+    if ports.len() > 32 {
+        return Err(ServerValidationError::TooManyPorts);
+    }
+    Ok(ports
+        .iter()
+        .map(u16::to_string)
+        .collect::<Vec<_>>()
+        .join(", "))
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ResourceKind {
@@ -20,11 +129,11 @@ impl ResourceKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Website => "网站",
-            Self::Domain => "域名",
-            Self::Certificate => "证书",
-            Self::Server => "服务器",
-            Self::Service => "服务",
+            Self::Website => "Website",
+            Self::Domain => "Domain",
+            Self::Certificate => "Certificate",
+            Self::Server => "Server",
+            Self::Service => "Service",
         }
     }
 
@@ -97,11 +206,11 @@ impl RelationshipKind {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::DeploysTo => "部署于",
-            Self::UsesDomain => "使用域名",
-            Self::ProtectedBy => "由证书保护",
-            Self::DependsOn => "依赖",
-            Self::Serves => "服务于",
+            Self::DeploysTo => "Deploys to",
+            Self::UsesDomain => "Uses domain",
+            Self::ProtectedBy => "Protected by",
+            Self::DependsOn => "Depends on",
+            Self::Serves => "Serves",
         }
     }
 
@@ -116,9 +225,9 @@ impl RelationshipKind {
 impl Health {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Healthy => "正常",
-            Self::Warning => "需关注",
-            Self::Critical => "高风险",
+            Self::Healthy => "Healthy",
+            Self::Warning => "Attention",
+            Self::Critical => "Critical",
         }
     }
 
@@ -198,14 +307,16 @@ pub struct GlobalAsset {
 
 #[derive(Clone, Debug, Error, PartialEq, Eq)]
 pub enum ValidationError {
-    #[error("名称不能为空")]
+    #[error("Name is required")]
     EmptyName,
-    #[error("名称不能超过 {0} 个字符")]
+    #[error("Name must be {0} characters or fewer")]
     NameTooLong(usize),
-    #[error("标签不能超过 48 个字符")]
+    #[error("Tags must be 48 characters or fewer")]
     TagTooLong,
-    #[error("最多允许 20 个标签")]
+    #[error("A record can have at most 20 tags")]
     TooManyTags,
+    #[error(transparent)]
+    Server(#[from] ServerValidationError),
 }
 
 pub fn validate_name(name: &str, maximum: usize) -> Result<String, ValidationError> {
@@ -221,7 +332,7 @@ pub fn validate_name(name: &str, maximum: usize) -> Result<String, ValidationErr
 
 pub fn parse_tags(value: &str) -> Result<Vec<String>, ValidationError> {
     let mut tags = Vec::new();
-    for candidate in value.split([',', '，']) {
+    for candidate in value.split([',', '\u{ff0c}']) {
         let tag = candidate.trim();
         if tag.is_empty() || tags.iter().any(|existing| existing == tag) {
             continue;
@@ -269,6 +380,42 @@ pub fn kind_from_label(label: &str) -> Option<ResourceKind> {
 mod tests {
     use super::*;
 
+    #[test]
+    fn validates_and_normalizes_server_records() {
+        let draft = ServerDraft {
+            tags: vec!["  production  ".into(), "api".into(), "PRODUCTION".into()],
+            ip_address: " 203.0.113.10 ".into(),
+            ports: "443, 22, 443".into(),
+        };
+        assert_eq!(
+            validate_server(&draft),
+            Ok(ServerDraft {
+                tags: vec!["production".into(), "api".into()],
+                ip_address: "203.0.113.10".into(),
+                ports: "443, 22".into(),
+            })
+        );
+    }
+
+    #[test]
+    fn rejects_invalid_server_addresses_and_ports() {
+        let mut draft = ServerDraft {
+            tags: vec!["database".into()],
+            ip_address: "not-an-ip".into(),
+            ports: "5432".into(),
+        };
+        assert_eq!(
+            validate_server(&draft),
+            Err(ServerValidationError::InvalidIpAddress)
+        );
+        draft.ip_address = "2001:db8::10".into();
+        draft.ports = "0, 70000".into();
+        assert_eq!(
+            validate_server(&draft),
+            Err(ServerValidationError::InvalidPort)
+        );
+    }
+
     fn asset(kind: ResourceKind, name: &str) -> Asset {
         Asset {
             id: 1,
@@ -277,7 +424,7 @@ mod tests {
             name: name.into(),
             detail: "Docker · production".into(),
             status_detail: "healthy".into(),
-            environment: "生产".into(),
+            environment: "Production".into(),
             health: Health::Healthy,
             tags: vec!["Docker".into()],
         }
@@ -312,7 +459,7 @@ mod tests {
     #[test]
     fn tags_are_trimmed_deduplicated_and_searchable() {
         assert_eq!(
-            parse_tags(" production, Docker，production "),
+            parse_tags(" production, Docker\u{ff0c}production "),
             Ok(vec!["production".into(), "Docker".into()])
         );
         let assets = [asset(ResourceKind::Service, "notes-api")];

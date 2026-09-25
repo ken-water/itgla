@@ -17,9 +17,13 @@ for (const viewport of viewports) {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "ITGLA", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "下载 Windows 便携版" })).toBeVisible();
-    await expect(page.locator(".relationship-demo .relation-node")).toHaveCount(5);
-    await expect(page.locator(".relationship-demo .relation-line")).toHaveCount(4);
+    await expect(page.getByRole("link", { name: "Download Windows portable" })).toBeVisible();
+    await expect(page.getByText("Current stable download: v0.1.1", { exact: false })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Copy exactly" })).toBeVisible();
+    await expect(page.locator(".relationship-demo .relation-node")).toHaveCount(3);
+    await expect(page.locator(".relationship-demo .relation-line")).toHaveCount(2);
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
@@ -31,8 +35,8 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "下载 ITGLA v0.1.1" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "下载 ZIP" })).toHaveAttribute(
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.1.1" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Download ZIP" })).toHaveAttribute(
     "href",
     "/downloads/v0.1.1/itgla-v0.1.1-windows-x86_64.zip",
   );

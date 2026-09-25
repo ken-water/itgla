@@ -14,15 +14,27 @@ use thiserror::Error;
 
 use crate::domain::{
     Asset, AssetDraft, GlobalAsset, Health, Project, Relationship, RelationshipKind, ResourceKind,
-    ValidationError, validate_name,
+    ServerColumn, ServerDraft, ServerRecord, ValidationError, validate_name, validate_server,
 };
+use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 2;
+const SCHEMA_VERSION: i64 = 5;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
 const MAX_ASSETS: usize = 10_000;
 const MAX_RELATIONSHIPS: usize = 50_000;
+const MAX_SERVER_CUSTOM_COLUMNS: usize = 32;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ServerImportTarget {
+    Skip,
+    Tags,
+    IpAddress,
+    Ports,
+    ExistingCustom(i64),
+    NewCustom(String),
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -82,28 +94,28 @@ pub enum StorageError {
     Database(#[from] rusqlite::Error),
     #[error("{0}")]
     Validation(#[from] ValidationError),
-    #[error("同一范围内已存在同名项目或资源")]
+    #[error("A project or resource with this name already exists")]
     Conflict,
-    #[error("至少需要保留一个项目")]
+    #[error("At least one project must remain")]
     LastProject,
-    #[error("{operation}失败：{path}")]
+    #[error("{operation} failed: {path}")]
     FileOperation {
         operation: &'static str,
         path: PathBuf,
         #[source]
         source: std::io::Error,
     },
-    #[error("JSON 数据无效")]
+    #[error("JSON data is invalid")]
     Json(#[from] serde_json::Error),
-    #[error("导入文件超过 {maximum_mb} MiB 限制")]
+    #[error("The import exceeds the {maximum_mb} MiB limit")]
     ImportTooLarge { maximum_mb: u64 },
-    #[error("不支持 JSON 格式版本 {found}，当前支持 {supported}")]
+    #[error("JSON format {found} is not supported; this version supports {supported}")]
     UnsupportedImportVersion { found: u32, supported: u32 },
-    #[error("导入内容无效：{0}")]
+    #[error("Import data is invalid: {0}")]
     InvalidImport(String),
-    #[error("备份数据库 schema {found} 与当前 schema {supported} 不兼容")]
+    #[error("Backup schema {found} is incompatible with current schema {supported}")]
     IncompatibleBackup { found: i64, supported: i64 },
-    #[error("备份数据库无效：{0}")]
+    #[error("Backup database is invalid: {0}")]
     InvalidBackup(String),
 }
 
@@ -183,9 +195,194 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction
                 .execute_batch(include_str!("../migrations/002_relationship_lifecycle.sql"))?;
+            transaction.pragma_update(None, "user_version", 2)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 2 {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/003_server_records.sql"))?;
+            transaction.pragma_update(None, "user_version", 3)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 3 {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/004_server_tags.sql"))?;
+            transaction.pragma_update(None, "user_version", 4)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 4 {
+            let transaction = self.connection.transaction()?;
+            transaction
+                .execute_batch(include_str!("../migrations/005_server_custom_columns.sql"))?;
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
+        Ok(())
+    }
+
+    pub fn server_records(&self) -> Result<Vec<ServerRecord>, StorageError> {
+        let columns = self.server_columns()?;
+        let mut statement = self.connection.prepare(
+            "SELECT id, tags, ip_address, ports FROM server_records
+             WHERE archived_at IS NULL ORDER BY position, id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(ServerRecord {
+                id: row.get(0)?,
+                tags: row
+                    .get::<_, String>(1)?
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|tag| !tag.is_empty())
+                    .map(str::to_owned)
+                    .collect(),
+                ip_address: row.get(2)?,
+                ports: row.get(3)?,
+                custom_values: Vec::new(),
+            })
+        })?;
+        let mut records = rows.collect::<Result<Vec<_>, _>>()?;
+        let mut values = HashMap::new();
+        let mut value_statement = self.connection.prepare(
+            "SELECT v.server_id,v.column_id,v.value FROM server_custom_values v
+             JOIN server_records s ON s.id=v.server_id WHERE s.archived_at IS NULL",
+        )?;
+        let value_rows = value_statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+            ))
+        })?;
+        for value in value_rows {
+            let (server_id, column_id, value) = value?;
+            values.insert((server_id, column_id), value);
+        }
+        for record in &mut records {
+            record.custom_values = columns
+                .iter()
+                .map(|column| values.remove(&(record.id, column.id)).unwrap_or_default())
+                .collect();
+        }
+        Ok(records)
+    }
+
+    pub fn server_columns(&self) -> Result<Vec<ServerColumn>, StorageError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT id,name FROM server_custom_columns ORDER BY position,id")?;
+        let rows = statement.query_map([], |row| {
+            Ok(ServerColumn {
+                id: row.get(0)?,
+                name: row.get(1)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn import_servers(
+        &mut self,
+        data: &TabularData,
+        mappings: &[ServerImportTarget],
+    ) -> Result<usize, StorageError> {
+        if mappings.len() != data.headers.len() {
+            return Err(StorageError::InvalidImport(
+                "Every source column needs a mapping".into(),
+            ));
+        }
+        validate_server_mappings(mappings)?;
+        let transaction = self.connection.transaction()?;
+        let resolved = resolve_server_import_targets(&transaction, mappings)?;
+
+        for (row_index, row) in data.rows.iter().enumerate() {
+            let mut tags = Vec::new();
+            let mut ip_address = String::new();
+            let mut ports = String::new();
+            let mut custom_values = Vec::new();
+            for (source_index, target) in resolved.iter().enumerate() {
+                let value = row.get(source_index).map_or("", String::as_str).trim();
+                match target {
+                    ResolvedServerImportTarget::Skip => {}
+                    ResolvedServerImportTarget::Tags => {
+                        tags.extend(value.split(',').map(str::to_owned));
+                    }
+                    ResolvedServerImportTarget::IpAddress => ip_address = value.to_owned(),
+                    ResolvedServerImportTarget::Ports => ports = value.to_owned(),
+                    ResolvedServerImportTarget::Custom(column_id) => {
+                        if value.chars().count() > 2_048 {
+                            return Err(StorageError::InvalidImport(format!(
+                                "Row {}: custom values must be 2,048 characters or fewer",
+                                row_index + 2
+                            )));
+                        }
+                        custom_values.push((*column_id, value.to_owned()));
+                    }
+                }
+            }
+            if tags.iter().all(|tag| tag.trim().is_empty()) {
+                tags.push("imported".into());
+            }
+            let draft = validate_server(&ServerDraft {
+                tags,
+                ip_address,
+                ports,
+            })
+            .map_err(|error| {
+                StorageError::InvalidImport(format!("Row {}: {error}", row_index + 2))
+            })?;
+            let tag_text = draft.tags.join(", ");
+            let legacy_purpose = draft.tags.first().cloned().unwrap_or_default();
+            transaction.execute(
+                "INSERT INTO server_records (purpose,tags,ip_address,ports,position)
+                 VALUES (?1,?2,?3,?4,(SELECT COALESCE(MAX(position),-1)+1 FROM server_records))",
+                params![legacy_purpose, tag_text, draft.ip_address, draft.ports],
+            )?;
+            let server_id = transaction.last_insert_rowid();
+            for (column_id, value) in custom_values {
+                if !value.is_empty() {
+                    transaction.execute(
+                        "INSERT INTO server_custom_values (server_id,column_id,value) VALUES (?1,?2,?3)",
+                        params![server_id, column_id, value],
+                    )?;
+                }
+            }
+        }
+        transaction.commit()?;
+        Ok(data.rows.len())
+    }
+
+    pub fn save_server(
+        &mut self,
+        id: Option<i64>,
+        draft: &ServerDraft,
+    ) -> Result<i64, StorageError> {
+        let draft = validate_server(draft).map_err(ValidationError::from)?;
+        let tags = draft.tags.join(", ");
+        let legacy_purpose = draft.tags.first().cloned().unwrap_or_default();
+        let result = if let Some(id) = id {
+            self.connection.execute(
+                "UPDATE server_records SET purpose=?1,tags=?2,ip_address=?3,ports=?4,updated_at=CURRENT_TIMESTAMP
+                 WHERE id=?5 AND archived_at IS NULL",
+                params![legacy_purpose, tags, draft.ip_address, draft.ports, id],
+            )?;
+            id
+        } else {
+            self.connection.execute(
+                "INSERT INTO server_records (purpose,tags,ip_address,ports,position)
+                 VALUES (?1,?2,?3,?4,(SELECT COALESCE(MAX(position),-1)+1 FROM server_records))",
+                params![legacy_purpose, tags, draft.ip_address, draft.ports],
+            )?;
+            self.connection.last_insert_rowid()
+        };
+        Ok(result)
+    }
+
+    pub fn archive_server(&self, id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE server_records SET archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
+             WHERE id=?1 AND archived_at IS NULL",
+            [id],
+        )?;
         Ok(())
     }
 
@@ -515,7 +712,7 @@ impl Repository {
         self.ensure_external_path(path)?;
         if self.automatic_backup_path("pre-restore.db").as_deref() == Some(path) {
             return Err(StorageError::InvalidImport(
-                "恢复源不能与自动恢复点使用同一路径".into(),
+                "The restore source cannot be the automatic recovery point".into(),
             ));
         }
         validate_backup(path)?;
@@ -641,7 +838,7 @@ impl Repository {
     fn ensure_external_path(&self, path: &Path) -> Result<(), StorageError> {
         if path.as_os_str().is_empty() || self.database_path.as_deref() == Some(path) {
             return Err(StorageError::InvalidImport(
-                "请选择与当前数据库不同的有效文件路径".into(),
+                "Choose a valid file path outside the current database".into(),
             ));
         }
         Ok(())
@@ -658,6 +855,124 @@ impl Repository {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ResolvedServerImportTarget {
+    Skip,
+    Tags,
+    IpAddress,
+    Ports,
+    Custom(i64),
+}
+
+fn validate_server_mappings(mappings: &[ServerImportTarget]) -> Result<(), StorageError> {
+    let ip_count = mappings
+        .iter()
+        .filter(|target| matches!(target, ServerImportTarget::IpAddress))
+        .count();
+    let port_count = mappings
+        .iter()
+        .filter(|target| matches!(target, ServerImportTarget::Ports))
+        .count();
+    let tag_count = mappings
+        .iter()
+        .filter(|target| matches!(target, ServerImportTarget::Tags))
+        .count();
+    if ip_count != 1 || port_count != 1 || tag_count > 1 {
+        return Err(StorageError::InvalidImport(
+            "Map exactly one IP Address and Ports column, and at most one Tags column".into(),
+        ));
+    }
+
+    let mut destinations = HashSet::new();
+    for target in mappings {
+        let key = match target {
+            ServerImportTarget::ExistingCustom(id) => Some(format!("id:{id}")),
+            ServerImportTarget::NewCustom(name) => {
+                let name = name.trim();
+                if name.is_empty() || name.chars().count() > 64 {
+                    return Err(StorageError::InvalidImport(
+                        "Custom column names must contain 1 to 64 characters".into(),
+                    ));
+                }
+                Some(format!("name:{}", name.to_lowercase()))
+            }
+            _ => None,
+        };
+        if key.is_some_and(|key| !destinations.insert(key)) {
+            return Err(StorageError::InvalidImport(
+                "Each destination column can only be mapped once".into(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn resolve_server_import_targets(
+    transaction: &Transaction<'_>,
+    mappings: &[ServerImportTarget],
+) -> Result<Vec<ResolvedServerImportTarget>, StorageError> {
+    let mut existing_ids = HashSet::new();
+    {
+        let mut statement = transaction.prepare("SELECT id FROM server_custom_columns")?;
+        let rows = statement.query_map([], |row| row.get::<_, i64>(0))?;
+        for id in rows {
+            existing_ids.insert(id?);
+        }
+    }
+
+    let mut resolved = Vec::with_capacity(mappings.len());
+    for target in mappings {
+        let target = match target {
+            ServerImportTarget::Skip => ResolvedServerImportTarget::Skip,
+            ServerImportTarget::Tags => ResolvedServerImportTarget::Tags,
+            ServerImportTarget::IpAddress => ResolvedServerImportTarget::IpAddress,
+            ServerImportTarget::Ports => ResolvedServerImportTarget::Ports,
+            ServerImportTarget::ExistingCustom(id) => {
+                if !existing_ids.contains(id) {
+                    return Err(StorageError::InvalidImport(
+                        "A mapped custom column no longer exists".into(),
+                    ));
+                }
+                ResolvedServerImportTarget::Custom(*id)
+            }
+            ServerImportTarget::NewCustom(name) => {
+                transaction.execute(
+                    "INSERT INTO server_custom_columns (name,position)
+                     VALUES (?1,(SELECT COALESCE(MAX(position),-1)+1 FROM server_custom_columns))
+                     ON CONFLICT(name) DO NOTHING",
+                    [name.trim()],
+                )?;
+                let id = transaction.query_row(
+                    "SELECT id FROM server_custom_columns WHERE name=?1 COLLATE NOCASE",
+                    [name.trim()],
+                    |row| row.get::<_, i64>(0),
+                )?;
+                existing_ids.insert(id);
+                ResolvedServerImportTarget::Custom(id)
+            }
+        };
+        resolved.push(target);
+    }
+    let column_count: i64 =
+        transaction.query_row("SELECT COUNT(*) FROM server_custom_columns", [], |row| {
+            row.get(0)
+        })?;
+    if column_count as usize > MAX_SERVER_CUSTOM_COLUMNS {
+        return Err(StorageError::InvalidImport(format!(
+            "A server table can have at most {MAX_SERVER_CUSTOM_COLUMNS} custom columns"
+        )));
+    }
+    let mut custom_destinations = HashSet::new();
+    if resolved.iter().any(|target| {
+        matches!(target, ResolvedServerImportTarget::Custom(id) if !custom_destinations.insert(*id))
+    }) {
+        return Err(StorageError::InvalidImport(
+            "Each destination column can only be mapped once".into(),
+        ));
+    }
+    Ok(resolved)
+}
+
 fn create_parent(path: &Path) -> Result<(), StorageError> {
     let Some(parent) = path
         .parent()
@@ -666,7 +981,7 @@ fn create_parent(path: &Path) -> Result<(), StorageError> {
         return Ok(());
     };
     fs::create_dir_all(parent).map_err(|source| StorageError::FileOperation {
-        operation: "创建目录",
+        operation: "create directory",
         path: parent.to_owned(),
         source,
     })
@@ -674,7 +989,9 @@ fn create_parent(path: &Path) -> Result<(), StorageError> {
 
 fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), StorageError> {
     if path.as_os_str().is_empty() {
-        return Err(StorageError::InvalidImport("导出路径不能为空".into()));
+        return Err(StorageError::InvalidImport(
+            "Export path is required".into(),
+        ));
     }
     create_parent(path)?;
     let extension = path
@@ -684,19 +1001,19 @@ fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), StorageError> {
     let temporary = path.with_extension(format!("{extension}.tmp-{}", std::process::id()));
     let result = (|| {
         let mut file = File::create(&temporary).map_err(|source| StorageError::FileOperation {
-            operation: "创建临时导出文件",
+            operation: "create temporary export file",
             path: temporary.clone(),
             source,
         })?;
         file.write_all(contents)
             .and_then(|()| file.sync_all())
             .map_err(|source| StorageError::FileOperation {
-                operation: "写入导出文件",
+                operation: "write export file",
                 path: temporary.clone(),
                 source,
             })?;
         fs::rename(&temporary, path).map_err(|source| StorageError::FileOperation {
-            operation: "提交导出文件",
+            operation: "commit export file",
             path: path.to_owned(),
             source,
         })
@@ -709,7 +1026,7 @@ fn write_atomic(path: &Path, contents: &[u8]) -> Result<(), StorageError> {
 
 fn read_workspace_file(path: &Path) -> Result<WorkspaceFile, StorageError> {
     let metadata = fs::metadata(path).map_err(|source| StorageError::FileOperation {
-        operation: "读取导入文件",
+        operation: "read import file",
         path: path.to_owned(),
         source,
     })?;
@@ -719,7 +1036,7 @@ fn read_workspace_file(path: &Path) -> Result<WorkspaceFile, StorageError> {
         });
     }
     let file = File::open(path).map_err(|source| StorageError::FileOperation {
-        operation: "打开导入文件",
+        operation: "open import file",
         path: path.to_owned(),
         source,
     })?;
@@ -727,7 +1044,7 @@ fn read_workspace_file(path: &Path) -> Result<WorkspaceFile, StorageError> {
     file.take(MAX_IMPORT_BYTES + 1)
         .read_to_end(&mut contents)
         .map_err(|source| StorageError::FileOperation {
-            operation: "读取导入文件",
+            operation: "read import file",
             path: path.to_owned(),
             source,
         })?;
@@ -748,12 +1065,12 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
     }
     if workspace.projects.is_empty() || workspace.projects.len() > MAX_PROJECTS {
         return Err(StorageError::InvalidImport(format!(
-            "项目数量必须在 1 到 {MAX_PROJECTS} 之间"
+            "Project count must be between 1 and {MAX_PROJECTS}"
         )));
     }
     if workspace.assets.len() > MAX_ASSETS || workspace.relationships.len() > MAX_RELATIONSHIPS {
         return Err(StorageError::InvalidImport(format!(
-            "最多允许 {MAX_ASSETS} 个资源和 {MAX_RELATIONSHIPS} 条关系"
+            "At most {MAX_ASSETS} resources and {MAX_RELATIONSHIPS} relationships are allowed"
         )));
     }
 
@@ -765,7 +1082,9 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
             || !project_ids.insert(project.id)
             || !project_names.insert(project.name.trim().to_lowercase())
         {
-            return Err(StorageError::InvalidImport("项目标识或名称重复".into()));
+            return Err(StorageError::InvalidImport(
+                "Project IDs or names are duplicated".into(),
+            ));
         }
     }
 
@@ -780,7 +1099,7 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
             || parse_health_checked(&asset.health).is_none()
         {
             return Err(StorageError::InvalidImport(
-                "资源标识、项目、类型或状态无效".into(),
+                "A resource ID, project, type, or status is invalid".into(),
             ));
         }
         if !asset_names.insert((
@@ -788,7 +1107,9 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
             asset.kind.clone(),
             asset.name.trim().to_lowercase(),
         )) {
-            return Err(StorageError::InvalidImport("同项目资源重复".into()));
+            return Err(StorageError::InvalidImport(
+                "Resources are duplicated within a project".into(),
+            ));
         }
         let mut tags = HashSet::new();
         if asset.tags.len() > 20
@@ -798,7 +1119,9 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
                     || !tags.insert(tag.trim().to_lowercase())
             })
         {
-            return Err(StorageError::InvalidImport("资源标签无效".into()));
+            return Err(StorageError::InvalidImport(
+                "Resource tags are invalid".into(),
+            ));
         }
     }
 
@@ -819,7 +1142,9 @@ fn validate_workspace(workspace: &WorkspaceFile) -> Result<(), StorageError> {
                 relationship.kind.clone(),
             ))
         {
-            return Err(StorageError::InvalidImport("资源关系无效或重复".into()));
+            return Err(StorageError::InvalidImport(
+                "Relationships are invalid or duplicated".into(),
+            ));
         }
     }
     Ok(())
@@ -900,7 +1225,7 @@ fn validate_backup(path: &Path) -> Result<(), StorageError> {
     let integrity: String = connection.query_row("PRAGMA integrity_check", [], |row| row.get(0))?;
     if integrity != "ok" {
         return Err(StorageError::InvalidBackup(
-            "备份数据库完整性检查失败".into(),
+            "Backup database integrity check failed".into(),
         ));
     }
     let active_projects: i64 = connection
@@ -909,10 +1234,10 @@ fn validate_backup(path: &Path) -> Result<(), StorageError> {
             [],
             |row| row.get(0),
         )
-        .map_err(|_| StorageError::InvalidBackup("缺少必需的项目数据表".into()))?;
+        .map_err(|_| StorageError::InvalidBackup("Required project table is missing".into()))?;
     if active_projects == 0 {
         return Err(StorageError::InvalidBackup(
-            "备份中没有可恢复的有效项目".into(),
+            "The backup has no active project to restore".into(),
         ));
     }
     connection
@@ -922,7 +1247,9 @@ fn validate_backup(path: &Path) -> Result<(), StorageError> {
             [],
             |row| row.get::<_, i64>(0),
         )
-        .map_err(|_| StorageError::InvalidBackup("缺少必需的资源或关系数据表".into()))?;
+        .map_err(|_| {
+            StorageError::InvalidBackup("Required resource or relationship table is missing".into())
+        })?;
     let foreign_key_violation = connection.prepare("PRAGMA foreign_key_check")?.exists([])?;
     let cross_project_relationships: i64 = connection.query_row(
         "SELECT COUNT(*) FROM relationships r
@@ -934,7 +1261,7 @@ fn validate_backup(path: &Path) -> Result<(), StorageError> {
     )?;
     if foreign_key_violation || cross_project_relationships != 0 {
         return Err(StorageError::InvalidBackup(
-            "存在外键违规或跨项目关系".into(),
+            "The backup contains foreign-key violations or cross-project relationships".into(),
         ));
     }
     Ok(())
@@ -1031,7 +1358,8 @@ mod tests {
     #[test]
     fn migrates_and_seeds_an_empty_database() -> Result<(), StorageError> {
         let repository = Repository::in_memory()?;
-        assert_eq!(repository.schema_version()?, 2);
+        assert_eq!(repository.schema_version()?, 5);
+        assert!(repository.server_records()?.is_empty());
         assert_eq!(repository.projects()?.len(), 3);
         assert_eq!(repository.assets_for_project(1)?.len(), 6);
         Ok(())
@@ -1060,7 +1388,7 @@ mod tests {
             error,
             Some(StorageError::UnsupportedSchema {
                 found: 99,
-                supported: 2
+                supported: 5
             })
         ));
         Ok(())
@@ -1165,7 +1493,7 @@ mod tests {
         connection.execute_batch(include_str!("../migrations/seed.sql"))?;
         connection.pragma_update(None, "user_version", 1)?;
         let repository = Repository::from_connection(connection, None)?;
-        assert_eq!(repository.schema_version()?, 2);
+        assert_eq!(repository.schema_version()?, 5);
         assert_eq!(repository.relationships_for_project(1)?.len(), 4);
         let cross_project: i64 = repository.connection.query_row(
             "SELECT COUNT(*) FROM relationships r
@@ -1216,6 +1544,113 @@ mod tests {
     }
 
     #[test]
+    fn creates_updates_and_archives_server_records() -> Result<(), StorageError> {
+        let path = temporary_path("servers", "db");
+        let id = {
+            let mut repository = Repository::open(path.clone())?;
+            repository.save_server(
+                None,
+                &ServerDraft {
+                    tags: vec!["production".into(), "api".into()],
+                    ip_address: "203.0.113.10".into(),
+                    ports: "443, 22, 443".into(),
+                },
+            )?
+        };
+        let mut repository = Repository::open(path.clone())?;
+        assert_eq!(repository.projects()?.len(), 3);
+        assert_eq!(repository.server_records()?[0].ports, "443, 22");
+        repository.save_server(
+            Some(id),
+            &ServerDraft {
+                tags: vec!["primary".into(), "api".into()],
+                ip_address: "2001:db8::10".into(),
+                ports: "443".into(),
+            },
+        )?;
+        assert_eq!(repository.server_records()?[0].tags, vec!["primary", "api"]);
+        repository.archive_server(id)?;
+        assert!(repository.server_records()?.is_empty());
+        drop(repository);
+        let _ = fs::remove_file(path);
+        Ok(())
+    }
+
+    #[test]
+    fn imports_mapped_rows_and_custom_columns_atomically() -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        let data = TabularData {
+            headers: vec![
+                "Labels".into(),
+                "Host".into(),
+                "Open ports".into(),
+                "Owner".into(),
+            ],
+            rows: vec![
+                vec![
+                    "production, api".into(),
+                    "203.0.113.10".into(),
+                    "443, 22".into(),
+                    "Platform".into(),
+                ],
+                vec![
+                    "database".into(),
+                    "2001:db8::20".into(),
+                    "5432".into(),
+                    "Data".into(),
+                ],
+            ],
+        };
+        let mappings = [
+            ServerImportTarget::Tags,
+            ServerImportTarget::IpAddress,
+            ServerImportTarget::Ports,
+            ServerImportTarget::NewCustom("Owner".into()),
+        ];
+        assert_eq!(repository.import_servers(&data, &mappings)?, 2);
+        assert_eq!(repository.server_columns()?[0].name, "Owner");
+        let records = repository.server_records()?;
+        assert_eq!(records[0].tags, ["production", "api"]);
+        assert_eq!(records[0].ports, "443, 22");
+        assert_eq!(records[0].custom_values, ["Platform"]);
+
+        let invalid = TabularData {
+            headers: vec!["IP".into(), "Ports".into(), "Region".into()],
+            rows: vec![vec!["not-an-ip".into(), "443".into(), "west".into()]],
+        };
+        let invalid_mappings = [
+            ServerImportTarget::IpAddress,
+            ServerImportTarget::Ports,
+            ServerImportTarget::NewCustom("Region".into()),
+        ];
+        assert!(matches!(
+            repository.import_servers(&invalid, &invalid_mappings),
+            Err(StorageError::InvalidImport(message)) if message.starts_with("Row 2:")
+        ));
+        assert_eq!(repository.server_records()?.len(), 2);
+        assert_eq!(repository.server_columns()?.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn migrates_schema_three_purpose_into_tags() -> Result<(), StorageError> {
+        let connection = Connection::open_in_memory()?;
+        connection.execute_batch(include_str!("../migrations/001_initial.sql"))?;
+        connection.execute_batch(include_str!("../migrations/002_relationship_lifecycle.sql"))?;
+        connection.execute_batch(include_str!("../migrations/003_server_records.sql"))?;
+        connection.execute(
+            "INSERT INTO server_records (purpose, ip_address, ports) VALUES (?1, ?2, ?3)",
+            params!["Legacy API", "203.0.113.20", "443"],
+        )?;
+        connection.pragma_update(None, "user_version", 3)?;
+
+        let repository = Repository::from_connection(connection, None)?;
+        assert_eq!(repository.schema_version()?, 5);
+        assert_eq!(repository.server_records()?[0].tags, vec!["Legacy API"]);
+        Ok(())
+    }
+
+    #[test]
     fn invalid_json_import_preserves_existing_workspace() -> Result<(), StorageError> {
         let mut repository = Repository::in_memory()?;
         let path = temporary_path("invalid-workspace", "json");
@@ -1224,7 +1659,7 @@ mod tests {
             r#"{"format_version":99,"projects":[],"assets":[],"relationships":[]}"#,
         )
         .map_err(|source| StorageError::FileOperation {
-            operation: "写入测试文件",
+            operation: "write test file",
             path: path.clone(),
             source,
         })?;
@@ -1244,7 +1679,7 @@ mod tests {
     fn database_backup_restores_previous_state() -> Result<(), StorageError> {
         let directory = temporary_path("restore", "data");
         fs::create_dir_all(&directory).map_err(|source| StorageError::FileOperation {
-            operation: "创建测试目录",
+            operation: "create test directory",
             path: directory.clone(),
             source,
         })?;

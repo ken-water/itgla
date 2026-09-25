@@ -8,7 +8,7 @@ async function api(path, options = {}) {
   });
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(body.message || "请求失败，请稍后重试。");
+    const error = new Error(body.message || "The request failed. Try again.");
     error.status = response.status;
     throw error;
   }
@@ -22,11 +22,11 @@ function escapeHtml(value) {
 }
 
 function formatNumber(value) {
-  return Number(value || 0).toLocaleString("zh-CN");
+  return Number(value || 0).toLocaleString("en-US");
 }
 
 function formatTime(value) {
-  return value ? new Date(value).toLocaleString("zh-CN", { hour12: false }) : "暂无";
+  return value ? new Date(value).toLocaleString("en-US", { hour12: false }) : "None";
 }
 
 function empty(message) {
@@ -34,25 +34,25 @@ function empty(message) {
 }
 
 function table(rows, columns) {
-  if (!rows.length) return empty("当前周期暂无数据。");
+  if (!rows.length) return empty("No data for this period.");
   return `<table><thead><tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map(([, key, formatter, className]) => `<td class="${className || ""}">${escapeHtml(formatter ? formatter(row[key]) : row[key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
 function renderMetrics(overview) {
   const items = [
-    ["页面浏览（PV）", overview.page_views],
-    ["独立访客（UV）", overview.unique_visitors],
-    ["安装包下载", overview.downloads],
-    ["页面错误", overview.errors],
+    ["Page views (PV)", overview.page_views],
+    ["Unique visitors (UV)", overview.unique_visitors],
+    ["Package downloads", overview.downloads],
+    ["Page errors", overview.errors],
   ];
   element("metrics").innerHTML = items.map(([label, value]) => `<article class="metric"><span>${label}</span><strong>${formatNumber(value)}</strong></article>`).join("");
-  element("freshness").textContent = overview.latest_event_at ? `最新数据：${formatTime(overview.latest_event_at)}` : "当前还没有访问记录";
+  element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
 }
 
 function renderTrend(rows) {
   const container = element("trend");
   if (!rows.length) {
-    container.innerHTML = empty("访问产生后，这里会显示每日 PV 与 UV 趋势。");
+    container.innerHTML = empty("Daily PV and UV will appear after traffic is recorded.");
     return;
   }
   const width = 760;
@@ -68,19 +68,19 @@ function renderTrend(rows) {
     if (index % interval !== 0 && index !== rows.length - 1) return "";
     return `<text class="chart-label" text-anchor="middle" x="${x(index)}" y="${height - 7}">${escapeHtml(String(row.day).slice(5))}</text>`;
   }).join("");
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="每日页面浏览和独立访客折线图">${grids}<polyline class="chart-pv" points="${points("page_views")}"></polyline><polyline class="chart-uv" points="${points("unique_visitors")}"></polyline>${labels}</svg>`;
+  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Daily page views and unique visitors">${grids}<polyline class="chart-pv" points="${points("page_views")}"></polyline><polyline class="chart-uv" points="${points("unique_visitors")}"></polyline>${labels}</svg>`;
 }
 
 function renderPages(rows) {
   element("pages").innerHTML = table(rows, [
-    ["页面", "path"], ["PV", "page_views", formatNumber, "numeric"], ["UV", "unique_visitors", formatNumber, "numeric"],
+    ["Page", "path"], ["PV", "page_views", formatNumber, "numeric"], ["UV", "unique_visitors", formatNumber, "numeric"],
   ]);
 }
 
 function renderEvents(rows) {
-  const names = { page_view: "页面浏览", download: "下载", page_error: "页面错误" };
+  const names = { page_view: "Page view", download: "Download", page_error: "Page error" };
   element("events").innerHTML = table(rows, [
-    ["时间", "occurred_at", formatTime], ["类型", "event_name", (value) => names[value] || value], ["路径", "path"], ["状态", "status_code", formatNumber, "numeric"], ["来源", "referrer", (value) => value && value !== "-" ? value : "直接访问"],
+    ["Time", "occurred_at", formatTime], ["Type", "event_name", (value) => names[value] || value], ["Path", "path"], ["Status", "status_code", formatNumber, "numeric"], ["Source", "referrer", (value) => value && value !== "-" ? value : "Direct"],
   ]);
 }
 

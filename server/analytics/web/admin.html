@@ -1,65 +1,65 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>ITGLA 访问统计</title>
+    <title>ITGLA Site Analytics</title>
     <link rel="stylesheet" href="/admin/admin.css" />
     <script src="/admin/admin.js" defer></script>
   </head>
   <body>
-    <a class="skip-link" href="#main">跳到主要内容</a>
+    <a class="skip-link" href="#main">Skip to main content</a>
     <main id="main" class="shell">
       <section id="login" class="login-panel" aria-labelledby="login-title">
-        <a class="brand" href="/" aria-label="返回 ITGLA 官网"><span class="brand-mark">I</span><span>ITGLA</span></a>
-        <p class="eyebrow">管理员专用</p>
-        <h1 id="login-title">访问统计</h1>
-        <p class="login-copy">查看官网流量、下载与异常请求。</p>
+        <a class="brand" href="/" aria-label="Back to ITGLA"><span class="brand-mark">I</span><span>ITGLA</span></a>
+        <p class="eyebrow">Administrator access</p>
+        <h1 id="login-title">Site analytics</h1>
+        <p class="login-copy">Review website traffic, downloads, and failed requests.</p>
         <form id="login-form">
-          <label for="username">用户名</label>
+          <label for="username">Username</label>
           <input id="username" name="username" autocomplete="username" required />
-          <label for="password">密码</label>
+          <label for="password">Password</label>
           <input id="password" name="password" type="password" autocomplete="current-password" required />
           <p id="login-error" class="form-error" role="alert"></p>
-          <button id="login-button" type="submit">登录</button>
+          <button id="login-button" type="submit">Sign in</button>
         </form>
       </section>
 
       <section id="dashboard" hidden>
         <header class="page-header">
           <div>
-            <a class="brand" href="/" aria-label="返回 ITGLA 官网"><span class="brand-mark">I</span><span>ITGLA</span></a>
-            <p class="eyebrow">服务器端访问统计</p>
-            <h1>站点概览</h1>
-            <p id="freshness" class="muted">正在读取最新数据...</p>
+            <a class="brand" href="/" aria-label="Back to ITGLA"><span class="brand-mark">I</span><span>ITGLA</span></a>
+            <p class="eyebrow">Server-side analytics</p>
+            <h1>Site overview</h1>
+            <p id="freshness" class="muted">Loading current data...</p>
           </div>
           <div class="toolbar">
-            <label for="days">统计周期</label>
+            <label for="days">Reporting period</label>
             <select id="days">
-              <option value="7">最近 7 天</option>
-              <option value="30" selected>最近 30 天</option>
-              <option value="90">最近 90 天</option>
-              <option value="365">最近 365 天</option>
+              <option value="7">Last 7 days</option>
+              <option value="30" selected>Last 30 days</option>
+              <option value="90">Last 90 days</option>
+              <option value="365">Last 365 days</option>
             </select>
-            <button id="refresh" class="button-secondary" type="button">刷新</button>
-            <button id="logout" class="button-secondary" type="button">退出</button>
+            <button id="refresh" class="button-secondary" type="button">Refresh</button>
+            <button id="logout" class="button-secondary" type="button">Sign out</button>
           </div>
         </header>
 
         <p id="dashboard-error" class="notice notice-error" role="alert" hidden></p>
-        <section id="metrics" class="metrics" aria-label="核心指标"></section>
+        <section id="metrics" class="metrics" aria-label="Key metrics"></section>
         <section class="content-grid">
           <article class="panel panel-wide">
-            <div class="panel-heading"><div><p class="eyebrow">趋势</p><h2>每日访问</h2></div><div class="legend"><span><i class="pv"></i>PV</span><span><i class="uv"></i>UV</span></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Trend</p><h2>Daily traffic</h2></div><div class="legend"><span><i class="pv"></i>PV</span><span><i class="uv"></i>UV</span></div></div>
             <div id="trend" class="chart" aria-live="polite"></div>
           </article>
           <article class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">内容</p><h2>热门页面</h2></div></div>
+            <div class="panel-heading"><div><p class="eyebrow">Content</p><h2>Top pages</h2></div></div>
             <div id="pages" class="table-wrap"></div>
           </article>
         </section>
         <article class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">明细</p><h2>最近事件</h2></div><p class="muted">不保存原始 IP 地址</p></div>
+          <div class="panel-heading"><div><p class="eyebrow">Details</p><h2>Recent events</h2></div><p class="muted">Raw IP addresses are not stored</p></div>
           <div id="events" class="table-wrap"></div>
         </article>
       </section>
