@@ -20,6 +20,7 @@ struct TableState {
     query: String,
     tag: String,
     sort_mode: usize,
+    show_hidden: bool,
 }
 
 #[derive(Default)]
@@ -129,31 +130,18 @@ fn first_port(value: &str) -> u16 {
         .unwrap_or(u16::MAX)
 }
 
-fn sort_options(columns: &[ServerColumn]) -> Vec<SharedString> {
-    let mut options = vec![
-        "Tags: A to Z".into(),
-        "Tags: Z to A".into(),
-        "IP address: ascending".into(),
-        "IP address: descending".into(),
-        "Ports: low to high".into(),
-        "Ports: high to low".into(),
-        "Recently added".into(),
-        "Oldest first".into(),
-    ];
-    for column in columns {
-        options.push(format!("{}: A to Z", column.name).into());
-        options.push(format!("{}: Z to A", column.name).into());
-    }
-    options
-}
-
 fn refresh(
     window: &AppWindow,
     repository: &Repository,
     state: &TableState,
 ) -> Result<(), StorageError> {
     let columns = repository.server_columns()?;
-    let mut records = repository.server_records()?;
+    let hidden_records = repository.hidden_server_records()?;
+    let mut records = if state.show_hidden {
+        hidden_records.clone()
+    } else {
+        repository.server_records()?
+    };
     let mut tags = records
         .iter()
         .flat_map(|server| server.tags.iter().cloned())
@@ -168,6 +156,7 @@ fn refresh(
         .collect::<Vec<_>>();
 
     window.set_server_count(rows.len() as i32);
+    window.set_hidden_count(hidden_records.len() as i32);
     window.set_servers(ModelRc::new(VecModel::from(rows)));
     window.set_available_tags(ModelRc::new(VecModel::from(
         tags.into_iter().map(SharedString::from).collect::<Vec<_>>(),
@@ -179,7 +168,6 @@ fn refresh(
             .collect::<Vec<_>>(),
     )));
     window.set_custom_column_count(columns.len() as i32);
-    window.set_sort_options(ModelRc::new(VecModel::from(sort_options(&columns))));
     Ok(())
 }
 
@@ -304,9 +292,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak = window.as_weak();
     let callback_repository = Rc::clone(&repository);
     let callback_state = Rc::clone(&table_state);
-    window.on_sort_mode_selected(move |index| {
+    window.on_sort_selected(move |index| {
         let Some(window) = weak.upgrade() else { return };
         callback_state.borrow_mut().sort_mode = index.max(0) as usize;
+        if let Err(error) = refresh(
+            &window,
+            &callback_repository.borrow(),
+            &callback_state.borrow(),
+        ) {
+            show_error(&window, &error);
+        }
+    });
+
+    let weak = window.as_weak();
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    window.on_show_hidden_changed(move |show_hidden| {
+        let Some(window) = weak.upgrade() else { return };
+        callback_state.borrow_mut().show_hidden = show_hidden;
+        window.set_show_hidden(show_hidden);
+        window.set_active_tag(SharedString::new());
+        callback_state.borrow_mut().tag.clear();
+        clear_editor(&window);
         if let Err(error) = refresh(
             &window,
             &callback_repository.borrow(),
@@ -328,7 +335,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         };
         let id = (id > 0).then_some(i64::from(id));
         match callback_repository.borrow_mut().save_server(id, &draft) {
-            Ok(_) => {
+            Ok(saved_id) => {
                 if let Err(error) = refresh(
                     &window,
                     &callback_repository.borrow(),
@@ -337,7 +344,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     show_error(&window, &error);
                     return;
                 }
-                clear_editor(&window);
+                window.set_editing_id(i32::try_from(saved_id).unwrap_or(i32::MAX));
                 show_status(&window, "Server saved");
             }
             Err(error) => show_error(&window, &error),
@@ -347,11 +354,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak = window.as_weak();
     let callback_repository = Rc::clone(&repository);
     let callback_state = Rc::clone(&table_state);
-    window.on_archive_server(move |id| {
+    window.on_hide_server(move |id| {
         let Some(window) = weak.upgrade() else { return };
-        match callback_repository.borrow().archive_server(i64::from(id)) {
+        match callback_repository.borrow().hide_server(i64::from(id)) {
             Ok(()) => {
-                window.set_archive_target_id(0);
+                window.set_hide_target_id(0);
                 clear_editor(&window);
                 if let Err(error) = refresh(
                     &window,
@@ -361,19 +368,48 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     show_error(&window, &error);
                     return;
                 }
-                show_status(&window, "Server archived");
+                show_status(&window, "Server hidden");
             }
             Err(error) => show_error(&window, &error),
         }
     });
 
     let weak = window.as_weak();
-    window.on_copy_value(move |value, label| {
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    window.on_restore_server(move |id| {
+        let Some(window) = weak.upgrade() else { return };
+        match callback_repository.borrow().restore_server(i64::from(id)) {
+            Ok(()) => {
+                if let Err(error) = refresh(
+                    &window,
+                    &callback_repository.borrow(),
+                    &callback_state.borrow(),
+                ) {
+                    show_error(&window, &error);
+                    return;
+                }
+                show_status(&window, "Server restored");
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_copy_value(move |value, _label| {
         let Some(window) = weak.upgrade() else { return };
         match arboard::Clipboard::new()
             .and_then(|mut clipboard| clipboard.set_text(value.to_string()))
         {
-            Ok(()) => show_status(&window, &format!("{label} copied")),
+            Ok(()) => {
+                window.set_copy_notice("Copied".into());
+                let weak = window.as_weak();
+                slint::Timer::single_shot(std::time::Duration::from_millis(1_600), move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.set_copy_notice(SharedString::new());
+                    }
+                });
+            }
             Err(error) => show_error(&window, &error),
         }
     });
@@ -524,7 +560,8 @@ mod tests {
             &TableState {
                 query: "platform".into(),
                 tag: "PRODUCTION".into(),
-                sort_mode: 0
+                sort_mode: 0,
+                show_hidden: false,
             }
         ));
         assert!(!matches_filters(
@@ -532,7 +569,8 @@ mod tests {
             &TableState {
                 query: "443".into(),
                 tag: "database".into(),
-                sort_mode: 0
+                sort_mode: 0,
+                show_hidden: false,
             }
         ));
     }

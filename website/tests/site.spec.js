@@ -18,7 +18,7 @@ for (const viewport of viewports) {
 
     await expect(page.getByRole("heading", { name: "ITGLA", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Download Windows portable" })).toBeVisible();
-    await expect(page.getByText("Current stable download: v0.1.1", { exact: false })).toBeVisible();
+    await expect(page.getByText("Current stable download: v0.2.0", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Copy exactly" })).toBeVisible();
@@ -35,16 +35,16 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.1.1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.0" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Download ZIP" })).toHaveAttribute(
     "href",
-    "/downloads/v0.1.1/itgla-v0.1.1-windows-x86_64.zip",
+    "/downloads/v0.2.0/itgla-v0.2.0-windows-x86_64.zip",
   );
 
   for (const path of [
-    "/downloads/v0.1.1/itgla-v0.1.1-windows-x86_64.zip",
-    "/downloads/v0.1.1/itgla-v0.1.1-linux-x86_64.tar.gz",
-    "/downloads/v0.1.1/SHA256SUMS",
+    "/downloads/v0.2.0/itgla-v0.2.0-windows-x86_64.zip",
+    "/downloads/v0.2.0/itgla-v0.2.0-linux-x86_64.tar.gz",
+    "/downloads/v0.2.0/SHA256SUMS",
   ]) {
     const response = await request.get(path);
     expect(response.ok()).toBeTruthy();
@@ -55,9 +55,24 @@ test("download page exposes current verified artifacts", async ({ page, request 
 });
 
 test("secondary documents render", async ({ page }) => {
-  for (const path of ["/privacy.html", "/legal.html", "/feedback.html"]) {
+  for (const path of ["/privacy.html", "/legal.html", "/refund.html", "/cookies.html", "/feedback.html"]) {
     const response = await page.goto(path);
     expect(response?.ok()).toBeTruthy();
     await expect(page.locator("h1")).toBeVisible();
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
   }
+});
+
+test("compliance disclosures match current behavior", async ({ page }) => {
+  await page.goto("/privacy.html");
+  await expect(page.getByRole("heading", { name: "Privacy Policy" })).toBeVisible();
+  await expect(page.getByText("no account system, cloud sync", { exact: false })).toBeVisible();
+
+  await page.goto("/refund.html");
+  await expect(page.getByText("does not accept payments", { exact: false })).toBeVisible();
+
+  await page.goto("/cookies.html");
+  await expect(page.getByText("itgla_admin_session", { exact: true })).toBeVisible();
+  await expect(page.getByText("do not set analytics, advertising", { exact: false })).toBeVisible();
 });

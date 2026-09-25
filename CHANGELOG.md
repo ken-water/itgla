@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## [0.2.0] - 2026-09-25
+
 ### Added
 
 - Dense server inventory with multi-tag filtering and per-cell copy actions.
@@ -13,6 +15,20 @@
 
 - The current desktop experience focuses on server tags, IP addresses, ports, and imported tabular data.
 - Existing schema-v3 purpose values migrate into tags without deleting legacy records.
+- Table cells now copy on click with a compact confirmation notice instead of a full Copy button.
+- Sorting now lives in each sortable column header with ascending and descending arrows.
+- Saving keeps the current server open, and reversible Hide/Restore replaces the server-facing Archive action.
+
+### Privacy and website
+
+- Added complete English Privacy, Terms of Use, Refund, and Cookie policies.
+- Clarified that the public website sets no non-essential cookies and that the protected administrator session cookie expires after eight hours.
+
+### Compatibility
+
+- Existing databases migrate sequentially through schema v5 without deleting legacy tables or records.
+- Releases that only support older schemas fail closed when opening a schema-v5 database; back up `itgla.db` before rolling back.
+- Windows packages remain unsigned and may trigger Microsoft Defender SmartScreen.
 
 All notable changes to ITGLA are documented here. Versions follow Semantic Versioning.
 
@@ -154,3 +170,4 @@ All notable changes to ITGLA are documented here. Versions follow Semantic Versi
 [0.0.5]: https://github.com/ken-water/itgla/releases/tag/v0.0.5
 [0.1.0]: https://github.com/ken-water/itgla/releases/tag/v0.1.0
 [0.1.1]: https://github.com/ken-water/itgla/releases/tag/v0.1.1
+[0.2.0]: https://github.com/ken-water/itgla/releases/tag/v0.2.0

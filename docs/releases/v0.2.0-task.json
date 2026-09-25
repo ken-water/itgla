@@ -1,0 +1,75 @@
+{
+  "version": "1.0",
+  "id": "itgla-v0.2.0-release",
+  "task_class": "release",
+  "objective": "Publish verified Windows and Linux v0.2.0 packages and deploy the matching English website with complete privacy, terms, refund, and cookie disclosures.",
+  "scope": {
+    "include": [
+      "Desktop v0.2.0 versioning and release artifacts",
+      "English public website and compliance pages",
+      "GitHub main branch, v0.2.0 tag, and immutable release",
+      "Production deployment to itgla.com",
+      "Production health, download, analytics, and isolation checks"
+    ],
+    "exclude": [
+      "DNS changes",
+      "Production credential changes",
+      "Database or Redis changes",
+      "Payment enablement",
+      "Other domains and virtual hosts"
+    ]
+  },
+  "current_stage": "IMPLEMENT",
+  "stop_stage": "RELEASE",
+  "target_environment": "production",
+  "risk_flags": [
+    "authentication",
+    "public_endpoint",
+    "user_input",
+    "personal_data",
+    "production_data",
+    "production_release"
+  ],
+  "requested_actions": [
+    "local_read",
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence",
+    "deploy_production"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_read",
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence",
+      "deploy_production"
+    ]
+  },
+  "required_gates": [
+    "lint",
+    "typecheck",
+    "tests",
+    "build",
+    "smoke",
+    "approval",
+    "rollback_plan",
+    "observability_ready",
+    "security_review",
+    "authentication_review",
+    "rate_limit_abuse",
+    "input_browser_security",
+    "privacy_data_lifecycle",
+    "audit_logging",
+    "backup_recovery",
+    "incident_readiness"
+  ],
+  "metadata": {
+    "owner": "ken-water",
+    "release": "v0.2.0",
+    "production_url": "https://itgla.com",
+    "rollback_target": "/var/www/itgla-site/current before deployment"
+  }
+}

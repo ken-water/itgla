@@ -2,7 +2,7 @@
 
 ITGLA is a local-first desktop inventory for keeping server details easy to find and copy.
 
-Current version: `0.1.1`
+Current version: `0.2.0`
 
 ## Run
 
@@ -30,13 +30,13 @@ The script writes the versioned archive and SHA-256 checksum to `dist/`. See [do
 ## Current capabilities
 
 - Dense server table with tags, IP addresses, ports, and custom columns
-- Independent copy action for every cell
+- Click any cell to copy its value, with a compact confirmation notice
 - Tag filters and search across every visible field
-- Alphabetical, IP, port, date-added, and custom-column sorting
+- Sortable Tags, IP, Ports, and custom-column headers
 - Excel, OpenDocument, CSV, and TSV import with per-column mapping
 - Transactional imports with bounded files, rows, columns, and values
 - Versioned SQLite persistence under the platform user-data directory
-- Server creation, editing, and confirmation-gated archival
+- Server creation, editing, reversible hiding, and restoration
 
 All server data remains local. Cloud sync, authentication, billing, monitoring integrations, and destructive infrastructure actions are not enabled.
 

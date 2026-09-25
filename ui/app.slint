@@ -7,24 +7,32 @@ component DataCell inherits Rectangle {
     in property <string> value;
     in property <string> copy-label;
     callback copy(string, string);
-    background: transparent;
+    background: cell-touch.has-hover ? #f3f8f6 : transparent;
     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #edf0ef; }
-    Text { x: 8px; y: 0; width: parent.width - 58px; height: parent.height; text: root.value; color: #27312d; font-size: 11px; vertical-alignment: center; overflow: elide; }
-    Button { x: parent.width - 50px; y: 6px; width: 44px; height: 28px; text: "Copy"; clicked => { root.copy(root.value, root.copy-label); } }
+    Text { x: 8px; y: 0; width: parent.width - 36px; height: parent.height; text: root.value; color: #27312d; font-size: 11px; vertical-alignment: center; overflow: elide; }
+    Text { x: parent.width - 27px; y: 0; width: 18px; height: parent.height; text: "⧉"; color: #61706a; font-size: 15px; vertical-alignment: center; horizontal-alignment: center; }
+    cell-touch := TouchArea { clicked => { root.copy(root.value, root.copy-label); } }
 }
 
 component HeaderCell inherits Rectangle {
     in property <string> title;
+    in property <int> ascending-mode: -1;
+    in property <int> descending-mode: -1;
+    in property <int> current-mode: -1;
+    callback sort(int);
     background: #edf2ef;
     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #dce3e0; }
-    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: root.title; color: #61706a; font-size: 9px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    Text { x: 8px; width: parent.width - (root.ascending-mode >= 0 ? 36px : 16px); height: parent.height; text: root.title; color: #61706a; font-size: 9px; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    if root.ascending-mode >= 0: Text { x: parent.width - 28px; width: 20px; height: parent.height; text: root.current-mode == root.ascending-mode ? "↑" : root.current-mode == root.descending-mode ? "↓" : "↕"; color: root.current-mode == root.ascending-mode || root.current-mode == root.descending-mode ? #0f6b59 : #87928e; font-size: 13px; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; }
+    TouchArea { enabled: root.ascending-mode >= 0; clicked => { root.sort(root.current-mode == root.ascending-mode ? root.descending-mode : root.ascending-mode); } }
 }
 
 component ServerTableRow inherits Rectangle {
     in property <ServerRow> item;
     in property <[string]> custom-headers;
     in property <length> table-width;
-    callback edit; callback archive; callback copy(string, string);
+    in property <bool> hidden;
+    callback edit; callback hide; callback restore; callback copy(string, string);
     width: root.table-width; height: 40px; background: #ffffff;
     Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #e6ebe8; }
     HorizontalLayout {
@@ -35,8 +43,9 @@ component ServerTableRow inherits Rectangle {
         for value[index] in root.item.custom-values: DataCell { width: 160px; value: value; copy-label: root.custom-headers[index]; copy(cell-value, label) => { root.copy(cell-value, label); } }
         Rectangle {
             width: 116px; background: transparent;
-            Button { x: 5px; y: 6px; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
-            Button { x: 53px; y: 6px; width: 58px; height: 28px; text: "Archive"; clicked => { root.archive(); } }
+            if !root.hidden: Button { x: 5px; y: 6px; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
+            if !root.hidden: Button { x: 53px; y: 6px; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
+            if root.hidden: Button { x: 9px; y: 6px; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
         }
     }
 }
@@ -44,13 +53,15 @@ component ServerTableRow inherits Rectangle {
 component TableHeader inherits Rectangle {
     in property <[string]> custom-headers;
     in property <length> table-width;
+    in property <int> sort-mode-index;
+    callback sort(int);
     width: root.table-width; height: 32px; background: #edf2ef; border-width: 1px; border-color: #dce3e0;
     HorizontalLayout {
         spacing: 0px;
-        HeaderCell { width: 180px; title: "TAGS"; }
-        HeaderCell { width: 160px; title: "IP ADDRESS"; }
-        HeaderCell { width: 130px; title: "PORTS"; }
-        for header in root.custom-headers: HeaderCell { width: 160px; title: header; }
+        HeaderCell { width: 180px; title: "TAGS"; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } }
+        HeaderCell { width: 160px; title: "IP ADDRESS"; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } }
+        HeaderCell { width: 130px; title: "PORTS"; ascending-mode: 4; descending-mode: 5; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } }
+        for header[index] in root.custom-headers: HeaderCell { width: 160px; title: header; ascending-mode: 8 + index * 2; descending-mode: 9 + index * 2; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } }
         HeaderCell { width: 116px; title: "ACTIONS"; }
     }
 }
@@ -84,17 +95,19 @@ export component AppWindow inherits Window {
     in property <[string]> available-tags;
     in property <[string]> custom-headers;
     in property <int> custom-column-count;
-    in property <[string]> sort-options;
     in property <int> server-count;
+    in property <int> hidden-count;
     in-out property <string> active-tag;
     in-out property <int> sort-mode-index: 0;
+    in-out property <bool> show-hidden: false;
     in-out property <int> editing-id: 0;
     in-out property <string> editing-tags;
     in-out property <string> editing-ip-address;
     in-out property <string> editing-ports;
-    in-out property <int> archive-target-id: 0;
+    in-out property <int> hide-target-id: 0;
     in-out property <string> status-message;
     in-out property <bool> status-is-error: false;
+    in-out property <string> copy-notice;
     in-out property <bool> import-dialog-open: false;
     in-out property <string> import-file-path;
     in-out property <[ImportColumnRow]> import-columns;
@@ -105,9 +118,11 @@ export component AppWindow inherits Window {
     property <length> table-width: 586px + root.custom-column-count * 160px;
     callback search-changed(string);
     callback tag-selected(string);
-    callback sort-mode-selected(int);
+    callback sort-selected(int);
+    callback show-hidden-changed(bool);
     callback save-server(int, string, string, string);
-    callback archive-server(int);
+    callback hide-server(int);
+    callback restore-server(int);
     callback copy-value(string, string);
     callback choose-import-file;
     callback load-import(string);
@@ -125,25 +140,26 @@ export component AppWindow inherits Window {
 
     Rectangle {
         x: 28px; y: 84px; width: parent.width - 412px; height: parent.height - 108px; background: transparent;
-        Text { x: 0; y: 0; text: root.active-tag == "" ? "All servers" : "Servers tagged " + root.active-tag; color: #17201d; font-size: 20px; font-weight: 700; }
-        LineEdit { x: 0; y: 38px; width: parent.width - 214px; height: 34px; placeholder-text: "Search any cell"; edited(value) => { root.search-changed(value); } }
-        sort-box := ComboBox { x: parent.width - 204px; y: 38px; width: 204px; height: 34px; model: root.sort-options; current-index <=> root.sort-mode-index; selected(value) => { root.sort-mode-selected(sort-box.current-index); } }
+        Text { x: 0; y: 0; text: root.show-hidden ? "Hidden servers" : root.active-tag == "" ? "All servers" : "Servers tagged " + root.active-tag; color: #17201d; font-size: 20px; font-weight: 700; }
+        Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: root.show-hidden ? "Back to active" : "Hidden (" + root.hidden-count + ")"; clicked => { root.show-hidden-changed(!root.show-hidden); } }
+        LineEdit { x: 0; y: 38px; width: parent.width; height: 34px; placeholder-text: "Search any cell"; edited(value) => { root.search-changed(value); } }
         Rectangle {
             x: 0; y: 84px; width: parent.width; height: parent.height - 84px; background: #ffffff; border-width: 1px; border-color: #dce3e0;
             ScrollView {
                 x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
                 VerticalLayout {
                     width: root.table-width; spacing: 0px;
-                    TableHeader { custom-headers: root.custom-headers; table-width: root.table-width; }
+                    TableHeader { custom-headers: root.custom-headers; table-width: root.table-width; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } }
                     for server in root.servers: ServerTableRow {
-                        item: server; custom-headers: root.custom-headers; table-width: root.table-width;
+                        item: server; custom-headers: root.custom-headers; table-width: root.table-width; hidden: root.show-hidden;
                         edit => { root.editing-id = server.id; root.editing-tags = server.tags; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.status-message = ""; }
-                        archive => { root.archive-target-id = server.id; }
+                        hide => { root.hide-target-id = server.id; }
+                        restore => { root.restore-server(server.id); }
                         copy(value, label) => { root.copy-value(value, label); }
                     }
                 }
             }
-            if root.server-count == 0: Text { y: 94px; width: parent.width; text: "No servers match the current filters."; color: #77817d; font-size: 11px; horizontal-alignment: center; }
+            if root.server-count == 0: Text { y: 94px; width: parent.width; text: root.show-hidden ? "No hidden servers." : "No servers match the current filters."; color: #77817d; font-size: 11px; horizontal-alignment: center; }
         }
     }
 
@@ -172,15 +188,20 @@ export component AppWindow inherits Window {
         }
     }
 
-    if root.archive-target-id != 0: Rectangle {
+    if root.hide-target-id != 0: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
         Rectangle {
             x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: #ffffff; border-radius: 6px;
-            Text { x: 24px; y: 24px; text: "Archive this server?"; color: #17201d; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 64px; width: 332px; text: "It will be hidden from the inventory. The record remains in your local database."; color: #65706c; font-size: 11px; wrap: word-wrap; }
-            Button { x: 172px; y: 146px; width: 84px; height: 36px; text: "Cancel"; clicked => { root.archive-target-id = 0; } }
-            Button { x: 268px; y: 146px; width: 88px; height: 36px; text: "Archive"; clicked => { root.archive-server(root.archive-target-id); } }
+            Text { x: 24px; y: 24px; text: "Hide this server?"; color: #17201d; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 64px; width: 332px; text: "It will move to Hidden servers and can be restored at any time."; color: #65706c; font-size: 11px; wrap: word-wrap; }
+            Button { x: 172px; y: 146px; width: 84px; height: 36px; text: "Cancel"; clicked => { root.hide-target-id = 0; } }
+            Button { x: 268px; y: 146px; width: 88px; height: 36px; text: "Hide"; clicked => { root.hide-server(root.hide-target-id); } }
         }
+    }
+
+    if root.copy-notice != "": Rectangle {
+        x: (parent.width - 112px) / 2; y: parent.height - 54px; width: 112px; height: 34px; background: #173f37; border-radius: 4px;
+        Text { width: parent.width; height: parent.height; text: root.copy-notice; color: #ffffff; font-size: 11px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; }
     }
 
     if root.import-dialog-open: Rectangle {

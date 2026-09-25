@@ -1,0 +1,23 @@
+{
+  "version": "1.0",
+  "task_id": "itgla-v0.2.0-release",
+  "target_version": "v0.2.0",
+  "gates": {
+    "lint": {"status": "pass", "evidence": ["cargo clippy --workspace --all-targets --all-features --locked -- -D warnings", "git diff --check"]},
+    "typecheck": {"status": "pass", "evidence": ["cargo check --workspace --all-features --offline", "cargo check --target x86_64-pc-windows-gnu --locked"]},
+    "tests": {"status": "pass", "evidence": ["22 Rust tests passed", "9 Playwright website/admin tests passed", "6 analytics unit tests passed"]},
+    "build": {"status": "pass", "evidence": ["Locked optimized Windows and Linux package builds", "ZIP and tar integrity passed", "Artifact SHA-256 values recorded in docs/releases/v0.2.0.md"]},
+    "smoke": {"status": "pass", "evidence": ["Desktop rendered nonblank at 1200x800", "Policy pages rendered at 390x844 and 1440x900 with zero overflow", "Public-page browser context contained zero cookies"]},
+    "approval": {"status": "pass", "evidence": ["User explicitly requested Windows/Linux packages and publication with the new English website"]},
+    "rollback_plan": {"status": "pass", "evidence": ["Atomic site release switch and rollback triggers documented in docs/releases/v0.2.0.md"]},
+    "observability_ready": {"status": "pass", "evidence": ["Dedicated server-log analytics, protected admin dashboard, health endpoint, and isolated Nginx log are already operational"]},
+    "security_review": {"status": "pass", "evidence": ["No secrets in source diff or artifacts; TLS/security-header and service-isolation configuration reviewed"]},
+    "authentication_review": {"status": "pass", "evidence": ["Unauthenticated analytics API test passed; session cookie is Secure, HttpOnly, SameSite=Strict, /admin-scoped, and eight-hour bounded"]},
+    "rate_limit_abuse": {"status": "pass", "evidence": ["Administrator login is limited to 10 attempts per network address per 15 minutes; public site has no state-changing endpoint"]},
+    "input_browser_security": {"status": "pass", "evidence": ["Admin CSP and same-origin POST checks reviewed; desktop imports enforce file, row, column, and value limits"]},
+    "privacy_data_lifecycle": {"status": "pass", "evidence": ["Privacy and Cookie policies match server implementation; 14-day raw log, 365-day event, and eight-hour session retention documented"]},
+    "audit_logging": {"status": "pass", "evidence": ["Dedicated ITGLA access log and minimized analytics event trail documented; admin paths excluded from collection"]},
+    "backup_recovery": {"status": "pass", "evidence": ["Existing production analytics backup baseline is validated; static-site rollback preserves the previous release; this release performs no production data migration"]},
+    "incident_readiness": {"status": "pass", "evidence": ["Health, download hash, policy, admin, Nginx error, and shared-host isolation checks plus rollback triggers documented"]}
+  }
+}

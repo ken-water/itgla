@@ -2,7 +2,7 @@
 
 ## Current release boundary
 
-ITGLA v0.1.1 is a local-first Slint desktop application. The public web component remains a static product/download site. A separate website-analytics service reads the dedicated ITGLA Nginx log and exposes a protected `/admin/` dashboard; it does not provide product sync or asset-management APIs.
+ITGLA v0.2.0 is a local-first Slint desktop application. The public web component remains a static product/download site. A separate website-analytics service reads the dedicated ITGLA Nginx log and exposes a protected `/admin/` dashboard; it does not provide product sync or asset-management APIs.
 
 The current-domain host is shared with VeloWrite and OpsProbe. PostgreSQL 16 is bound to loopback and contains separate `itgla_analytics` and `velowrite_analytics` databases. A Redis service used by OpsProbe is also bound to loopback. ITGLA does not connect to that Redis instance and must not use another product's database, role, analytics service, cache, filesystem, credentials, or application port.
 
@@ -15,8 +15,8 @@ The current-domain host is shared with VeloWrite and OpsProbe. PostgreSQL 16 is 
 - Dedicated log: `/var/log/itgla/nginx-access.log`; original IP addresses are converted to salted visitor hashes during ingestion and are not stored in PostgreSQL
 - Dedicated root-only secrets: `/etc/itgla/analytics.env`
 - `itgla.com` and `www.itgla.com`: static product/download site only
-- `app.itgla.com`: redirects to the website download page; no app service exists in v0.1.1
-- `api.itgla.com`: returns an explicit JSON 404; no hosted API exists in v0.1.1
+- `app.itgla.com`: redirects to the website download page; no app service exists in v0.2.0
+- `api.itgla.com`: returns an explicit JSON 404; no hosted API exists in v0.2.0
 - `/admin/` alone proxies to ITGLA analytics. No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
 - ITGLA intentionally has no Redis configuration: the single-instance dashboard keeps durable sessions in its isolated PostgreSQL database, so sharing OpsProbe's Redis would weaken isolation without providing an availability benefit.
 

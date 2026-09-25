@@ -221,11 +221,26 @@ impl Repository {
     }
 
     pub fn server_records(&self) -> Result<Vec<ServerRecord>, StorageError> {
+        self.server_records_by_visibility(false)
+    }
+
+    pub fn hidden_server_records(&self) -> Result<Vec<ServerRecord>, StorageError> {
+        self.server_records_by_visibility(true)
+    }
+
+    fn server_records_by_visibility(
+        &self,
+        hidden: bool,
+    ) -> Result<Vec<ServerRecord>, StorageError> {
         let columns = self.server_columns()?;
-        let mut statement = self.connection.prepare(
+        let records_sql = if hidden {
             "SELECT id, tags, ip_address, ports FROM server_records
-             WHERE archived_at IS NULL ORDER BY position, id",
-        )?;
+             WHERE archived_at IS NOT NULL ORDER BY position, id"
+        } else {
+            "SELECT id, tags, ip_address, ports FROM server_records
+             WHERE archived_at IS NULL ORDER BY position, id"
+        };
+        let mut statement = self.connection.prepare(records_sql)?;
         let rows = statement.query_map([], |row| {
             Ok(ServerRecord {
                 id: row.get(0)?,
@@ -243,10 +258,14 @@ impl Repository {
         })?;
         let mut records = rows.collect::<Result<Vec<_>, _>>()?;
         let mut values = HashMap::new();
-        let mut value_statement = self.connection.prepare(
+        let values_sql = if hidden {
             "SELECT v.server_id,v.column_id,v.value FROM server_custom_values v
-             JOIN server_records s ON s.id=v.server_id WHERE s.archived_at IS NULL",
-        )?;
+             JOIN server_records s ON s.id=v.server_id WHERE s.archived_at IS NOT NULL"
+        } else {
+            "SELECT v.server_id,v.column_id,v.value FROM server_custom_values v
+             JOIN server_records s ON s.id=v.server_id WHERE s.archived_at IS NULL"
+        };
+        let mut value_statement = self.connection.prepare(values_sql)?;
         let value_rows = value_statement.query_map([], |row| {
             Ok((
                 row.get::<_, i64>(0)?,
@@ -377,10 +396,19 @@ impl Repository {
         Ok(result)
     }
 
-    pub fn archive_server(&self, id: i64) -> Result<(), StorageError> {
+    pub fn hide_server(&self, id: i64) -> Result<(), StorageError> {
         self.connection.execute(
             "UPDATE server_records SET archived_at=CURRENT_TIMESTAMP,updated_at=CURRENT_TIMESTAMP
              WHERE id=?1 AND archived_at IS NULL",
+            [id],
+        )?;
+        Ok(())
+    }
+
+    pub fn restore_server(&self, id: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "UPDATE server_records SET archived_at=NULL,updated_at=CURRENT_TIMESTAMP
+             WHERE id=?1 AND archived_at IS NOT NULL",
             [id],
         )?;
         Ok(())
@@ -1544,7 +1572,7 @@ mod tests {
     }
 
     #[test]
-    fn creates_updates_and_archives_server_records() -> Result<(), StorageError> {
+    fn creates_updates_hides_and_restores_server_records() -> Result<(), StorageError> {
         let path = temporary_path("servers", "db");
         let id = {
             let mut repository = Repository::open(path.clone())?;
@@ -1569,8 +1597,12 @@ mod tests {
             },
         )?;
         assert_eq!(repository.server_records()?[0].tags, vec!["primary", "api"]);
-        repository.archive_server(id)?;
+        repository.hide_server(id)?;
         assert!(repository.server_records()?.is_empty());
+        assert_eq!(repository.hidden_server_records()?.len(), 1);
+        repository.restore_server(id)?;
+        assert_eq!(repository.server_records()?.len(), 1);
+        assert!(repository.hidden_server_records()?.is_empty());
         drop(repository);
         let _ = fs::remove_file(path);
         Ok(())
