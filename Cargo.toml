@@ -11,7 +11,7 @@ identifier = "com.itgla.desktop"
 publisher = "ITGLA"
 homepage = "https://itgla.com"
 description = "Local-first IT resource relationship manager"
-formats = ["wix", "deb", "appimage", "dmg"]
+formats = ["nsis", "deb", "appimage", "dmg"]
 icons = ["assets/itgla.png"]
 
 [dependencies]

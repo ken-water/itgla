@@ -36,9 +36,9 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.goto("/downloads.html");
 
   await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.2" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Download MSI" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Download installer" })).toHaveAttribute(
     "href",
-    "https://github.com/ken-water/itgla/releases/download/v0.2.2/itgla-v0.2.2-windows-x86_64.msi",
+    "https://github.com/ken-water/itgla/releases/download/v0.2.2/itgla-v0.2.2-windows-x86_64-setup.exe",
   );
 
   for (const name of ["Portable ZIP", "DEB", "RPM", "AppImage", "Download DMG", "Download SHA256SUMS"]) {

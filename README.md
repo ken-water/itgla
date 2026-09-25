@@ -16,7 +16,7 @@ The first build downloads and compiles Slint, so it takes longer than subsequent
 
 ## Packages
 
-Releases include a Windows x86_64 MSI installer and portable ZIP, Linux x86_64 DEB, RPM, and AppImage packages, and a macOS universal DMG. Windows and macOS artifacts are currently unsigned. Every artifact has a matching SHA-256 file and the release includes a combined `SHA256SUMS` manifest.
+Releases include a Windows x86_64 MSI installer and portable ZIP, Linux x86_64 DEB, RPM, and AppImage packages, and a macOS arm64 DMG. Windows and macOS artifacts are currently unsigned. Every artifact has a matching SHA-256 file and the release includes a combined `SHA256SUMS` manifest.
 
 Application data remains in the current user's local data directory.
 

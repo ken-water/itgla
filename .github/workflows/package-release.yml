@@ -17,18 +17,18 @@ jobs:
         uses: actions/checkout@v5
       - name: Run tests
         run: cargo test --all-features --locked
-      - name: Build MSI
+      - name: Build Windows installer
         shell: pwsh
         run: |
           cargo install cargo-packager --locked --version 0.11.8
-          cargo packager --release --formats wix --out-dir dist
-          $msi = Get-ChildItem dist -Filter *.msi | Select-Object -First 1
-          if (-not $msi) { throw "MSI was not produced" }
+          cargo packager --release --formats nsis --out-dir dist
+          $installer = Get-ChildItem dist -Filter *.exe | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
           $version = (cargo metadata --locked --no-deps --format-version 1 | ConvertFrom-Json).packages[0].version
-          Move-Item $msi.FullName "dist/itgla-v$version-windows-x86_64.msi"
+          Move-Item $installer.FullName "dist/itgla-v$version-windows-x86_64-setup.exe"
           cargo build --release --locked
           Compress-Archive -Path target/release/itgla.exe, README.md, CHANGELOG.md -DestinationPath "dist/itgla-v$version-windows-x86_64.zip"
-          Get-ChildItem dist -File | Where-Object { $_.Extension -in '.msi','.zip' } | ForEach-Object {
+          Get-ChildItem dist -File | Where-Object { $_.Name -like '*setup.exe' -or $_.Extension -eq '.zip' } | ForEach-Object {
             (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower() + "  " + $_.Name | Set-Content "$($_.FullName).sha256"
           }
       - name: Upload Windows packages

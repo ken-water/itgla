@@ -8,7 +8,7 @@
 
 - Added Overview, Traffic, Downloads, and Errors tabs to the protected analytics dashboard.
 - Each tab now presents focused core metrics, a trend chart, and the relevant data table.
-- Added Windows MSI, Linux DEB/RPM/AppImage, and macOS DMG release packages.
+- Added Windows installer, Linux DEB/RPM/AppImage, and macOS DMG release packages.
 
 ### Changed
 
