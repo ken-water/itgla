@@ -47,21 +47,62 @@
         </header>
 
         <p id="dashboard-error" class="notice notice-error" role="alert" hidden></p>
-        <section id="metrics" class="metrics" aria-label="Key metrics"></section>
-        <section class="content-grid">
-          <article class="panel panel-wide">
-            <div class="panel-heading"><div><p class="eyebrow">Trend</p><h2>Daily traffic</h2></div><div class="legend"><span><i class="pv"></i>PV</span><span><i class="uv"></i>UV</span></div></div>
-            <div id="trend" class="chart" aria-live="polite"></div>
-          </article>
+        <div class="tabs" role="tablist" aria-label="Analytics sections">
+          <button class="tab is-active" id="tab-overview" role="tab" aria-selected="true" aria-controls="panel-overview" type="button" data-tab="overview">Overview</button>
+          <button class="tab" id="tab-traffic" role="tab" aria-selected="false" aria-controls="panel-traffic" type="button" data-tab="traffic">Traffic</button>
+          <button class="tab" id="tab-downloads" role="tab" aria-selected="false" aria-controls="panel-downloads" type="button" data-tab="downloads">Downloads</button>
+          <button class="tab" id="tab-errors" role="tab" aria-selected="false" aria-controls="panel-errors" type="button" data-tab="errors">Errors</button>
+        </div>
+
+        <section class="tab-panel is-active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
+          <section id="overview-metrics" class="metrics" aria-label="Key metrics"></section>
+          <section class="content-grid">
+            <article class="panel panel-wide">
+              <div class="panel-heading"><div><p class="eyebrow">Trend</p><h2>Daily traffic</h2></div><div class="legend"><span><i class="pv"></i>PV</span><span><i class="uv"></i>UV</span></div></div>
+              <div id="overview-trend" class="chart" aria-live="polite"></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">Content</p><h2>Top pages</h2></div></div>
+              <div id="overview-pages" class="table-wrap"></div>
+            </article>
+          </section>
           <article class="panel">
-            <div class="panel-heading"><div><p class="eyebrow">Content</p><h2>Top pages</h2></div></div>
-            <div id="pages" class="table-wrap"></div>
+            <div class="panel-heading"><div><p class="eyebrow">Details</p><h2>Recent events</h2></div><p class="muted">Raw IP addresses are not stored</p></div>
+            <div id="overview-events" class="table-wrap"></div>
           </article>
         </section>
-        <article class="panel">
-          <div class="panel-heading"><div><p class="eyebrow">Details</p><h2>Recent events</h2></div><p class="muted">Raw IP addresses are not stored</p></div>
-          <div id="events" class="table-wrap"></div>
-        </article>
+
+        <section class="tab-panel" id="panel-traffic" role="tabpanel" aria-labelledby="tab-traffic" data-panel="traffic" hidden>
+          <section id="traffic-metrics" class="metrics metrics-two" aria-label="Traffic metrics"></section>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Traffic trend</p><h2>Page views and unique visitors</h2></div><div class="legend"><span><i class="pv"></i>PV</span><span><i class="uv"></i>UV</span></div></div>
+            <div id="traffic-trend" class="chart" aria-live="polite"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="panel-downloads" role="tabpanel" aria-labelledby="tab-downloads" data-panel="downloads" hidden>
+          <section id="downloads-metrics" class="metrics metrics-one" aria-label="Download metrics"></section>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Download trend</p><h2>Package downloads by day</h2></div><div class="legend"><span><i class="downloads"></i>Downloads</span></div></div>
+            <div id="downloads-trend" class="chart" aria-live="polite"></div>
+          </article>
+          <article class="panel panel-spaced">
+            <div class="panel-heading"><div><p class="eyebrow">Download activity</p><h2>Recent package requests</h2></div></div>
+            <div id="downloads-events" class="table-wrap"></div>
+          </article>
+        </section>
+
+        <section class="tab-panel" id="panel-errors" role="tabpanel" aria-labelledby="tab-errors" data-panel="errors" hidden>
+          <section id="errors-metrics" class="metrics metrics-one" aria-label="Error metrics"></section>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Error trend</p><h2>Failed requests by day</h2></div><div class="legend"><span><i class="errors"></i>Errors</span></div></div>
+            <div id="errors-trend" class="chart" aria-live="polite"></div>
+          </article>
+          <article class="panel panel-spaced">
+            <div class="panel-heading"><div><p class="eyebrow">Error activity</p><h2>Recent page errors</h2></div></div>
+            <div id="errors-events" class="table-wrap"></div>
+          </article>
+        </section>
       </section>
     </main>
   </body>

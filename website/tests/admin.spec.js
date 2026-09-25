@@ -22,9 +22,18 @@ for (const viewport of [
     await page.getByLabel("Password").fill("test-password");
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Site overview" })).toBeVisible();
-    await expect(page.getByText("1,284")).toBeVisible();
-    await expect(page.locator("#trend svg")).toBeVisible();
-    await expect(page.locator("#pages tbody tr")).toHaveCount(2);
+    await expect(page.locator("#overview-metrics").getByText("1,284")).toBeVisible();
+    await expect(page.locator("#overview-trend svg")).toBeVisible();
+    await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
+    await page.getByRole("tab", { name: "Traffic" }).click();
+    await expect(page.getByRole("heading", { name: "Page views and unique visitors" })).toBeVisible();
+    await expect(page.locator("#traffic-trend svg")).toBeVisible();
+    await page.getByRole("tab", { name: "Downloads" }).click();
+    await expect(page.getByRole("heading", { name: "Package downloads by day" })).toBeVisible();
+    await expect(page.locator("#downloads-trend svg")).toBeVisible();
+    await page.getByRole("tab", { name: "Errors" }).click();
+    await expect(page.getByRole("heading", { name: "Failed requests by day" })).toBeVisible();
+    await expect(page.locator("#errors-trend svg")).toBeVisible();
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
