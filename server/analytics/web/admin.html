@@ -83,6 +83,10 @@
 
         <section class="tab-panel" id="panel-downloads" role="tabpanel" aria-labelledby="tab-downloads" data-panel="downloads" hidden>
           <section id="downloads-metrics" class="metrics metrics-one" aria-label="Download metrics"></section>
+          <article class="panel panel-spaced">
+            <div class="panel-heading"><div><p class="eyebrow">Download funnel</p><h2>From page visit to package response</h2></div><p class="muted">“No download” means no successful package request from the same anonymous visitor during the selected period.</p></div>
+            <div id="downloads-funnel" class="funnel" aria-live="polite"></div>
+          </article>
           <article class="panel">
             <div class="panel-heading"><div><p class="eyebrow">Download trend</p><h2>Package downloads by day</h2></div><div class="legend"><span><i class="downloads"></i>Downloads</span></div></div>
             <div id="downloads-trend" class="chart" aria-live="polite"><canvas aria-label="Daily package downloads"></canvas></div>

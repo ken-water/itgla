@@ -20,6 +20,12 @@ const fixtures = {
     { occurred_at: "2026-09-25T14:25:00Z", event_name: "download", path: "/downloads/v0.2.2/itgla.zip", status_code: 200, referrer: "https://itgla.com/downloads.html" },
     { occurred_at: "2026-09-23T14:23:00Z", event_name: "page_view", path: "/", status_code: 200, referrer: "-" },
   ],
+  "/admin/api/downloads": {
+    summary: { page_visitors: 211, successful_visitors: 87, no_download_visitors: 124, failures: 3 },
+    events: [
+      { occurred_at: "2026-09-25T14:25:00Z", event_name: "download_success", path: "/downloads/v0.2.2/itgla.zip", status_code: 200, bytes_sent: 1200, referrer: "https://itgla.com/downloads.html", user_agent: "Example Browser" },
+    ],
+  },
   "/admin/api/errors": [
     { occurred_at: "2026-09-24T14:23:00Z", event_name: "page_error", path: "/missing.html", method: "GET", status_code: 404, bytes_sent: 162, referrer: "-", user_agent: "Mozilla/5.0" },
   ],

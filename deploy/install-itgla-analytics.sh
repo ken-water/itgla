@@ -37,11 +37,14 @@ printf '%s\n' \
   "ITGLA_ADMIN_PASSWORD_SALT=${PASSWORD_SALT}" \
   "ITGLA_ADMIN_PASSWORD_SCRYPT=${PASSWORD_SCRYPT}" \
   "ITGLA_VISITOR_SALT=${VISITOR_SALT}" \
+  "ITGLA_GEOIP_DB_PATH=/var/lib/itgla-analytics/geo.mmdb" \
+  "ITGLA_GEOIP_PROVIDER=local-mmdb" \
   "ITGLA_RETENTION_DAYS=365" > "$ENV_FILE"
 
 ssh -o BatchMode=yes "$REMOTE_HOST" "set -eu
 id -u itgla >/dev/null 2>&1 || useradd --system --home-dir '$REMOTE_ROOT' --shell /usr/sbin/nologin itgla
 install -d -o itgla -g itgla -m 0755 '$REMOTE_ROOT'
+install -d -o itgla -g itgla -m 0750 /var/lib/itgla-analytics
 install -d -o root -g root -m 0755 /etc/itgla
 install -d -o www-data -g itgla -m 0750 /var/log/itgla
 touch /var/log/itgla/nginx-access.log

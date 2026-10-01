@@ -29,7 +29,9 @@ test("removes query parameters and fragments from referrers", () => {
 
 test("classifies only public page, download, and error events", () => {
   assert.equal(eventName({ path: "/", contentType: "text/html", statusCode: 200 }), "page_view");
-  assert.equal(eventName({ path: "/downloads/file.zip", contentType: "application/zip", statusCode: 200 }), "download");
+  assert.equal(eventName({ path: "/downloads/file.zip", contentType: "application/zip", statusCode: 200 }), "download_success");
+  assert.equal(eventName({ path: "/downloads/file.zip", contentType: "application/zip", statusCode: 404 }), "download_failure");
+  assert.equal(eventName({ path: "/downloads.html", contentType: "text/html", statusCode: 200 }), "download_page_view");
   assert.equal(eventName({ path: "/missing", contentType: "text/html", statusCode: 404 }), "page_error");
   assert.equal(eventName({ path: "/admin/", contentType: "text/html", statusCode: 200 }), null);
   assert.equal(eventName({ path: "/styles.css", contentType: "text/css", statusCode: 200 }), null);

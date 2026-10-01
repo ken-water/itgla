@@ -5,6 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { daysFromUrl, hash, parseLogLine, passwordDigest, safeEqual } from "./lib.mjs";
+import { lookupGeo } from "./geo.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const config = {
@@ -15,6 +16,8 @@ const config = {
   adminPasswordSalt: process.env.ITGLA_ADMIN_PASSWORD_SALT,
   adminPasswordScrypt: process.env.ITGLA_ADMIN_PASSWORD_SCRYPT,
   visitorSalt: process.env.ITGLA_VISITOR_SALT,
+  geoIpDbPath: process.env.ITGLA_GEOIP_DB_PATH || "",
+  geoProvider: process.env.ITGLA_GEOIP_PROVIDER || "local-mmdb",
   retentionDays: Math.max(30, Number(process.env.ITGLA_RETENTION_DAYS || 365)),
 };
 
@@ -135,14 +138,21 @@ async function ingestAccessLog() {
         consumed += Buffer.byteLength(`${line}\n`);
         const event = parseLogLine(line, config.visitorSalt);
         if (!event) continue;
+        const geo = event.ipAddress ? await lookupGeo(event.ipAddress, {
+          dbPath: config.geoIpDbPath,
+          provider: config.geoProvider,
+        }) : null;
         await pool.query(
           `insert into analytics_events
-            (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,occurred_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+            (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,
+             ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
            on conflict (event_key) do nothing`,
           [
             event.eventKey, event.eventName, event.path, event.method, event.statusCode,
-            event.bytesSent, event.referrer, event.userAgent, event.visitorKey, event.occurredAt,
+            event.bytesSent, event.referrer, event.userAgent, event.visitorKey, event.ipAddress,
+            geo?.countryCode, geo?.countryName, geo?.region, geo?.city, geo?.latitude, geo?.longitude,
+            geo?.timezone, geo?.asn, geo?.organization, geo?.isp, geo?.geoSource, event.occurredAt,
           ],
         );
       }
@@ -162,9 +172,12 @@ async function ingestAccessLog() {
 async function overview(days) {
   const result = await pool.query(
     `select
-       count(*) filter (where event_name='page_view')::int as page_views,
-       count(distinct visitor_key) filter (where event_name='page_view')::int as unique_visitors,
-       count(*) filter (where event_name='download')::int as downloads,
+       count(*) filter (where event_name in ('page_view','download_page_view'))::int as page_views,
+       count(distinct visitor_key) filter (where event_name in ('page_view','download_page_view'))::int as unique_visitors,
+       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
+       count(*) filter (where event_name='download_page_view')::int as download_page_views,
+       count(distinct visitor_key) filter (where event_name='download_page_view')::int as download_page_visitors,
+       count(*) filter (where event_name='download_failure')::int as download_failures,
        count(*) filter (where event_name='page_error')::int as errors,
        max(occurred_at) as latest_event_at
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')`,
@@ -176,9 +189,11 @@ async function overview(days) {
 async function daily(days) {
   const result = await pool.query(
     `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
-       count(*) filter (where event_name='page_view')::int as page_views,
-       count(distinct visitor_key) filter (where event_name='page_view')::int as unique_visitors,
-       count(*) filter (where event_name='download')::int as downloads,
+       count(*) filter (where event_name in ('page_view','download_page_view'))::int as page_views,
+       count(distinct visitor_key) filter (where event_name in ('page_view','download_page_view'))::int as unique_visitors,
+       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
+       count(*) filter (where event_name='download_page_view')::int as download_page_views,
+       count(*) filter (where event_name='download_failure')::int as download_failures,
        count(*) filter (where event_name='page_error')::int as errors
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
      group by 1 order by 1`,
@@ -192,7 +207,7 @@ async function pages(days) {
     `select path,count(*)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
        max(occurred_at) as last_seen_at
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
-       and event_name='page_view'
+       and event_name in ('page_view','download_page_view')
      group by path order by page_views desc,last_seen_at desc limit 100`,
     [days],
   );
@@ -207,6 +222,38 @@ async function recentEvents(days) {
     [days],
   );
   return result.rows;
+}
+
+async function downloadDetails(days) {
+  const result = await pool.query(
+    `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,ip_address,country_code,country_name,
+       region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name in ('download_page_view','download_success','download_failure','download')
+     order by occurred_at desc limit 200`,
+    [days],
+  );
+  const summary = await pool.query(
+    `with page_visits as (
+       select distinct visitor_key
+       from analytics_events
+       where event_name='download_page_view'
+         and occurred_at >= now() - ($1::int * interval '1 day')
+     ), successful as (
+       select distinct visitor_key
+       from analytics_events
+       where event_name in ('download_success','download')
+         and occurred_at >= now() - ($1::int * interval '1 day')
+     )
+     select
+       (select count(*)::int from page_visits) as page_visitors,
+       (select count(*)::int from successful) as successful_visitors,
+       (select count(*)::int from page_visits p where not exists (select 1 from successful s where s.visitor_key=p.visitor_key)) as no_download_visitors,
+       (select count(*)::int from analytics_events where event_name='download_failure' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
+    [days],
+  );
+  return { events: result.rows, summary: summary.rows[0] };
 }
 
 async function recentErrors(days) {
@@ -271,6 +318,7 @@ async function handle(request, response) {
     if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
+    if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));
     if (pathname === "/admin/api/errors") return json(response, 200, await recentErrors(days));
   }
   return json(response, 404, { message: "Not found." });
@@ -282,6 +330,13 @@ await ingestAccessLog();
 setInterval(() => void ingestAccessLog(), 10_000).unref();
 setInterval(() => {
   void pool.query("delete from admin_sessions where expires_at <= now()");
+  void pool.query(
+    `update analytics_events set
+       ip_address=null, country_code=null, country_name=null, region=null, city=null,
+       latitude=null, longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null
+     where occurred_at < now() - interval '14 days'
+       and event_name in ('download_page_view','download_success','download_failure','download')`,
+  );
   void pool.query("delete from analytics_events where occurred_at < now() - ($1::int * interval '1 day')", [config.retentionDays]);
 }, 60 * 60 * 1000).unref();
 

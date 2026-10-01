@@ -23,7 +23,8 @@ export function parseRequestLine(requestLine) {
 
 export function eventName({ path, contentType, statusCode }) {
   if (path.startsWith("/admin") || path === "/healthz" || path.startsWith("/.well-known/")) return null;
-  if (path.startsWith("/downloads/") && statusCode < 400) return "download";
+  if (path.startsWith("/downloads/")) return statusCode >= 400 ? "download_failure" : "download_success";
+  if (path === "/downloads.html" && contentType?.startsWith("text/html") && statusCode < 400) return "download_page_view";
   if (contentType?.startsWith("text/html")) return statusCode >= 400 ? "page_error" : "page_view";
   return null;
 }
@@ -65,6 +66,7 @@ export function parseLogLine(line, visitorSalt) {
       referrer: sanitizeReferrer(entry.referer),
       userAgent,
       visitorKey: hash(`${visitorSalt}:${remoteAddress}:${userAgent || "unknown"}`).slice(0, 32),
+      ipAddress: name.startsWith("download_") || name === "download" ? remoteAddress : null,
       occurredAt,
     };
   } catch {

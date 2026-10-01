@@ -69,6 +69,11 @@ h2 { margin-bottom: 0; font-size: 17px; }
 .legend .pv { background: var(--teal); }
 .legend .uv { background: var(--amber); }
 .legend .downloads { background: var(--teal); }
+.funnel { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.funnel-item { border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: var(--surface-soft); display: grid; gap: 8px; }
+.funnel-item span { color: var(--muted); font-size: .82rem; }
+.funnel-item strong { font-size: 1.55rem; color: var(--ink); }
+@media (max-width: 720px) { .funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .legend .errors { background: var(--red); }
 .chart { min-height: 270px; position: relative; }
 .chart canvas { display: block; width: 100% !important; height: 270px !important; }

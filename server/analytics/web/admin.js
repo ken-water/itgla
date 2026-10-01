@@ -54,7 +54,7 @@ function empty(message) {
 
 function table(rows, columns) {
   if (!rows.length) return empty("No data for this period.");
-  return `<table><thead><tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map(([, key, formatter, className]) => `<td class="${className || ""}">${escapeHtml(formatter ? formatter(row[key]) : row[key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+  return `<table><thead><tr>${columns.map(([label]) => `<th>${escapeHtml(label)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${columns.map(([, key, formatter, className]) => `<td class="${className || ""}">${escapeHtml(formatter ? formatter(row[key], row) : row[key])}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
 }
 
 function renderMetrics(target, items) {
@@ -69,7 +69,12 @@ function renderOverviewMetrics(overview) {
     ["Page errors", overview.errors],
   ]);
   renderMetrics("traffic-metrics", [["Page views (PV)", overview.page_views], ["Unique visitors (UV)", overview.unique_visitors]]);
-  renderMetrics("downloads-metrics", [["Package downloads", overview.downloads]]);
+  renderMetrics("downloads-metrics", [
+    ["Download page visitors", overview.download_page_visitors],
+    ["Successful requests", overview.downloads],
+    ["Failed requests", overview.download_failures],
+    ["No download after visit", Math.max(0, Number(overview.download_page_visitors || 0) - Number(overview.downloads || 0))],
+  ]);
   renderMetrics("errors-metrics", [["Page errors", overview.errors]]);
   element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
 }
@@ -153,6 +158,28 @@ function renderEvents(target, rows) {
   ]);
 }
 
+function renderDownloadEvents(target, rows) {
+  const names = {
+    download_page_view: "Download page visit",
+    download_success: "Download success",
+    download_failure: "Download failed",
+    download: "Download success",
+  };
+  element(target).innerHTML = table(rows, [
+    ["Time", "occurred_at", formatTime],
+    ["Outcome", "event_name", (value) => names[value] || value],
+    ["Package", "path"],
+    ["Status", "status_code", formatStatus],
+    ["Bytes", "bytes_sent", formatNumber, "numeric"],
+    ["IP", "ip_address", (value) => value || "Unavailable"],
+    ["Location", "country_name", (value, row) => [value, row.region, row.city].filter(Boolean).join(" · ") || "Unavailable"],
+    ["Coordinates", "latitude", (value, row) => value != null && row.longitude != null ? `${Number(value).toFixed(3)}, ${Number(row.longitude).toFixed(3)}` : "Unavailable"],
+    ["ISP / ASN", "isp", (value, row) => [value || row.organization, row.asn && `AS${row.asn}`].filter(Boolean).join(" · ") || "Unavailable"],
+    ["Source", "referrer", (value) => value && value !== "-" ? value : "Direct"],
+    ["Browser", "user_agent", (value) => value || "Unknown"],
+  ]);
+}
+
 function renderErrors(target, rows) {
   element(target).innerHTML = table(rows, [
     ["Time", "occurred_at", formatTime],
@@ -170,8 +197,8 @@ async function loadDashboard() {
   error.hidden = true;
   const days = element("days").value;
   try {
-    const [overview, daily, pages, events, errors] = await Promise.all([
-      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`),
+    const [overview, daily, pages, events, errors, downloads] = await Promise.all([
+      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`), api(`/downloads?days=${days}`),
     ]);
     renderOverviewMetrics(overview);
     renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
@@ -180,7 +207,13 @@ async function loadDashboard() {
     renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
     renderPages("overview-pages", pages);
     renderEvents("overview-events", events);
-    renderEvents("downloads-events", events.filter((event) => event.event_name === "download"));
+    renderDownloadEvents("downloads-events", downloads.events);
+    element("downloads-funnel").innerHTML = [
+      ["Download page visitors", downloads.summary.page_visitors],
+      ["Successful download visitors", downloads.summary.successful_visitors],
+      ["Failed requests", downloads.summary.failures],
+      ["No download after visiting", downloads.summary.no_download_visitors],
+    ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
     renderErrors("errors-events", errors);
   } catch (requestError) {
     if (requestError.status === 401) return showLogin();
