@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
+  <title>ITGLA Node Core</title>
+  <rect x="10" y="10" width="80" height="80" rx="22" fill="currentColor" opacity=".08"/>
+  <g stroke="currentColor" stroke-width="3" stroke-linecap="round">
+    <path d="M50 50 28 28M50 50 72 28M50 50 28 72M50 50 72 72"/>
+  </g>
+  <circle cx="50" cy="50" r="13" fill="currentColor"/>
+  <g fill="currentColor">
+    <circle cx="28" cy="28" r="6"/><circle cx="72" cy="28" r="6"/>
+    <circle cx="28" cy="72" r="6"/><circle cx="72" cy="72" r="6"/>
+  </g>
+</svg>
