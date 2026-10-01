@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   daysFromUrl,
   eventName,
+  isMeaningfulVisitor,
   parseLogLine,
   parseRequestLine,
   passwordDigest,
@@ -60,6 +61,14 @@ test("clamps reporting windows", () => {
   assert.equal(daysFromUrl(new URL("https://itgla.com/admin/api/overview?days=0")), 1);
   assert.equal(daysFromUrl(new URL("https://itgla.com/admin/api/overview?days=900")), 365);
   assert.equal(daysFromUrl(new URL("https://itgla.com/admin/api/overview?days=invalid")), 30);
+});
+
+test("filters probe clients and non-public addresses", () => {
+  assert.equal(isMeaningfulVisitor({ userAgent: "Mozilla/5.0", remoteAddress: "203.0.113.10" }), true);
+  assert.equal(isMeaningfulVisitor({ userAgent: "curl/8.0", remoteAddress: "203.0.113.10" }), false);
+  assert.equal(isMeaningfulVisitor({ userAgent: "Mozilla/5.0 (compatible; SemrushBot/7)", remoteAddress: "203.0.113.10" }), false);
+  assert.equal(isMeaningfulVisitor({ userAgent: "Mozilla/5.0", remoteAddress: "192.168.1.4" }), false);
+  assert.equal(isMeaningfulVisitor({ userAgent: "", remoteAddress: "203.0.113.10" }), false);
 });
 
 test("verifies scrypt password digests using constant-time comparison", () => {

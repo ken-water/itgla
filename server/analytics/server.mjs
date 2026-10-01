@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { daysFromUrl, hash, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
+import { daysFromUrl, hash, isMeaningfulVisitor, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
 import { lookupGeo } from "./geo.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -145,19 +145,22 @@ async function ingestAccessLog() {
         }) : null;
         await pool.query(
           `insert into analytics_events
-            (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,
+            (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,visitor_quality,
             ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
            on conflict (event_key) do update set
              event_name=excluded.event_name,
              ip_address=null,
              country_code=coalesce(analytics_events.country_code, excluded.country_code),
              country_name=coalesce(analytics_events.country_name, excluded.country_name),
              region=null, city=null, latitude=null, longitude=null, timezone=null,
-             asn=null, organization=null, isp=null, geo_source=null`,
+             asn=null, organization=null, isp=null, geo_source=null,
+             visitor_quality=excluded.visitor_quality`,
           [
             event.eventKey, event.eventName, event.path, event.method, event.statusCode,
-            event.bytesSent, event.referrer, event.userAgent, event.visitorKey, event.ipAddress,
+            event.bytesSent, event.referrer, event.userAgent, event.visitorKey,
+            isMeaningfulVisitor({ userAgent: event.userAgent, remoteAddress: event.ipAddress || "unknown" }) ? "meaningful" : "probe",
+            event.ipAddress,
             null, geo?.countryCode, geo?.countryName, null, null, null, null, null,
             null, null, null, null, event.occurredAt,
           ],
@@ -187,7 +190,8 @@ async function overview(days) {
        count(*) filter (where event_name='download_failure')::int as download_failures,
        count(*) filter (where event_name='page_error')::int as errors,
        max(occurred_at) as latest_event_at
-     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')`,
+     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'`,
     [days],
   );
   return { days, ...result.rows[0] };
@@ -203,6 +207,7 @@ async function daily(days) {
        count(*) filter (where event_name='download_failure')::int as download_failures,
        count(*) filter (where event_name='page_error')::int as errors
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
      group by 1 order by 1`,
     [days],
   );
@@ -216,6 +221,7 @@ async function countries(days) {
        count(distinct visitor_key)::int as unique_visitors
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
      group by 1 order by page_views desc, country asc limit 30`,
     [days],
@@ -227,6 +233,7 @@ async function countries(days) {
        count(distinct visitor_key)::int as unique_visitors
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
      group by 1,2 order by 1, page_views desc`,
     [days],
@@ -241,6 +248,7 @@ async function downloadCountries(days) {
        count(*) filter (where event_name='download_failure')::int as failures
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('download_success','download_failure','download')
      group by 1 order by downloads desc, failures desc, country asc limit 30`,
     [days],
@@ -252,6 +260,7 @@ async function downloadCountries(days) {
        count(*) filter (where event_name='download_failure')::int as failures
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('download_success','download_failure','download')
      group by 1,2 order by 1, downloads desc`,
     [days],
@@ -264,6 +273,7 @@ async function pages(days) {
     `select path,count(*)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
        max(occurred_at) as last_seen_at
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
      group by path order by page_views desc,last_seen_at desc limit 100`,
     [days],
@@ -275,6 +285,7 @@ async function recentEvents(days) {
   const result = await pool.query(
     `select event_name,path,status_code,bytes_sent,referrer,occurred_at
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
      order by occurred_at desc limit 100`,
     [days],
   );
@@ -286,6 +297,7 @@ async function downloadDetails(days) {
     `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,country_code,country_name,occurred_at
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name in ('download_page_view','download_success','download_failure','download')
      order by occurred_at desc limit 200`,
     [days],
@@ -294,19 +306,19 @@ async function downloadDetails(days) {
     `with page_visits as (
        select distinct visitor_key
        from analytics_events
-       where event_name='download_page_view'
+       where event_name='download_page_view' and visitor_quality='meaningful'
          and occurred_at >= now() - ($1::int * interval '1 day')
      ), successful as (
        select distinct visitor_key
        from analytics_events
-       where event_name in ('download_success','download')
+       where event_name in ('download_success','download') and visitor_quality='meaningful'
          and occurred_at >= now() - ($1::int * interval '1 day')
      )
      select
        (select count(*)::int from page_visits) as page_visitors,
        (select count(*)::int from successful) as successful_visitors,
        (select count(*)::int from page_visits p where not exists (select 1 from successful s where s.visitor_key=p.visitor_key)) as no_download_visitors,
-       (select count(*)::int from analytics_events where event_name='download_failure' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
+       (select count(*)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
     [days],
   );
   return { events: result.rows, summary: summary.rows[0] };
@@ -316,6 +328,7 @@ async function recentErrors(days) {
   const result = await pool.query(
     `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,occurred_at
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
        and event_name='page_error'
      order by occurred_at desc limit 100`,
     [days],
@@ -390,6 +403,14 @@ await pool.query(
 await pool.query(
   "delete from analytics_events where event_name in ('page_view','page_error') and not (path = any($1::text[]))",
   [publicPagePaths],
+);
+await pool.query(
+  `update analytics_events set visitor_quality='probe'
+   where user_agent is null or btrim(user_agent) = ''`,
+);
+await pool.query(
+  `update analytics_events set visitor_quality='probe'
+   where lower(user_agent) ~ '(curl|wget|go-http-client|python|node([./ -]|$)|java|okhttp|opsprobe|bot|crawler|spider|scraper|ahrefs|semrush|dataforseo|seranking|gptbot|chatgpt-user|claudebot|anthropic-ai|amazonbot|censys|nutch|cms[- ]checker|webapp[- ]mapper)'`,
 );
 await pool.query("delete from admin_sessions where expires_at <= now()");
 await ingestAccessLog();

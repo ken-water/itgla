@@ -8,6 +8,7 @@ create table if not exists analytics_events (
     bytes_sent bigint not null default 0,
     referrer text,
     user_agent text,
+    visitor_quality text not null default 'meaningful',
     visitor_key text not null,
     ip_address inet,
     country_code text,
@@ -37,6 +38,15 @@ alter table analytics_events add column if not exists asn text;
 alter table analytics_events add column if not exists organization text;
 alter table analytics_events add column if not exists isp text;
 alter table analytics_events add column if not exists geo_source text;
+alter table analytics_events add column if not exists visitor_quality text not null default 'meaningful';
+
+do $$
+begin
+  alter table analytics_events drop constraint if exists analytics_events_visitor_quality_check;
+  alter table analytics_events add constraint analytics_events_visitor_quality_check
+    check (visitor_quality in ('meaningful', 'probe'));
+exception when duplicate_object then null;
+end $$;
 
 do $$
 begin

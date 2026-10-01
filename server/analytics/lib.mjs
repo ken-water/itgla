@@ -11,6 +11,23 @@ export const publicPagePaths = Object.freeze([
   "/feedback.html",
 ]);
 
+const probeUserAgentPattern = /(curl|wget|go-http-client|python|node(?:\.js)?|java|okhttp|opsprobe|bot|crawler|spider|scraper|ahrefs|semrush|dataforseo|seranking|gptbot|chatgpt-user|claudebot|anthropic-ai|amazonbot|censys|nutch|cms[- ]checker|webapp[- ]mapper)/i;
+
+export function isPrivateOrLoopbackAddress(value) {
+  const address = String(value || "").trim().replace(/^\[|\]$/g, "");
+  if (!address || address === "unknown" || address === "-" || address === "::") return true;
+  if (/^127\./.test(address) || /^10\./.test(address) || /^192\.168\./.test(address) || /^169\.254\./.test(address)) return true;
+  const ipv4 = address.match(/^172\.(\d+)\./);
+  if (ipv4 && Number(ipv4[1]) >= 16 && Number(ipv4[1]) <= 31) return true;
+  if (/^fc[0-9a-f]{2}:|^fd[0-9a-f]{2}:|^fe80:/i.test(address)) return true;
+  return false;
+}
+
+export function isMeaningfulVisitor({ userAgent, remoteAddress }) {
+  const normalizedAgent = String(userAgent || "").trim();
+  return Boolean(normalizedAgent) && !probeUserAgentPattern.test(normalizedAgent) && !isPrivateOrLoopbackAddress(remoteAddress);
+}
+
 export function hash(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -69,6 +86,7 @@ export function parseLogLine(line, visitorSalt) {
     if (!name) return null;
     const userAgent = String(entry.user_agent || "").slice(0, 1000) || null;
     const remoteAddress = String(entry.remote_addr || "unknown");
+    if (!isMeaningfulVisitor({ userAgent, remoteAddress })) return null;
     return {
       eventKey: hash(`${entry.time}|${remoteAddress}|${entry.request}|${entry.status}|${entry.bytes_sent}`),
       eventName: name,
