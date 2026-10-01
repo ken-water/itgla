@@ -32,6 +32,11 @@ function formatTime(value) {
 
 function formatStatus(value) {
   const code = Number(value || 0);
+  if (code >= 200 && code < 300) {
+    const successLabels = { 200: "200 OK", 201: "201 Created", 202: "202 Accepted", 206: "206 Partial content" };
+    return successLabels[code] || `${code} Success`;
+  }
+  if (code >= 300 && code < 400) return `${code} Redirect`;
   const labels = {
     400: "400 Bad request",
     401: "401 Unauthorized",
@@ -271,7 +276,7 @@ function renderDownloadEvents(target, rows) {
   element(target).innerHTML = table(rows, [
     ["Time", "occurred_at", formatTime],
     ["Outcome", "event_name", (value) => names[value] || value],
-    ["Package", "path"],
+    ["Request", "path"],
     ["Status", "status_code", formatStatus],
     ["Bytes", "bytes_sent", formatNumber, "numeric"],
     ["Country", "country_name", (value, row) => value || row.country_code || "Unknown"],
