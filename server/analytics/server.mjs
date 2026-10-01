@@ -147,7 +147,20 @@ async function ingestAccessLog() {
             (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,
              ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-           on conflict (event_key) do nothing`,
+           on conflict (event_key) do update set
+             event_name=excluded.event_name,
+             ip_address=coalesce(analytics_events.ip_address, excluded.ip_address),
+             country_code=coalesce(analytics_events.country_code, excluded.country_code),
+             country_name=coalesce(analytics_events.country_name, excluded.country_name),
+             region=coalesce(analytics_events.region, excluded.region),
+             city=coalesce(analytics_events.city, excluded.city),
+             latitude=coalesce(analytics_events.latitude, excluded.latitude),
+             longitude=coalesce(analytics_events.longitude, excluded.longitude),
+             timezone=coalesce(analytics_events.timezone, excluded.timezone),
+             asn=coalesce(analytics_events.asn, excluded.asn),
+             organization=coalesce(analytics_events.organization, excluded.organization),
+             isp=coalesce(analytics_events.isp, excluded.isp),
+             geo_source=coalesce(analytics_events.geo_source, excluded.geo_source)`,
           [
             event.eventKey, event.eventName, event.path, event.method, event.statusCode,
             event.bytesSent, event.referrer, event.userAgent, event.visitorKey, event.ipAddress,
