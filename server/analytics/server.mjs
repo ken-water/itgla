@@ -234,6 +234,31 @@ async function countries(days) {
   return { summary: summary.rows, daily: dailyResult.rows };
 }
 
+async function downloadCountries(days) {
+  const summary = await pool.query(
+    `select coalesce(country_name,country_code,'Unknown') as country,
+       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
+       count(*) filter (where event_name='download_failure')::int as failures
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name in ('download_success','download_failure','download')
+     group by 1 order by downloads desc, failures desc, country asc limit 30`,
+    [days],
+  );
+  const dailyResult = await pool.query(
+    `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
+       coalesce(country_name,country_code,'Unknown') as country,
+       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
+       count(*) filter (where event_name='download_failure')::int as failures
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name in ('download_success','download_failure','download')
+     group by 1,2 order by 1, downloads desc`,
+    [days],
+  );
+  return { summary: summary.rows, daily: dailyResult.rows };
+}
+
 async function pages(days) {
   const result = await pool.query(
     `select path,count(*)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
@@ -348,6 +373,7 @@ async function handle(request, response) {
     if (pathname === "/admin/api/overview") return json(response, 200, await overview(days));
     if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));
     if (pathname === "/admin/api/countries") return json(response, 200, await countries(days));
+    if (pathname === "/admin/api/download-countries") return json(response, 200, await downloadCountries(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));

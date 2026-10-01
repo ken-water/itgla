@@ -101,6 +101,16 @@
             <div class="panel-heading"><div><p class="eyebrow">Download trend</p><h2>Package downloads by day</h2></div><div class="legend"><span><i class="downloads"></i>Downloads</span></div></div>
             <div id="downloads-trend" class="chart" aria-live="polite"><canvas aria-label="Daily package downloads"></canvas></div>
           </article>
+          <section class="content-grid panel-spaced">
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">Download geography</p><h2>Downloads by country, daily</h2></div><p class="muted">Successful package responses by country</p></div>
+              <div id="download-country-trend" class="chart" aria-live="polite"><canvas aria-label="Daily package downloads by country"></canvas></div>
+            </article>
+            <article class="panel">
+              <div class="panel-heading"><div><p class="eyebrow">Download geography</p><h2>Countries in this period</h2></div></div>
+              <div id="download-country-summary" class="table-wrap"></div>
+            </article>
+          </section>
           <article class="panel panel-spaced">
             <div class="panel-heading"><div><p class="eyebrow">Download activity</p><h2>Recent package requests</h2></div><p class="muted">Country only; source IP and detailed location are not retained.</p></div>
             <div id="downloads-events" class="table-wrap"></div>
