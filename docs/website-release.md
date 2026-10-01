@@ -11,7 +11,7 @@ The official website is a dependency-free static site under `website/`. Product 
 - `www.itgla.com` redirects to the apex; `app.itgla.com` redirects to downloads; `api.itgla.com` returns an explicit JSON 404 because v0.2.0 has no hosted API.
 - Dedicated certificate: `/etc/letsencrypt/live/itgla.com/`, covering apex, www, app, and api names.
 - Product data services: none for this static/local-first release. Website analytics uses its own least-privilege PostgreSQL role/database; Redis is not required.
-- Admin analytics: `https://itgla.com/admin/`, backed by `itgla-analytics.service` on loopback only.
+- Admin analytics: `https://itgla.com/admin`, backed by `itgla-analytics.service` on loopback only.
 - Release owner: `ken-water`
 
 ## Deploy contract

@@ -10,7 +10,7 @@ for (const viewport of [
       if (message.type() === "error") errors.push(message.text());
     });
     await page.setViewportSize(viewport);
-    await page.goto("http://127.0.0.1:4174/admin/");
+    await page.goto("http://127.0.0.1:4174/admin");
     await expect(page.getByRole("heading", { name: "Site analytics" })).toBeVisible();
 
     await page.getByLabel("Username").fill("admin");

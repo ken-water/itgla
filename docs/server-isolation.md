@@ -17,7 +17,7 @@ The current-domain host is shared with VeloWrite and OpsProbe. PostgreSQL 16 is 
 - `itgla.com` and `www.itgla.com`: static product/download site only
 - `app.itgla.com`: redirects to the website download page; no app service exists in v0.2.0
 - `api.itgla.com`: returns an explicit JSON 404; no hosted API exists in v0.2.0
-- `/admin/` alone proxies to ITGLA analytics. No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
+- `/admin` and its protected asset/API paths proxy only to ITGLA analytics. No location proxies ITGLA traffic to VeloWrite or exposes database/cache listeners.
 - ITGLA intentionally has no Redis configuration: the single-instance dashboard keeps durable sessions in its isolated PostgreSQL database, so sharing OpsProbe's Redis would weaken isolation without providing an availability benefit.
 
 ## Future backend requirements
