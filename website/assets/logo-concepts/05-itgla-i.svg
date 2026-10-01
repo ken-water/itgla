@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
   <title>ITGLA I Mark</title>
-  <path d="M30 24h40M50 24v52M30 76h40" stroke="currentColor" stroke-width="9" stroke-linecap="round"/>
-  <path d="M27 50h46" stroke="currentColor" stroke-width="3" stroke-linecap="round" opacity=".28"/>
-  <circle cx="30" cy="24" r="6" fill="currentColor"/><circle cx="70" cy="76" r="6" fill="currentColor"/>
+  <path d="M30 24h40M50 24v52M30 76h40" stroke="#173F36" stroke-width="9" stroke-linecap="round"/>
+  <path d="M27 50h46" stroke="#0F7664" stroke-width="3" stroke-linecap="round" opacity=".48"/>
+  <circle cx="30" cy="24" r="6" fill="#0F7664"/><circle cx="70" cy="76" r="6" fill="#C17D11"/>
 </svg>
