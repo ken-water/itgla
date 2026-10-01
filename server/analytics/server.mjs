@@ -21,7 +21,7 @@ const config = {
   retentionDays: Math.max(30, Number(process.env.ITGLA_RETENTION_DAYS || 365)),
 };
 
-for (const [name, value] of Object.entries(config)) {
+for (const [name, value] of Object.entries(config).filter(([name]) => name !== "geoIpDbPath")) {
   if (value === undefined || value === "") throw new Error(`Missing required analytics configuration: ${name}`);
 }
 
