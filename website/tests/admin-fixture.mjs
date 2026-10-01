@@ -47,6 +47,7 @@ const server = http.createServer(async (request, response) => {
     "/admin/": ["admin.html", "text/html; charset=utf-8"],
     "/admin/admin.css": ["admin.css", "text/css; charset=utf-8"],
     "/admin/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
+    "/admin/chart.umd.min.js": ["chart.umd.min.js", "text/javascript; charset=utf-8"],
   };
   const asset = assets[url.pathname];
   if (!asset) return json(response, 404, { message: "Not found." });

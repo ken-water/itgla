@@ -1,4 +1,5 @@
 const element = (id) => document.getElementById(id);
+const charts = new Map();
 
 async function api(path, options = {}) {
   const response = await fetch(`/admin/api${path}`, {
@@ -57,24 +58,68 @@ function renderOverviewMetrics(overview) {
 
 function renderTrend(target, rows, series, ariaLabel) {
   const container = element(target);
+  charts.get(target)?.destroy();
   if (!rows.length) {
     container.innerHTML = empty("No data for this period.");
     return;
   }
-  const width = 760;
-  const height = 270;
-  const padding = { top: 18, right: 16, bottom: 34, left: 38 };
-  const maximum = Math.max(1, ...rows.flatMap((row) => series.map((item) => Number(row[item.field]))));
-  const x = (index) => padding.left + (index * (width - padding.left - padding.right)) / Math.max(1, rows.length - 1);
-  const y = (value) => height - padding.bottom - (Number(value) * (height - padding.top - padding.bottom)) / maximum;
-  const grids = [0, .5, 1].map((ratio) => `<line class="chart-grid" x1="${padding.left}" x2="${width - padding.right}" y1="${y(maximum * ratio)}" y2="${y(maximum * ratio)}"></line><text class="chart-label" x="2" y="${y(maximum * ratio) + 4}">${Math.round(maximum * ratio)}</text>`).join("");
-  const labels = rows.map((row, index) => {
-    const interval = Math.max(1, Math.ceil(rows.length / 6));
-    if (index % interval !== 0 && index !== rows.length - 1) return "";
-    return `<text class="chart-label" text-anchor="middle" x="${x(index)}" y="${height - 7}">${escapeHtml(String(row.day).slice(5))}</text>`;
-  }).join("");
-  const lines = series.map((item) => `<polyline class="chart-${item.className}" points="${rows.map((row, index) => `${x(index)},${y(row[item.field])}`).join(" ")}"></polyline>`).join("");
-  container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeHtml(ariaLabel)}">${grids}${lines}${labels}</svg>`;
+  container.innerHTML = '<canvas role="img"></canvas>';
+  const canvas = container.querySelector("canvas");
+  canvas.setAttribute("aria-label", ariaLabel);
+  const palette = {
+    pv: { border: "#0f7664", background: "rgba(15, 118, 100, .12)" },
+    uv: { border: "#c17d11", background: "rgba(193, 125, 17, .12)" },
+    downloads: { border: "#2563a6", background: "rgba(37, 99, 166, .12)" },
+    errors: { border: "#b64141", background: "rgba(182, 65, 65, .12)" },
+  };
+  const chart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: rows.map((row) => String(row.day).slice(5)),
+      datasets: series.map((item) => {
+        const colors = palette[item.className];
+        return {
+          label: item.label,
+          data: rows.map((row) => Number(row[item.field] || 0)),
+          borderColor: colors.border,
+          backgroundColor: colors.background,
+          borderWidth: 2.5,
+          pointRadius: rows.length > 45 ? 0 : 3,
+          pointHoverRadius: 5,
+          pointBackgroundColor: colors.border,
+          tension: 0.35,
+          fill: series.length === 1,
+        };
+      }),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: "#173f36",
+          padding: 12,
+          displayColors: true,
+          callbacks: { title: (items) => `Date: ${items[0].label}` },
+        },
+      },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { color: "#65716e", maxTicksLimit: 7, maxRotation: 0 },
+        },
+        y: {
+          beginAtZero: true,
+          suggestedMax: 1,
+          grid: { color: "#e8eeec" },
+          ticks: { color: "#65716e", precision: 0, padding: 8 },
+        },
+      },
+    },
+  });
+  charts.set(target, chart);
 }
 
 function renderPages(target, rows) {
@@ -99,10 +144,10 @@ async function loadDashboard() {
       api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`),
     ]);
     renderOverviewMetrics(overview);
-    renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv" }, { field: "unique_visitors", className: "uv" }], "Daily page views and unique visitors");
-    renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv" }, { field: "unique_visitors", className: "uv" }], "Daily page views and unique visitors");
-    renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads" }], "Daily package downloads");
-    renderTrend("errors-trend", daily, [{ field: "errors", className: "errors" }], "Daily page errors");
+    renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
+    renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
+    renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads", label: "Downloads" }], "Daily package downloads");
+    renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
     renderPages("overview-pages", pages);
     renderEvents("overview-events", events);
     renderEvents("downloads-events", events.filter((event) => event.event_name === "download"));

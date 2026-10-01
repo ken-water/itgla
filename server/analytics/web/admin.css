@@ -71,14 +71,7 @@ h2 { margin-bottom: 0; font-size: 17px; }
 .legend .downloads { background: var(--teal); }
 .legend .errors { background: var(--red); }
 .chart { min-height: 270px; position: relative; }
-.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
-.chart-grid { stroke: #e8eeec; stroke-width: 1; }
-.chart-pv, .chart-uv { fill: none; stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
-.chart-pv { stroke: var(--teal); }
-.chart-uv { stroke: var(--amber); }
-.chart-downloads { stroke: var(--teal); }
-.chart-errors { stroke: var(--red); }
-.chart-label { fill: var(--muted); font-size: 11px; }
+.chart canvas { display: block; width: 100% !important; height: 270px !important; }
 .empty { display: grid; min-height: 220px; place-items: center; color: var(--muted); text-align: center; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

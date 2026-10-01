@@ -219,6 +219,7 @@ async function handle(request, response) {
   if (request.method === "GET" && (pathname === "/admin" || pathname === "/admin/")) return asset(response, "admin.html", "text/html; charset=utf-8");
   if (request.method === "GET" && pathname === "/admin/admin.css") return asset(response, "admin.css", "text/css; charset=utf-8");
   if (request.method === "GET" && pathname === "/admin/admin.js") return asset(response, "admin.js", "text/javascript; charset=utf-8");
+  if (request.method === "GET" && pathname === "/admin/chart.umd.min.js") return asset(response, "chart.umd.min.js", "text/javascript; charset=utf-8");
 
   if (request.method === "POST" && !sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
 
