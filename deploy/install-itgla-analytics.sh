@@ -40,7 +40,7 @@ printf '%s\n' \
   "ITGLA_GEOIP_DB_PATH=/var/lib/itgla-analytics/geo.mmdb" \
   "ITGLA_GEOIP_PROVIDER=local-mmdb" \
   "ITGLA_GEOIP_RETENTION_DAYS=180" \
-  "ITGLA_RETENTION_DAYS=365" > "$ENV_FILE"
+  "ITGLA_RETENTION_DAYS=180" > "$ENV_FILE"
 
 ssh -o BatchMode=yes "$REMOTE_HOST" "set -eu
 id -u itgla >/dev/null 2>&1 || useradd --system --home-dir '$REMOTE_ROOT' --shell /usr/sbin/nologin itgla
