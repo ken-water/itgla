@@ -1,8 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" fill="none">
-  <title>ITGLA Grid Gateway</title>
-  <path d="M24 22h52v56H24z" stroke="currentColor" stroke-width="5" opacity=".25"/>
-  <path d="M24 50h52M50 22v56" stroke="currentColor" stroke-width="3" opacity=".35"/>
-  <path d="m42 39 12 11-12 11" stroke="currentColor" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="24" cy="22" r="5" fill="currentColor"/><circle cx="76" cy="22" r="5" fill="currentColor"/>
-  <circle cx="24" cy="78" r="5" fill="currentColor"/><circle cx="76" cy="78" r="5" fill="currentColor"/>
-</svg>
