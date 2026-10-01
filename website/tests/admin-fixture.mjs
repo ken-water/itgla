@@ -12,6 +12,18 @@ const fixtures = {
     { day: "2026-09-21", page_views: 402, unique_visitors: 143, downloads: 24, errors: 0 },
     { day: "2026-09-22", page_views: 564, unique_visitors: 193, downloads: 45, errors: 2 },
   ],
+  "/admin/api/countries": {
+    summary: [
+      { country: "United States", page_views: 620, unique_visitors: 212 },
+      { country: "Germany", page_views: 180, unique_visitors: 72 },
+    ],
+    daily: [
+      { day: "2026-09-20", country: "United States", page_views: 120, unique_visitors: 44 },
+      { day: "2026-09-20", country: "Germany", page_views: 32, unique_visitors: 12 },
+      { day: "2026-09-21", country: "United States", page_views: 180, unique_visitors: 62 },
+      { day: "2026-09-21", country: "Germany", page_views: 51, unique_visitors: 20 },
+    ],
+  },
   "/admin/api/pages": [
     { path: "/", page_views: 711, unique_visitors: 322 },
     { path: "/downloads.html", page_views: 381, unique_visitors: 211 },

@@ -145,6 +145,58 @@ function renderTrend(target, rows, series, ariaLabel) {
   charts.set(target, chart);
 }
 
+function renderCountryTrend(target, rows) {
+  const countries = [...new Set(rows.map((row) => row.country))].slice(0, 6);
+  const days = [...new Set(rows.map((row) => row.day))];
+  const byDay = new Map(days.map((day) => [day, new Map()]));
+  rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row.unique_visitors || 0)));
+  const colors = ["#0f7664", "#c17d11", "#2563a6", "#b64141", "#6d4c9b", "#2f855a"];
+  const container = element(target);
+  charts.get(target)?.destroy();
+  if (!countries.length) {
+    container.innerHTML = empty("No country data for this period.");
+    return;
+  }
+  container.innerHTML = '<canvas role="img" aria-label="Daily unique visitors by country"></canvas>';
+  const canvas = container.querySelector("canvas");
+  charts.set(target, new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: days.map((day) => day.slice(5)),
+      datasets: countries.map((country, index) => ({
+        label: country,
+        data: days.map((day) => byDay.get(day)?.get(country) || 0),
+        borderColor: colors[index % colors.length],
+        backgroundColor: "transparent",
+        borderWidth: 2,
+        pointRadius: days.length > 45 ? 0 : 2,
+        tension: 0.3,
+      })),
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      interaction: { mode: "index", intersect: false },
+      plugins: {
+        legend: { display: true, position: "bottom", labels: { color: "#65716e", boxWidth: 18, usePointStyle: true } },
+        tooltip: { backgroundColor: "#173f36", padding: 12, callbacks: { title: (items) => `Date: ${items[0].label}` } },
+      },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: "#65716e", maxTicksLimit: 7, maxRotation: 0 } },
+        y: { beginAtZero: true, suggestedMax: 1, grid: { color: "#e8eeec" }, ticks: { color: "#65716e", precision: 0, padding: 8 } },
+      },
+    },
+  }));
+}
+
+function renderCountrySummary(target, rows) {
+  element(target).innerHTML = table(rows, [
+    ["Country", "country"],
+    ["PV", "page_views", formatNumber, "numeric"],
+    ["UV", "unique_visitors", formatNumber, "numeric"],
+  ]);
+}
+
 function renderPages(target, rows) {
   element(target).innerHTML = table(rows, [
     ["Page", "path"], ["PV", "page_views", formatNumber, "numeric"], ["UV", "unique_visitors", formatNumber, "numeric"],
@@ -197,12 +249,14 @@ async function loadDashboard() {
   error.hidden = true;
   const days = element("days").value;
   try {
-    const [overview, daily, pages, events, errors, downloads] = await Promise.all([
-      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`), api(`/downloads?days=${days}`),
+    const [overview, daily, pages, events, errors, downloads, countries] = await Promise.all([
+      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`), api(`/downloads?days=${days}`), api(`/countries?days=${days}`),
     ]);
     renderOverviewMetrics(overview);
     renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
     renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
+    renderCountryTrend("country-trend", countries.daily);
+    renderCountrySummary("country-summary", countries.summary);
     renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads", label: "Downloads" }], "Daily package downloads");
     renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
     renderPages("overview-pages", pages);

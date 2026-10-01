@@ -1,5 +1,16 @@
 import crypto from "node:crypto";
 
+export const publicPagePaths = Object.freeze([
+  "/",
+  "/index.html",
+  "/downloads.html",
+  "/privacy.html",
+  "/legal.html",
+  "/refund.html",
+  "/cookies.html",
+  "/feedback.html",
+]);
+
 export function hash(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
@@ -24,8 +35,10 @@ export function parseRequestLine(requestLine) {
 export function eventName({ path, contentType, statusCode }) {
   if (path.startsWith("/admin") || path === "/healthz" || path.startsWith("/.well-known/")) return null;
   if (path.startsWith("/downloads/")) return statusCode >= 400 ? "download_failure" : "download_success";
-  if (path === "/downloads.html" && contentType?.startsWith("text/html") && statusCode < 400) return "download_page_view";
-  if (contentType?.startsWith("text/html")) return statusCode >= 400 ? "page_error" : "page_view";
+  if (publicPagePaths.includes(path) && contentType?.startsWith("text/html")) {
+    if (path === "/downloads.html" && statusCode < 400) return "download_page_view";
+    return statusCode >= 400 ? "page_error" : "page_view";
+  }
   return null;
 }
 
@@ -66,7 +79,7 @@ export function parseLogLine(line, visitorSalt) {
       referrer: sanitizeReferrer(entry.referer),
       userAgent,
       visitorKey: hash(`${visitorSalt}:${remoteAddress}:${userAgent || "unknown"}`).slice(0, 32),
-      ipAddress: name.startsWith("download_") || name === "download" ? remoteAddress : null,
+      ipAddress: name === "page_view" || name.startsWith("download_") || name === "download" ? remoteAddress : null,
       occurredAt,
     };
   } catch {

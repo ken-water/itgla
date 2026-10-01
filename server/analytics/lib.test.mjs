@@ -32,12 +32,15 @@ test("classifies only public page, download, and error events", () => {
   assert.equal(eventName({ path: "/downloads/file.zip", contentType: "application/zip", statusCode: 200 }), "download_success");
   assert.equal(eventName({ path: "/downloads/file.zip", contentType: "application/zip", statusCode: 404 }), "download_failure");
   assert.equal(eventName({ path: "/downloads.html", contentType: "text/html", statusCode: 200 }), "download_page_view");
-  assert.equal(eventName({ path: "/missing", contentType: "text/html", statusCode: 404 }), "page_error");
+  assert.equal(eventName({ path: "/wp-login.php", contentType: "text/html", statusCode: 200 }), null);
+  assert.equal(eventName({ path: "/missing-probe", contentType: "text/html", statusCode: 404 }), null);
+  assert.equal(eventName({ path: "/missing", contentType: "text/html", statusCode: 404 }), null);
+  assert.equal(eventName({ path: "/privacy.html", contentType: "text/html", statusCode: 404 }), "page_error");
   assert.equal(eventName({ path: "/admin/", contentType: "text/html", statusCode: 200 }), null);
   assert.equal(eventName({ path: "/styles.css", contentType: "text/css", statusCode: 200 }), null);
 });
 
-test("hashes visitor identity without retaining the source address", () => {
+test("hashes visitor identity while retaining IP only for normal page analytics", () => {
   const event = parseLogLine(JSON.stringify({
     time: "2026-09-23T12:00:00+00:00",
     remote_addr: "203.0.113.10",
@@ -50,7 +53,7 @@ test("hashes visitor identity without retaining the source address", () => {
   }), "test-salt");
   assert.equal(event.eventName, "page_view");
   assert.equal(event.visitorKey.length, 32);
-  assert.equal(JSON.stringify(event).includes("203.0.113.10"), false);
+  assert.equal(event.ipAddress, "203.0.113.10");
 });
 
 test("clamps reporting windows", () => {

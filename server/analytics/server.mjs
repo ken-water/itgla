@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { daysFromUrl, hash, parseLogLine, passwordDigest, safeEqual } from "./lib.mjs";
+import { daysFromUrl, hash, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
 import { lookupGeo } from "./geo.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -216,6 +216,31 @@ async function daily(days) {
   return result.rows;
 }
 
+async function countries(days) {
+  const summary = await pool.query(
+    `select coalesce(country_name,country_code,'Unknown') as country,
+       count(*)::int as page_views,
+       count(distinct visitor_key)::int as unique_visitors
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name in ('page_view','download_page_view')
+     group by 1 order by page_views desc, country asc limit 30`,
+    [days],
+  );
+  const dailyResult = await pool.query(
+    `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
+       coalesce(country_name,country_code,'Unknown') as country,
+       count(*)::int as page_views,
+       count(distinct visitor_key)::int as unique_visitors
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name in ('page_view','download_page_view')
+     group by 1,2 order by 1, page_views desc`,
+    [days],
+  );
+  return { summary: summary.rows, daily: dailyResult.rows };
+}
+
 async function pages(days) {
   const result = await pool.query(
     `select path,count(*)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
@@ -330,6 +355,7 @@ async function handle(request, response) {
     const days = daysFromUrl(url);
     if (pathname === "/admin/api/overview") return json(response, 200, await overview(days));
     if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));
+    if (pathname === "/admin/api/countries") return json(response, 200, await countries(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));
@@ -339,6 +365,10 @@ async function handle(request, response) {
 }
 
 await pool.query(await fs.readFile(path.join(root, "schema.sql"), "utf8"));
+await pool.query(
+  "delete from analytics_events where event_name in ('page_view','page_error') and not (path = any($1::text[]))",
+  [publicPagePaths],
+);
 await pool.query("delete from admin_sessions where expires_at <= now()");
 await ingestAccessLog();
 setInterval(() => void ingestAccessLog(), 10_000).unref();
@@ -349,7 +379,7 @@ setInterval(() => {
        ip_address=null, country_code=null, country_name=null, region=null, city=null,
        latitude=null, longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null
      where occurred_at < now() - ($1::int * interval '1 day')
-       and event_name in ('download_page_view','download_success','download_failure','download')`,
+       and event_name in ('page_view','download_page_view','download_success','download_failure','download')`,
     [config.geoRetentionDays],
   );
   void pool.query("delete from analytics_events where occurred_at < now() - ($1::int * interval '1 day')", [config.retentionDays]);

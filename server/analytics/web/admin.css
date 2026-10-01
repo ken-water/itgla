@@ -75,6 +75,7 @@ h2 { margin-bottom: 0; font-size: 17px; }
 .funnel-item strong { font-size: 1.55rem; color: var(--ink); }
 @media (max-width: 720px) { .funnel { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 .legend .errors { background: var(--red); }
+.legend .country { background: #2563a6; }
 .chart { min-height: 270px; position: relative; }
 .chart canvas { display: block; width: 100% !important; height: 270px !important; }
 .empty { display: grid; min-height: 220px; place-items: center; color: var(--muted); text-align: center; }
