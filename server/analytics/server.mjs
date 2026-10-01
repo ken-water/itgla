@@ -166,6 +166,7 @@ async function ingestAccessLog() {
             event.referrer,
             event.userAgent,
             event.visitorKey,
+            isMeaningfulVisitor({ userAgent: event.userAgent, remoteAddress: event.ipAddress || "unknown" }) ? "meaningful" : "probe",
             event.ipAddress,
             geo?.countryCode,
             geo?.countryName,
@@ -177,9 +178,6 @@ async function ingestAccessLog() {
             null,
             null,
             null,
-            null,
-            null,
-            isMeaningfulVisitor({ userAgent: event.userAgent, remoteAddress: event.ipAddress || "unknown" }) ? "meaningful" : "probe",
             event.occurredAt,
           ],
         );
