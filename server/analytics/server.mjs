@@ -146,27 +146,20 @@ async function ingestAccessLog() {
         await pool.query(
           `insert into analytics_events
             (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,
-             ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
+            ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
            values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
            on conflict (event_key) do update set
              event_name=excluded.event_name,
-             ip_address=coalesce(analytics_events.ip_address, excluded.ip_address),
+             ip_address=null,
              country_code=coalesce(analytics_events.country_code, excluded.country_code),
              country_name=coalesce(analytics_events.country_name, excluded.country_name),
-             region=coalesce(analytics_events.region, excluded.region),
-             city=coalesce(analytics_events.city, excluded.city),
-             latitude=coalesce(analytics_events.latitude, excluded.latitude),
-             longitude=coalesce(analytics_events.longitude, excluded.longitude),
-             timezone=coalesce(analytics_events.timezone, excluded.timezone),
-             asn=coalesce(analytics_events.asn, excluded.asn),
-             organization=coalesce(analytics_events.organization, excluded.organization),
-             isp=coalesce(analytics_events.isp, excluded.isp),
-             geo_source=coalesce(analytics_events.geo_source, excluded.geo_source)`,
+             region=null, city=null, latitude=null, longitude=null, timezone=null,
+             asn=null, organization=null, isp=null, geo_source=null`,
           [
             event.eventKey, event.eventName, event.path, event.method, event.statusCode,
             event.bytesSent, event.referrer, event.userAgent, event.visitorKey, event.ipAddress,
-            geo?.countryCode, geo?.countryName, geo?.region, geo?.city, geo?.latitude, geo?.longitude,
-            geo?.timezone, geo?.asn, geo?.organization, geo?.isp, geo?.geoSource, event.occurredAt,
+            null, geo?.countryCode, geo?.countryName, null, null, null, null, null,
+            null, null, null, null, event.occurredAt,
           ],
         );
       }
@@ -265,8 +258,7 @@ async function recentEvents(days) {
 
 async function downloadDetails(days) {
   const result = await pool.query(
-    `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,ip_address,country_code,country_name,
-       region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at
+    `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,country_code,country_name,occurred_at
      from analytics_events
      where occurred_at >= now() - ($1::int * interval '1 day')
        and event_name in ('download_page_view','download_success','download_failure','download')
@@ -365,6 +357,10 @@ async function handle(request, response) {
 }
 
 await pool.query(await fs.readFile(path.join(root, "schema.sql"), "utf8"));
+await pool.query(
+  `update analytics_events set ip_address=null, region=null, city=null, latitude=null,
+     longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null`,
+);
 await pool.query(
   "delete from analytics_events where event_name in ('page_view','page_error') and not (path = any($1::text[]))",
   [publicPagePaths],

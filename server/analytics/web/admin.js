@@ -223,10 +223,7 @@ function renderDownloadEvents(target, rows) {
     ["Package", "path"],
     ["Status", "status_code", formatStatus],
     ["Bytes", "bytes_sent", formatNumber, "numeric"],
-    ["IP", "ip_address", (value) => value || "Unavailable"],
-    ["Location", "country_name", (value, row) => [value, row.region, row.city].filter(Boolean).join(" · ") || "Unavailable"],
-    ["Coordinates", "latitude", (value, row) => value != null && row.longitude != null ? `${Number(value).toFixed(3)}, ${Number(row.longitude).toFixed(3)}` : "Unavailable"],
-    ["ISP / ASN", "isp", (value, row) => [value || row.organization, row.asn && `AS${row.asn}`].filter(Boolean).join(" · ") || "Unavailable"],
+    ["Country", "country_name", (value, row) => value || row.country_code || "Unknown"],
     ["Source", "referrer", (value) => value && value !== "-" ? value : "Direct"],
     ["Browser", "user_agent", (value) => value || "Unknown"],
   ]);

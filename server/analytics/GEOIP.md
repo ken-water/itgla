@@ -20,9 +20,9 @@ install -o itgla -g itgla -m 0640 downloaded-city.mmdb /var/lib/itgla-analytics/
 If the file is absent or unreadable, analytics continues without geographic
 enrichment. Existing events are not sent to a third-party API.
 
-The admin traffic and download views expose source IP and approximate location
-only to authorized administrators. IP and detailed GeoIP fields are cleared
-after 180 days; aggregate event counters use the same retention period.
+The admin traffic and download views expose country-level results only. The
+source IP is used transiently for local lookup and is not stored in analytics
+records; city, coordinates, ISP, ASN, and other detailed fields are discarded.
 
 Keep the provider's attribution and license notice with the deployed database.
 Update the database through a reviewed maintenance job rather than downloading
