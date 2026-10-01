@@ -20,6 +20,9 @@ const fixtures = {
     { occurred_at: "2026-09-25T14:25:00Z", event_name: "download", path: "/downloads/v0.2.2/itgla.zip", status_code: 200, referrer: "https://itgla.com/downloads.html" },
     { occurred_at: "2026-09-23T14:23:00Z", event_name: "page_view", path: "/", status_code: 200, referrer: "-" },
   ],
+  "/admin/api/errors": [
+    { occurred_at: "2026-09-24T14:23:00Z", event_name: "page_error", path: "/missing.html", method: "GET", status_code: 404, bytes_sent: 162, referrer: "-", user_agent: "Mozilla/5.0" },
+  ],
 };
 
 function json(response, status, body, headers = {}) {

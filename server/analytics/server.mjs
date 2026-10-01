@@ -209,6 +209,17 @@ async function recentEvents(days) {
   return result.rows;
 }
 
+async function recentErrors(days) {
+  const result = await pool.query(
+    `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,occurred_at
+     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       and event_name='page_error'
+     order by occurred_at desc limit 100`,
+    [days],
+  );
+  return result.rows;
+}
+
 async function handle(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   const pathname = url.pathname;
@@ -260,6 +271,7 @@ async function handle(request, response) {
     if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
+    if (pathname === "/admin/api/errors") return json(response, 200, await recentErrors(days));
   }
   return json(response, 404, { message: "Not found." });
 }

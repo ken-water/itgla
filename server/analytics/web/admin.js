@@ -30,6 +30,24 @@ function formatTime(value) {
   return value ? new Date(value).toLocaleString("en-US", { hour12: false }) : "None";
 }
 
+function formatStatus(value) {
+  const code = Number(value || 0);
+  const labels = {
+    400: "400 Bad request",
+    401: "401 Unauthorized",
+    403: "403 Forbidden",
+    404: "404 Not found",
+    405: "405 Method not allowed",
+    408: "408 Request timeout",
+    429: "429 Too many requests",
+    500: "500 Internal server error",
+    502: "502 Bad gateway",
+    503: "503 Service unavailable",
+    504: "504 Gateway timeout",
+  };
+  return labels[code] || `${code} HTTP error`;
+}
+
 function empty(message) {
   return `<p class="empty">${escapeHtml(message)}</p>`;
 }
@@ -135,13 +153,25 @@ function renderEvents(target, rows) {
   ]);
 }
 
+function renderErrors(target, rows) {
+  element(target).innerHTML = table(rows, [
+    ["Time", "occurred_at", formatTime],
+    ["Path", "path"],
+    ["Error", "status_code", formatStatus],
+    ["Method", "method"],
+    ["Bytes", "bytes_sent", formatNumber, "numeric"],
+    ["Source", "referrer", (value) => value && value !== "-" ? value : "Direct"],
+    ["Browser", "user_agent", (value) => value || "Unknown"],
+  ]);
+}
+
 async function loadDashboard() {
   const error = element("dashboard-error");
   error.hidden = true;
   const days = element("days").value;
   try {
-    const [overview, daily, pages, events] = await Promise.all([
-      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`),
+    const [overview, daily, pages, events, errors] = await Promise.all([
+      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`),
     ]);
     renderOverviewMetrics(overview);
     renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
@@ -151,7 +181,7 @@ async function loadDashboard() {
     renderPages("overview-pages", pages);
     renderEvents("overview-events", events);
     renderEvents("downloads-events", events.filter((event) => event.event_name === "download"));
-    renderEvents("errors-events", events.filter((event) => event.event_name === "page_error"));
+    renderErrors("errors-events", errors);
   } catch (requestError) {
     if (requestError.status === 401) return showLogin();
     error.textContent = requestError.message;

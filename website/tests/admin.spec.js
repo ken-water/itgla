@@ -34,6 +34,8 @@ for (const viewport of [
     await page.getByRole("tab", { name: "Errors" }).click();
     await expect(page.getByRole("heading", { name: "Failed requests by day" })).toBeVisible();
     await expect(page.locator("#errors-trend canvas")).toBeVisible();
+    await expect(page.locator("#errors-events tbody tr")).toHaveCount(1);
+    await expect(page.locator("#errors-events")).toContainText("404 Not found");
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
