@@ -18,6 +18,7 @@ const config = {
   visitorSalt: process.env.ITGLA_VISITOR_SALT,
   geoIpDbPath: process.env.ITGLA_GEOIP_DB_PATH || "",
   geoProvider: process.env.ITGLA_GEOIP_PROVIDER || "local-mmdb",
+  geoRetentionDays: Math.max(1, Number(process.env.ITGLA_GEOIP_RETENTION_DAYS || 180)),
   retentionDays: Math.max(30, Number(process.env.ITGLA_RETENTION_DAYS || 365)),
 };
 
@@ -347,8 +348,9 @@ setInterval(() => {
     `update analytics_events set
        ip_address=null, country_code=null, country_name=null, region=null, city=null,
        latitude=null, longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null
-     where occurred_at < now() - interval '14 days'
+     where occurred_at < now() - ($1::int * interval '1 day')
        and event_name in ('download_page_view','download_success','download_failure','download')`,
+    [config.geoRetentionDays],
   );
   void pool.query("delete from analytics_events where occurred_at < now() - ($1::int * interval '1 day')", [config.retentionDays]);
 }, 60 * 60 * 1000).unref();

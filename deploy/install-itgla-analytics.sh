@@ -39,6 +39,7 @@ printf '%s\n' \
   "ITGLA_VISITOR_SALT=${VISITOR_SALT}" \
   "ITGLA_GEOIP_DB_PATH=/var/lib/itgla-analytics/geo.mmdb" \
   "ITGLA_GEOIP_PROVIDER=local-mmdb" \
+  "ITGLA_GEOIP_RETENTION_DAYS=180" \
   "ITGLA_RETENTION_DAYS=365" > "$ENV_FILE"
 
 ssh -o BatchMode=yes "$REMOTE_HOST" "set -eu

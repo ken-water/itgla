@@ -21,7 +21,7 @@ If the file is absent or unreadable, analytics continues without geographic
 enrichment. Existing events are not sent to a third-party API.
 
 The download detail view exposes source IP and approximate location only for
-authorized administrators. IP and detailed GeoIP fields are cleared after 14
+authorized administrators. IP and detailed GeoIP fields are cleared after 180
 days; aggregate event counters remain subject to the normal analytics
 retention period.
 
