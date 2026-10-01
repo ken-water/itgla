@@ -1,6 +1,6 @@
 /var/log/itgla/nginx-access.log {
     daily
-    rotate 14
+    rotate 90
     missingok
     notifempty
     compress
