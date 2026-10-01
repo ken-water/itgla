@@ -147,7 +147,7 @@ async function ingestAccessLog() {
           `insert into analytics_events
             (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,visitor_quality,
             ip_address,country_code,country_name,region,city,latitude,longitude,timezone,asn,organization,isp,geo_source,occurred_at)
-           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+           values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
            on conflict (event_key) do update set
              event_name=excluded.event_name,
              ip_address=null,
