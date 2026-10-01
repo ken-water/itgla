@@ -143,6 +143,38 @@ async function ingestAccessLog() {
           dbPath: config.geoIpDbPath,
           provider: config.geoProvider,
         }) : null;
+        const visitorQuality = isMeaningfulVisitor({
+          userAgent: event.userAgent,
+          remoteAddress: event.ipAddress || "unknown",
+        }) ? "meaningful" : "probe";
+        const insertValues = [
+          event.eventKey,
+          event.eventName,
+          event.path,
+          event.method,
+          event.statusCode,
+          event.bytesSent,
+          event.referrer,
+          event.userAgent,
+          event.visitorKey,
+          visitorQuality,
+          event.ipAddress,
+          geo?.countryCode,
+          geo?.countryName,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          null,
+          event.occurredAt,
+        ];
+        if (insertValues.length !== 23) {
+          throw new Error(`analytics insert mapping has ${insertValues.length} values; expected 23`);
+        }
         await pool.query(
           `insert into analytics_events
             (event_key,event_name,path,method,status_code,bytes_sent,referrer,user_agent,visitor_key,visitor_quality,
@@ -156,30 +188,7 @@ async function ingestAccessLog() {
              region=null, city=null, latitude=null, longitude=null, timezone=null,
              asn=null, organization=null, isp=null, geo_source=null,
              visitor_quality=excluded.visitor_quality`,
-          [
-            event.eventKey,
-            event.eventName,
-            event.path,
-            event.method,
-            event.statusCode,
-            event.bytesSent,
-            event.referrer,
-            event.userAgent,
-            event.visitorKey,
-            isMeaningfulVisitor({ userAgent: event.userAgent, remoteAddress: event.ipAddress || "unknown" }) ? "meaningful" : "probe",
-            event.ipAddress,
-            geo?.countryCode,
-            geo?.countryName,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            null,
-            event.occurredAt,
-          ],
+          insertValues,
         );
       }
     }
