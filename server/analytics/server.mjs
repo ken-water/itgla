@@ -464,7 +464,7 @@ async function handle(request, response) {
     const token = url.searchParams.get("token") || "";
     if (!/^[a-f0-9]{64}$/.test(token)) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
     const result = await pool.query(
-      "select email from email_signin_tokens where token_hash=$1 and used_at is null and expires_at > now()",
+      "select email,request_id from email_signin_tokens where token_hash=$1 and used_at is null and expires_at > now()",
       [hash(token)],
     );
     if (!result.rowCount) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
@@ -474,6 +474,9 @@ async function handle(request, response) {
       [result.rows[0].email],
     );
     await pool.query("update email_signin_tokens set used_at=now() where token_hash=$1", [hash(token)]);
+    if (result.rows[0].request_id) {
+      await pool.query("update email_login_attempts set verified_at=now() where request_id=$1", [result.rows[0].request_id]);
+    }
     await pool.query(
       "insert into user_sessions (token_hash,email,expires_at) values ($1,$2,now()+interval '30 days')",
       [hash(session), result.rows[0].email],
@@ -488,6 +491,23 @@ async function handle(request, response) {
   if (request.method === "GET" && pathname === "/auth/me") {
     const email = await userEmail(request);
     return json(response, 200, email ? { authenticated: true, email } : { authenticated: false });
+  }
+  if (request.method === "GET" && pathname === "/auth/email/status") {
+    const requestId = url.searchParams.get("request_id") || "";
+    if (!/^[a-f0-9]{32}$/.test(requestId)) return json(response, 400, { message: "Invalid sign-in attempt." });
+    const attempt = await pool.query(
+      "select email,verified_at from email_login_attempts where request_id=$1 and expires_at > now()",
+      [requestId],
+    );
+    if (!attempt.rowCount || !attempt.rows[0].verified_at) return json(response, 202, { authenticated: false, status: "pending" });
+    const session = crypto.randomBytes(32).toString("hex");
+    await pool.query(
+      "insert into user_sessions (token_hash,email,expires_at) values ($1,$2,now()+interval '30 days')",
+      [hash(session), attempt.rows[0].email],
+    );
+    return json(response, 200, { authenticated: true }, {
+      "Set-Cookie": `itgla_user_session=${session}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`,
+    });
   }
   if (pathname.startsWith("/api/workspace/")) {
     const email = await userEmail(request);
@@ -549,16 +569,22 @@ async function handle(request, response) {
     if (email === undefined || !email) return json(response, 400, { message: "Enter a valid email address." });
     if (!config.resendApiKey) return json(response, 503, { message: "Email delivery is temporarily unavailable. Please try again later." });
     const token = crypto.randomBytes(32).toString("hex");
+    const requestId = crypto.randomBytes(16).toString("hex");
     await pool.query(
-      "insert into email_signin_tokens (token_hash,email,expires_at) values ($1,$2,now()+interval '15 minutes')",
-      [hash(token), email],
+      "insert into email_login_attempts (request_id,email,expires_at) values ($1,$2,now()+interval '15 minutes')",
+      [requestId, email],
+    );
+    await pool.query(
+      "insert into email_signin_tokens (token_hash,email,request_id,expires_at) values ($1,$2,$3,now()+interval '15 minutes')",
+      [hash(token), email, requestId],
     );
     const delivery = await sendSigninEmail(email, token);
     if (delivery.status !== "sent") {
       await pool.query("delete from email_signin_tokens where token_hash=$1", [hash(token)]);
+      await pool.query("delete from email_login_attempts where request_id=$1", [requestId]);
       return json(response, 502, { message: "The verification email could not be sent. Please try again." });
     }
-    return json(response, 202, { message: "Check your inbox for a one-time ITGLA sign-in link." });
+    return json(response, 202, { message: "Check your inbox for a one-time ITGLA sign-in link.", request_id: requestId });
   }
   if (request.method === "POST" && pathname === "/api/feedback") {
     if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });

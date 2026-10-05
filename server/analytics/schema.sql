@@ -98,13 +98,27 @@ create index if not exists idx_itgla_feedback_created_at
 create table if not exists email_signin_tokens (
     token_hash text primary key,
     email text not null,
+    request_id text,
     expires_at timestamptz not null,
     used_at timestamptz,
     created_at timestamptz not null default now()
 );
 
+alter table email_signin_tokens add column if not exists request_id text;
+
 create index if not exists idx_itgla_email_signin_expires_at
     on email_signin_tokens (expires_at);
+
+create table if not exists email_login_attempts (
+    request_id text primary key,
+    email text not null,
+    verified_at timestamptz,
+    expires_at timestamptz not null,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_itgla_email_login_attempts_expires_at
+    on email_login_attempts (expires_at);
 
 create table if not exists users (
     email text primary key,
