@@ -10,7 +10,7 @@ use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
 
 use domain::{ServerColumn, ServerDraft, ServerRecord, server_tags_from_input};
 use import_data::{TabularData, read_tabular};
-use slint::{ModelRc, SharedString, VecModel};
+use slint::{Model, ModelRc, SharedString, VecModel};
 use storage::{Repository, ServerImportTarget, StorageError};
 
 slint::include_modules!();
@@ -301,7 +301,145 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_state = Rc::new(RefCell::new(TableState::default()));
     let import_session = Rc::new(RefCell::new(ImportSession::default()));
     let window = AppWindow::new()?;
+    let project_rows = repository
+        .borrow()
+        .project_plans()?
+        .into_iter()
+        .map(|project| ProjectRow {
+            name: project.name.into(),
+            description: project.description.into(),
+            start_at: project.start_at.into(),
+            priority: project.priority.into(),
+            launch_at: project.launch_at.into(),
+        })
+        .collect::<Vec<_>>();
+    let operation_rows = repository
+        .borrow()
+        .operations()?
+        .into_iter()
+        .map(|operation| OperationRow {
+            name: operation.name.into(),
+            publish_at: operation.publish_at.into(),
+            media: operation.media.into(),
+            channel: operation.channel.into(),
+        })
+        .collect::<Vec<_>>();
+    let priorities = Rc::new(VecModel::from(
+        repository
+            .borrow()
+            .priority_options()?
+            .into_iter()
+            .map(|option| SharedString::from(option.label))
+            .collect::<Vec<_>>(),
+    ));
+    let media_options = Rc::new(VecModel::from(
+        repository
+            .borrow()
+            .media_options()?
+            .into_iter()
+            .map(SharedString::from)
+            .collect::<Vec<_>>(),
+    ));
+    window.set_projects(ModelRc::new(VecModel::from(project_rows)));
+    window.set_operations(ModelRc::new(VecModel::from(operation_rows)));
+    window.set_priority_options(ModelRc::from(priorities.clone()));
+    window.set_media_options(ModelRc::from(media_options.clone()));
     refresh(&window, &repository.borrow(), &table_state.borrow())?;
+
+    let weak = window.as_weak();
+    window.on_tab_selected(move |tab| {
+        if let Some(window) = weak.upgrade() {
+            window.set_active_tab(tab);
+        }
+    });
+
+    let priorities_for_add = Rc::clone(&priorities);
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
+    window.on_add_priority(move |value| {
+        let value = value.trim();
+        if value.is_empty()
+            || priorities_for_add
+                .iter()
+                .any(|existing| existing.as_str().eq_ignore_ascii_case(value))
+        {
+            return;
+        }
+        if callback_repository
+            .borrow_mut()
+            .add_priority_option(value, "#126a57")
+            .is_err()
+        {
+            return;
+        }
+        priorities_for_add.push(value.into());
+        if let Some(window) = weak.upgrade() {
+            window.set_priority_input(SharedString::new());
+        }
+    });
+
+    let media_for_add = Rc::clone(&media_options);
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
+    window.on_add_media(move |value| {
+        let value = value.trim();
+        if value.is_empty()
+            || media_for_add
+                .iter()
+                .any(|existing| existing.as_str().eq_ignore_ascii_case(value))
+        {
+            return;
+        }
+        if callback_repository
+            .borrow_mut()
+            .add_media_option(value)
+            .is_err()
+        {
+            return;
+        }
+        media_for_add.push(value.into());
+        if let Some(window) = weak.upgrade() {
+            window.set_media_input(SharedString::new());
+        }
+    });
+
+    let priorities_for_remove = Rc::clone(&priorities);
+    let callback_repository = Rc::clone(&repository);
+    window.on_remove_priority(move |index| {
+        let index = index.max(0) as usize;
+        if priorities_for_remove.row_count() > 1 && index < priorities_for_remove.row_count() {
+            let Some(value) = priorities_for_remove.row_data(index) else {
+                return;
+            };
+            if callback_repository
+                .borrow_mut()
+                .remove_priority_option(value.as_str())
+                .is_err()
+            {
+                return;
+            }
+            priorities_for_remove.remove(index);
+        }
+    });
+
+    let media_for_remove = Rc::clone(&media_options);
+    let callback_repository = Rc::clone(&repository);
+    window.on_remove_media(move |index| {
+        let index = index.max(0) as usize;
+        if media_for_remove.row_count() > 1 && index < media_for_remove.row_count() {
+            let Some(value) = media_for_remove.row_data(index) else {
+                return;
+            };
+            if callback_repository
+                .borrow_mut()
+                .remove_media_option(value.as_str())
+                .is_err()
+            {
+                return;
+            }
+            media_for_remove.remove(index);
+        }
+    });
 
     let weak = window.as_weak();
     let callback_repository = Rc::clone(&repository);

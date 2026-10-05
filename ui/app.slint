@@ -1,6 +1,8 @@
 import { Button, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
 
 export struct ServerRow { id: int, tags: string, ip-address: string, ports: string, custom-values: [string] }
+export struct ProjectRow { name: string, description: string, start-at: string, priority: string, launch-at: string }
+export struct OperationRow { name: string, publish-at: string, media: string, channel: string }
 export struct ImportColumnRow { index: int, source-name: string, sample: string, mapping-index: int }
 
 component DataCell inherits Rectangle {
@@ -10,6 +12,11 @@ component DataCell inherits Rectangle {
     background: cell-touch.has-hover ? #e7f1dc : transparent;
     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #e1e7df; }
     Text { x: 10px; y: 0; width: parent.width - 38px; height: parent.height; text: root.value; color: #25342d; font-size: 11px; vertical-alignment: center; overflow: elide; }
+    if cell-touch.has-hover: Rectangle {
+        x: 4px; y: -6px; width: 292px; height: 54px; background: #ffffff; border-width: 1px; border-color: #9db89b; border-radius: 5px;
+        drop-shadow-blur: 10px; drop-shadow-color: #183c3226; drop-shadow-offset-y: 3px;
+        Text { x: 12px; y: 0px; width: parent.width - 24px; height: parent.height; text: root.value; color: #183c32; font-size: 15px; font-weight: 650; vertical-alignment: center; overflow: elide; }
+    }
     Text { x: parent.width - 28px; y: 0; width: 18px; height: parent.height; text: "⧉"; color: #6f8e55; font-size: 15px; vertical-alignment: center; horizontal-alignment: center; }
     cell-touch := TouchArea { clicked => { root.copy(root.value, root.copy-label); } }
 }
@@ -92,8 +99,13 @@ component ImportMappingRow inherits Rectangle {
 
 export component AppWindow inherits Window {
     title: "ITGLA - Server Inventory";
+    icon: @image-url("../assets/itgla.png");
     preferred-width: 1240px; preferred-height: 800px; min-width: 1000px; min-height: 640px; background: #eef1eb;
     in property <[ServerRow]> servers;
+    in property <[ProjectRow]> projects;
+    in property <[OperationRow]> operations;
+    in property <[string]> priority-options;
+    in property <[string]> media-options;
     in property <[string]> available-tags;
     in property <[string]> custom-headers;
     in property <int> custom-column-count;
@@ -110,6 +122,11 @@ export component AppWindow inherits Window {
     in-out property <string> status-message;
     in-out property <bool> status-is-error: false;
     in-out property <string> copy-notice;
+    in-out property <int> active-tab: 0;
+    in-out property <string> priority-input;
+    in-out property <string> media-input;
+    in-out property <int> priority-index: 0;
+    in-out property <int> media-index: 0;
     in-out property <bool> import-dialog-open: false;
     in-out property <string> import-file-path;
     in-out property <[ImportColumnRow]> import-columns;
@@ -131,6 +148,11 @@ export component AppWindow inherits Window {
     callback load-import(string);
     callback import-mapping-changed(int, int);
     callback confirm-import;
+    callback tab-selected(int);
+    callback add-priority(string);
+    callback remove-priority(int);
+    callback add-media(string);
+    callback remove-media(int);
 
     Rectangle {
         x: 0; y: 0; width: parent.width; height: 72px; background: #183c32;
@@ -142,7 +164,16 @@ export component AppWindow inherits Window {
     }
 
     Rectangle {
-        x: 28px; y: 98px; width: parent.width - 412px; height: parent.height - 122px; background: transparent;
+        x: 28px; y: 78px; width: parent.width - 56px; height: 42px; background: #dfe8de; border-radius: 5px;
+        Rectangle { x: root.active-tab == 0 ? 4px : root.active-tab == 1 ? 120px : 236px; y: 4px; width: root.active-tab == 2 ? 128px : 112px; height: 34px; background: #183c32; border-radius: 4px; }
+        Button { x: 4px; y: 4px; width: 112px; height: 34px; text: "Servers"; clicked => { root.tab-selected(0); } }
+        Button { x: 120px; y: 4px; width: 112px; height: 34px; text: "Projects"; clicked => { root.tab-selected(1); } }
+        Button { x: 236px; y: 4px; width: 128px; height: 34px; text: "Operations"; clicked => { root.tab-selected(2); } }
+        Text { x: root.active-tab == 0 ? 4px : root.active-tab == 1 ? 120px : 236px; y: 4px; width: root.active-tab == 2 ? 128px : 112px; height: 34px; text: root.active-tab == 0 ? "Servers" : root.active-tab == 1 ? "Projects" : "Operations"; color: #d7ee9d; font-size: 12px; font-weight: 700; horizontal-alignment: center; vertical-alignment: center; }
+    }
+
+    if root.active-tab == 0: Rectangle {
+        x: 28px; y: 138px; width: parent.width - 412px; height: parent.height - 162px; background: transparent;
         Text { x: 0; y: 0; text: root.show-hidden ? "Hidden servers" : root.active-tag == "" ? "Servers" : "Servers tagged " + root.active-tag; color: #183c32; font-size: 24px; font-weight: 750; }
         Text { x: 0; y: 34px; text: "INDEX / INFRASTRUCTURE"; color: #7d8b7f; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
         Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: root.show-hidden ? "Back to active" : "Hidden (" + root.hidden-count + ")"; clicked => { root.show-hidden-changed(!root.show-hidden); } }
@@ -167,8 +198,8 @@ export component AppWindow inherits Window {
         }
     }
 
-    Rectangle {
-        x: parent.width - 356px; y: 98px; width: 328px; height: parent.height - 122px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+    if root.active-tab == 0: Rectangle {
+        x: parent.width - 356px; y: 138px; width: 328px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
         Text { x: 18px; y: 16px; text: root.editing-id == 0 ? "Add server" : "Edit server"; color: #183c32; font-size: 18px; font-weight: 750; }
         if root.editing-id != 0: Button { x: 224px; y: 10px; width: 84px; height: 30px; text: "New"; clicked => { root.editing-id = 0; root.editing-tags = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.status-message = ""; } }
         Text { x: 18px; y: 58px; text: "RECORD DETAILS"; color: #718174; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
@@ -190,6 +221,42 @@ export component AppWindow inherits Window {
                 for tag in root.available-tags: TagChoice { label: tag; selected: root.active-tag == tag; chosen => { root.tag-selected(tag); } }
             }
         }
+    }
+
+    if root.active-tab == 1: Rectangle {
+        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+        Text { x: 24px; y: 22px; text: "Projects"; color: #183c32; font-size: 24px; font-weight: 750; }
+        Text { x: 24px; y: 58px; text: "START@  ·  DESC  ·  PRIORITY  ·  LAUNCH@"; color: #718174; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+        Rectangle { x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: #e7ede5; }
+        Text { x: 12px; width: 170px; height: parent.height; text: "PROJECT"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 182px; width: 260px; height: parent.height; text: "DESC"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 442px; width: 120px; height: parent.height; text: "START@"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 562px; width: 120px; height: parent.height; text: "PRIORITY"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 682px; width: 140px; height: parent.height; text: "LAUNCH@"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for project in root.projects: Rectangle { height: 54px; background: #ffffff; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; } Text { x: 12px; width: 170px; height: parent.height; text: project.name; color: #25342d; font-size: 12px; vertical-alignment: center; } Text { x: 182px; width: 260px; height: parent.height; text: project.description; color: #65776a; font-size: 11px; vertical-alignment: center; overflow: elide; } Text { x: 442px; width: 120px; height: parent.height; text: project.start-at; color: #25342d; font-size: 11px; vertical-alignment: center; } Text { x: 562px; width: 120px; height: parent.height; text: project.priority; color: project.priority == "P0" ? #b64141 : project.priority == "P1" ? #bf7b26 : project.priority == "P2" ? #2563a6 : #126a57; font-size: 11px; font-weight: 700; vertical-alignment: center; } Text { x: 682px; width: 140px; height: parent.height; text: project.launch-at; color: #25342d; font-size: 11px; vertical-alignment: center; } } }
+        Text { x: 24px; y: parent.height - 76px; text: "Priority values"; color: #718174; font-size: 10px; }
+        priority-box := ComboBox { x: 120px; y: parent.height - 84px; width: 110px; height: 32px; model: root.priority-options; current-index: root.priority-index; selected(value) => { root.priority-index = priority-box.current-index; } }
+        LineEdit { x: 242px; y: parent.height - 84px; width: 180px; height: 32px; placeholder-text: "Add custom priority"; text <=> root.priority-input; }
+        Button { x: 430px; y: parent.height - 84px; width: 90px; height: 32px; text: "Add"; clicked => { root.add-priority(root.priority-input); } }
+        Button { x: 526px; y: parent.height - 84px; width: 90px; height: 32px; text: "Remove"; clicked => { root.remove-priority(root.priority-index); } }
+        Text { x: 24px; y: parent.height - 42px; text: "P0–P3 are the defaults. Custom priorities use the same color system."; color: #718174; font-size: 10px; }
+    }
+
+    if root.active-tab == 2: Rectangle {
+        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+        Text { x: 24px; y: 22px; text: "Operations"; color: #183c32; font-size: 24px; font-weight: 750; }
+        Text { x: 24px; y: 58px; text: "PUBLISH@  ·  MEDIA  ·  CHANNEL"; color: #718174; font-size: 9px; font-weight: 700; letter-spacing: 1px; }
+        Rectangle { x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: #e7ede5; }
+        Text { x: 12px; width: 250px; height: parent.height; text: "PUBLISH@"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 262px; width: 180px; height: parent.height; text: "MEDIA"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        Text { x: 442px; width: 320px; height: parent.height; text: "CHANNEL"; color: #65776a; font-size: 9px; font-weight: 700; vertical-alignment: center; }
+        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for operation in root.operations: Rectangle { height: 54px; background: #ffffff; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; } Text { x: 12px; width: 250px; height: parent.height; text: operation.publish-at; color: #25342d; font-size: 11px; vertical-alignment: center; } Text { x: 262px; width: 180px; height: parent.height; text: operation.media; color: #25342d; font-size: 11px; vertical-alignment: center; } Text { x: 442px; width: 320px; height: parent.height; text: operation.channel; color: #65776a; font-size: 11px; vertical-alignment: center; } } }
+        Text { x: 24px; y: parent.height - 76px; text: "Media values"; color: #718174; font-size: 10px; }
+        media-box := ComboBox { x: 120px; y: parent.height - 84px; width: 130px; height: 32px; model: root.media-options; current-index: root.media-index; selected(value) => { root.media-index = media-box.current-index; } }
+        LineEdit { x: 262px; y: parent.height - 84px; width: 180px; height: 32px; placeholder-text: "Add custom media"; text <=> root.media-input; }
+        Button { x: 450px; y: parent.height - 84px; width: 90px; height: 32px; text: "Add"; clicked => { root.add-media(root.media-input); } }
+        Button { x: 546px; y: parent.height - 84px; width: 90px; height: 32px; text: "Remove"; clicked => { root.remove-media(root.media-index); } }
+        Text { x: 24px; y: parent.height - 42px; text: "X, TikTok, and Media start as presets; custom values can be added or removed."; color: #718174; font-size: 10px; }
     }
 
     if root.hide-target-id != 0: Rectangle {

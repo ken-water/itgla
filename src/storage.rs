@@ -18,7 +18,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 5;
+const SCHEMA_VERSION: i64 = 6;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -34,6 +34,31 @@ pub enum ServerImportTarget {
     Ports,
     ExistingCustom(i64),
     NewCustom(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProjectPlan {
+    pub project_id: i64,
+    pub name: String,
+    pub description: String,
+    pub start_at: String,
+    pub priority: String,
+    pub launch_at: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OperationRecord {
+    pub id: i64,
+    pub name: String,
+    pub publish_at: String,
+    pub media: String,
+    pub channel: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PriorityOption {
+    pub label: String,
+    pub color: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -217,7 +242,118 @@ impl Repository {
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
+        if self.schema_version()? == 5 {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/006_planning.sql"))?;
+            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            transaction.commit()?;
+        }
         Ok(())
+    }
+
+    pub fn project_plans(&self) -> Result<Vec<ProjectPlan>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT p.id, p.name, p.description, pp.start_at, pp.priority, pp.launch_at
+             FROM projects p LEFT JOIN project_plans pp ON pp.project_id = p.id
+             WHERE p.archived_at IS NULL ORDER BY p.position, p.id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(ProjectPlan {
+                project_id: row.get(0)?,
+                name: row.get(1)?,
+                description: row.get(2)?,
+                start_at: row.get::<_, Option<String>>(3)?.unwrap_or_default(),
+                priority: row
+                    .get::<_, Option<String>>(4)?
+                    .unwrap_or_else(|| "P2".into()),
+                launch_at: row.get::<_, Option<String>>(5)?.unwrap_or_default(),
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn operations(&self) -> Result<Vec<OperationRecord>, StorageError> {
+        let mut statement = self.connection.prepare(
+            "SELECT id, name, publish_at, media, channel FROM operations
+             WHERE archived_at IS NULL ORDER BY position, id",
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok(OperationRecord {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                publish_at: row.get(2)?,
+                media: row.get(3)?,
+                channel: row.get(4)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn priority_options(&self) -> Result<Vec<PriorityOption>, StorageError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT label, color FROM priority_options ORDER BY position, id")?;
+        let rows = statement.query_map([], |row| {
+            Ok(PriorityOption {
+                label: row.get(0)?,
+                color: row.get(1)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn media_options(&self) -> Result<Vec<String>, StorageError> {
+        let mut statement = self
+            .connection
+            .prepare("SELECT label FROM media_options ORDER BY position, id")?;
+        let rows = statement.query_map([], |row| row.get(0))?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
+    pub fn add_priority_option(&mut self, label: &str, color: &str) -> Result<(), StorageError> {
+        let label = validate_name(label, 48)?;
+        self.connection
+            .execute(
+                "INSERT INTO priority_options (label, color, position)
+                 VALUES (?1, ?2, (SELECT COALESCE(MAX(position), -1) + 1 FROM priority_options))",
+                params![label, color.trim()],
+            )
+            .map(|_| ())
+            .map_err(map_write_error)
+    }
+
+    pub fn remove_priority_option(&mut self, label: &str) -> Result<(), StorageError> {
+        self.connection
+            .execute(
+                "DELETE FROM priority_options WHERE label = ?1
+                 AND (SELECT COUNT(*) FROM priority_options) > 1",
+                [label],
+            )
+            .map(|_| ())
+            .map_err(Into::into)
+    }
+
+    pub fn add_media_option(&mut self, label: &str) -> Result<(), StorageError> {
+        let label = validate_name(label, 48)?;
+        self.connection
+            .execute(
+                "INSERT INTO media_options (label, position)
+                 VALUES (?1, (SELECT COALESCE(MAX(position), -1) + 1 FROM media_options))",
+                [label],
+            )
+            .map(|_| ())
+            .map_err(map_write_error)
+    }
+
+    pub fn remove_media_option(&mut self, label: &str) -> Result<(), StorageError> {
+        self.connection
+            .execute(
+                "DELETE FROM media_options WHERE label = ?1
+                 AND (SELECT COUNT(*) FROM media_options) > 1",
+                [label],
+            )
+            .map(|_| ())
+            .map_err(Into::into)
     }
 
     pub fn server_records(&self) -> Result<Vec<ServerRecord>, StorageError> {
@@ -1386,7 +1522,7 @@ mod tests {
     #[test]
     fn migrates_and_seeds_an_empty_database() -> Result<(), StorageError> {
         let repository = Repository::in_memory()?;
-        assert_eq!(repository.schema_version()?, 5);
+        assert_eq!(repository.schema_version()?, 6);
         assert!(repository.server_records()?.is_empty());
         assert_eq!(repository.projects()?.len(), 3);
         assert_eq!(repository.assets_for_project(1)?.len(), 6);
@@ -1416,7 +1552,7 @@ mod tests {
             error,
             Some(StorageError::UnsupportedSchema {
                 found: 99,
-                supported: 5
+                supported: 6
             })
         ));
         Ok(())
@@ -1521,7 +1657,7 @@ mod tests {
         connection.execute_batch(include_str!("../migrations/seed.sql"))?;
         connection.pragma_update(None, "user_version", 1)?;
         let repository = Repository::from_connection(connection, None)?;
-        assert_eq!(repository.schema_version()?, 5);
+        assert_eq!(repository.schema_version()?, 6);
         assert_eq!(repository.relationships_for_project(1)?.len(), 4);
         let cross_project: i64 = repository.connection.query_row(
             "SELECT COUNT(*) FROM relationships r
@@ -1677,7 +1813,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 3)?;
 
         let repository = Repository::from_connection(connection, None)?;
-        assert_eq!(repository.schema_version()?, 5);
+        assert_eq!(repository.schema_version()?, 6);
         assert_eq!(repository.server_records()?[0].tags, vec!["Legacy API"]);
         Ok(())
     }

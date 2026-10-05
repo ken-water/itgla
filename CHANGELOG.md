@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## [0.2.3] - 2026-10-05
+
+### Added
+
+- Added persistent Projects and Operations tabs backed by SQLite schema v6.
+- Added persistent custom priority and media options.
+- Added the ITGLA logo to the native application window and package resources.
+- Added enlarged hover previews for dense table fields.
+
 ## [0.2.2] - 2026-09-25
 
 ### Added
