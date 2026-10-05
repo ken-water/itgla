@@ -45,6 +45,13 @@ test("download page exposes current verified artifacts", async ({ page, request 
   for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download SHA256SUMS"]) {
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   }
+  await expect(page.getByRole("link", { name: /View full release notes/ })).toHaveAttribute(
+    "href",
+    "/release-notes.html",
+  );
+  await page.goto("/release-notes.html");
+  await expect(page.getByRole("heading", { name: "Release notes" })).toBeVisible();
+  await expect(page.getByText("v0.0.1 · September 19, 2026")).toBeVisible();
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
@@ -62,6 +69,7 @@ test("secondary documents render", async ({ page }) => {
     "/server-spreadsheet-alternative.html",
     "/local-first-server-inventory.html",
     "/server-inventory-example.html",
+    "/release-notes.html",
   ]) {
     const response = await page.goto(path);
     expect(response?.ok()).toBeTruthy();
