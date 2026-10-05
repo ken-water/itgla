@@ -492,6 +492,14 @@ async function handle(request, response) {
     const email = await userEmail(request);
     return json(response, 200, email ? { authenticated: true, email } : { authenticated: false });
   }
+  if (request.method === "POST" && pathname === "/auth/logout") {
+    if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+    const token = userSessionToken(request);
+    if (token) await pool.query("delete from user_sessions where token_hash=$1", [hash(token)]);
+    return json(response, 200, { signed_out: true }, {
+      "Set-Cookie": "itgla_user_session=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=Lax",
+    });
+  }
   if (request.method === "GET" && pathname === "/auth/email/status") {
     const requestId = url.searchParams.get("request_id") || "";
     if (!/^[a-f0-9]{32}$/.test(requestId)) return json(response, 400, { message: "Invalid sign-in attempt." });
