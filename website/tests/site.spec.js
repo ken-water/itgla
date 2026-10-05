@@ -70,6 +70,7 @@ test("secondary documents render", async ({ page }) => {
     "/local-first-server-inventory.html",
     "/server-inventory-example.html",
     "/release-notes.html",
+    "/account.html",
   ]) {
     const response = await page.goto(path);
     expect(response?.ok()).toBeTruthy();

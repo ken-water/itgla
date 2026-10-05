@@ -445,6 +445,7 @@ async function handle(request, response) {
   }
   if (request.method === "GET" && pathname === "/feedback.js") return asset(response, "feedback.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/auth.js") return asset(response, "auth.js", "text/javascript; charset=utf-8");
+  if (request.method === "GET" && pathname === "/account.js") return asset(response, "account.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/auth/email/verify") {
     const token = url.searchParams.get("token") || "";
     if (!/^[a-f0-9]{64}$/.test(token)) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
@@ -454,17 +455,32 @@ async function handle(request, response) {
     );
     if (!result.rowCount) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
     const session = crypto.randomBytes(32).toString("hex");
+    await pool.query(
+      "insert into users (email) values ($1) on conflict (email) do update set last_sign_in_at=now()",
+      [result.rows[0].email],
+    );
     await pool.query("update email_signin_tokens set used_at=now() where token_hash=$1", [hash(token)]);
     await pool.query(
       "insert into user_sessions (token_hash,email,expires_at) values ($1,$2,now()+interval '30 days')",
       [hash(session), result.rows[0].email],
     );
     response.writeHead(302, {
-      Location: "/signin.html?verified=1",
+      Location: "/account.html?registered=1",
       "Set-Cookie": `itgla_user_session=${session}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`,
       ...securityHeaders("text/plain; charset=utf-8"),
     });
     return response.end();
+  }
+  if (request.method === "GET" && pathname === "/auth/me") {
+    const token = cookieValue(request, "itgla_user_session");
+    if (!token) return json(response, 200, { authenticated: false });
+    const result = await pool.query(
+      "select u.email from user_sessions s join users u on u.email=s.email where s.token_hash=$1 and s.expires_at > now()",
+      [hash(token)],
+    );
+    return json(response, 200, result.rowCount
+      ? { authenticated: true, email: result.rows[0].email }
+      : { authenticated: false });
   }
   if (request.method === "POST" && pathname === "/auth/email/start") {
     if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });

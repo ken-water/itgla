@@ -106,6 +106,12 @@ create table if not exists email_signin_tokens (
 create index if not exists idx_itgla_email_signin_expires_at
     on email_signin_tokens (expires_at);
 
+create table if not exists users (
+    email text primary key,
+    created_at timestamptz not null default now(),
+    last_sign_in_at timestamptz not null default now()
+);
+
 create table if not exists user_sessions (
     token_hash text primary key,
     email text not null,
