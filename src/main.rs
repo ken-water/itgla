@@ -6,7 +6,7 @@ mod import_data;
 #[allow(dead_code)]
 mod storage;
 
-use std::{cell::RefCell, cmp::Ordering, net::IpAddr, path::PathBuf, rc::Rc};
+use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
 
 use domain::{ServerColumn, ServerDraft, ServerRecord, server_tags_from_input};
 use import_data::{TabularData, read_tabular};
@@ -29,6 +29,27 @@ struct ImportSession {
     mappings: Vec<usize>,
     existing_columns: Vec<ServerColumn>,
 }
+
+const SUGGESTED_CUSTOM_FIELDS: &[&str] = &[
+    "Name",
+    "Notes",
+    "Cloud Provider",
+    "Region",
+    "OS",
+    "Project",
+    "Environment",
+    "Owner",
+    "Service",
+    "Domain",
+    "Panel URL",
+    "Login URL",
+];
+
+const IMPORT_TEMPLATE_CSV: &str = concat!(
+    "IP Address,Ports,Tags,Name,Notes\n",
+    "192.0.2.10,\"22,80,443\",\"prod,nginx\",api-gateway-01,\"Public gateway server\"\n",
+    "198.51.100.20,5432,\"prod,database\",postgres-01,\"Primary PostgreSQL server\"\n",
+);
 
 fn to_row(server: &ServerRecord) -> ServerRow {
     ServerRow {
@@ -183,6 +204,11 @@ fn mapping_options(columns: &[ServerColumn]) -> Vec<SharedString> {
             .iter()
             .map(|column| SharedString::from(format!("Existing: {}", column.name))),
     );
+    options.extend(
+        SUGGESTED_CUSTOM_FIELDS
+            .iter()
+            .map(|field| SharedString::from(format!("Suggested field: {field}"))),
+    );
     options.push("New custom column".into());
     options
 }
@@ -208,7 +234,21 @@ fn default_mapping(header: &str, columns: &[ServerColumn]) -> usize {
     {
         return 4 + index;
     }
-    4 + columns.len()
+    if let Some(index) = SUGGESTED_CUSTOM_FIELDS
+        .iter()
+        .position(|field| normalized == normalize_header(field))
+    {
+        return 4 + columns.len() + index;
+    }
+    4 + columns.len() + SUGGESTED_CUSTOM_FIELDS.len()
+}
+
+fn normalize_header(value: &str) -> String {
+    value
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>()
+        .to_ascii_lowercase()
 }
 
 fn import_target(
@@ -216,6 +256,8 @@ fn import_target(
     mapping_index: usize,
     session: &ImportSession,
 ) -> Option<ServerImportTarget> {
+    let suggested_start = 4 + session.existing_columns.len();
+    let new_custom_index = suggested_start + SUGGESTED_CUSTOM_FIELDS.len();
     match mapping_index {
         0 => Some(ServerImportTarget::Skip),
         1 => Some(ServerImportTarget::Tags),
@@ -225,7 +267,10 @@ fn import_target(
             .existing_columns
             .get(index - 4)
             .map(|column| ServerImportTarget::ExistingCustom(column.id)),
-        index if index == 4 + session.existing_columns.len() => session
+        index if index < new_custom_index => SUGGESTED_CUSTOM_FIELDS
+            .get(index - suggested_start)
+            .map(|field| ServerImportTarget::NewCustom((*field).to_owned())),
+        index if index == new_custom_index => session
             .data
             .as_ref()
             .and_then(|data| data.headers.get(source_index))
@@ -426,6 +471,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     });
 
     let weak = window.as_weak();
+    window.on_save_import_template(move || {
+        let Some(window) = weak.upgrade() else { return };
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("CSV", &["csv"])
+            .set_file_name("itgla-server-template.csv")
+            .save_file()
+        {
+            match fs::write(&path, IMPORT_TEMPLATE_CSV) {
+                Ok(()) => show_status(
+                    &window,
+                    "Saved CSV template. Required columns: IP Address and Ports.",
+                ),
+                Err(error) => show_error(&window, &error),
+            }
+        }
+    });
+
+    let weak = window.as_weak();
     let callback_repository = Rc::clone(&repository);
     let callback_import = Rc::clone(&import_session);
     window.on_load_import(move |path| {
@@ -589,5 +652,55 @@ mod tests {
         assert_eq!(records[0].ports, "443");
         sort_records(&mut records, 8);
         assert_eq!(records[0].custom_values, ["east"]);
+    }
+
+    #[test]
+    fn maps_known_headers_to_required_and_suggested_fields() {
+        let columns = vec![ServerColumn {
+            id: 7,
+            name: "Owner".to_owned(),
+        }];
+        assert_eq!(default_mapping("IP Address", &columns), 2);
+        assert_eq!(default_mapping("Ports", &columns), 3);
+        assert_eq!(
+            default_mapping("Cloud Provider", &columns),
+            4 + columns.len() + 2
+        );
+        assert_eq!(default_mapping("Owner", &columns), 4);
+        assert_eq!(
+            default_mapping("Unrecognized Column", &columns),
+            4 + columns.len() + SUGGESTED_CUSTOM_FIELDS.len()
+        );
+    }
+
+    #[test]
+    fn resolves_suggested_and_source_named_custom_fields() {
+        let session = ImportSession {
+            data: Some(TabularData {
+                headers: vec!["Business Unit".to_owned()],
+                rows: vec![vec!["Platform".to_owned()]],
+            }),
+            mappings: Vec::new(),
+            existing_columns: vec![ServerColumn {
+                id: 9,
+                name: "Owner".to_owned(),
+            }],
+        };
+        assert_eq!(
+            import_target(0, 4, &session),
+            Some(ServerImportTarget::ExistingCustom(9))
+        );
+        assert_eq!(
+            import_target(0, 4 + session.existing_columns.len() + 5, &session),
+            Some(ServerImportTarget::NewCustom("Project".to_owned()))
+        );
+        assert_eq!(
+            import_target(
+                0,
+                4 + session.existing_columns.len() + SUGGESTED_CUSTOM_FIELDS.len(),
+                &session,
+            ),
+            Some(ServerImportTarget::NewCustom("Business Unit".to_owned()))
+        );
     }
 }

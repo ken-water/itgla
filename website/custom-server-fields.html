@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Custom Fields for a Server Inventory - ITGLA</title>
+  <meta name="description" content="Choose tags for flexible labels and custom server fields for consistent details such as cloud provider, OS, project, region, and owner." />
+  <link rel="canonical" href="https://itgla.com/custom-server-fields.html" />
+  <meta property="og:type" content="article" /><meta property="og:title" content="Tags or Custom Fields for Server Inventory?" /><meta property="og:description" content="A practical guide to organizing server details with flexible tags and structured custom fields." /><meta property="og:url" content="https://itgla.com/custom-server-fields.html" /><meta property="og:image" content="https://itgla.com/assets/itgla-workspace.png" />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="Tags or Custom Fields for Server Inventory?" /><meta name="twitter:description" content="Use flexible tags and structured custom fields together." /><meta name="twitter:image" content="https://itgla.com/assets/itgla-workspace.png" />
+  <link rel="icon" href="/assets/favicon.ico?v=20261001" sizes="any" /><link rel="stylesheet" href="/styles.css" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Tags or Custom Fields for Server Inventory?","mainEntityOfPage":"https://itgla.com/custom-server-fields.html","author":{"@type":"Organization","name":"ITGLA"},"publisher":{"@type":"Organization","name":"ITGLA","url":"https://itgla.com/"}}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header"><a class="brand" href="/" aria-label="ITGLA home"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Product</a><a href="/server-inventory.html">Inventory</a><a href="/downloads.html">Downloads</a><a class="nav-signin" href="/signin.html">Sign in</a></nav></header>
+<main id="main" class="document-main legal-document">
+  <header class="page-heading"><p class="eyebrow">Field design</p><h1>Tags or custom fields for server inventory?</h1><p>Use both. Tags are flexible labels; fields are for information with a consistent meaning that you want to compare or search separately.</p></header>
+  <section><h2>Use tags when categories are flexible</h2><p>Tags are useful for cross-cutting labels: <code>production</code>, <code>customer-a</code>, <code>nginx</code>, or <code>needs-review</code>. A server can carry several tags, and you can add a new one without changing your inventory structure.</p></section>
+  <section><h2>Use a field when the meaning is stable</h2><p>Choose a dedicated field when a value answers the same question for many records. Examples include Cloud Provider, Region, Operating System, Project, Environment, Owner, Service, and Domain. Consistent fields make it easier to notice missing values and compare records.</p></section>
+  <section><h2>Keep the model small at first</h2><p>Start with IP Address and Ports, then add Tags for flexible grouping. Add a field only when you repeatedly search, sort, or compare that kind of information. Avoid duplicating the same value in both Tags and a field unless the two labels serve different purposes.</p></section>
+  <section><h2>Fields are not a place for secrets</h2><p>Do not store passwords, private keys, access tokens, recovery codes, or other credentials in tags, notes, or custom fields. Use a dedicated secrets manager and link to the approved record only when appropriate.</p><p>ITGLA supports tags and custom columns in its <a href="/downloads.html">local-first desktop inventory</a>. You can also <a href="/import-server-inventory.html">map fields when importing a spreadsheet</a>.</p></section>
+</main>
+<footer class="site-footer compact-footer"><a class="brand footer-brand" href="/"><img src="/assets/itgla-node-map.svg" width="30" height="30" alt="" /><span>ITGLA</span></a><p>A clear place for the server details you use every day.</p><nav aria-label="Footer navigation"><a href="/server-inventory.html">Server inventory</a><a href="/import-server-inventory.html">Import guide</a><a href="/downloads.html">Downloads</a><a href="/privacy.html">Privacy</a><a href="/legal.html">Terms</a><a href="/refund.html">Refunds</a><a href="/cookies.html">Cookies</a></nav><p class="copyright">© 2026 ITGLA</p></footer>
+</body>
+</html>

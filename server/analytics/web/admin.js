@@ -324,6 +324,7 @@ async function loadDashboard() {
       ["No download after visiting", downloads.summary.no_download_visitors],
     ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
     renderErrors("errors-events", errors);
+    if (document.querySelector('[data-tab="feedback"].is-active')) window.loadFeedback?.();
   } catch (requestError) {
     if (requestError.status === 401) return showLogin();
     error.textContent = requestError.message;
@@ -376,6 +377,12 @@ document.querySelectorAll("[data-tab]").forEach((tab) => {
       panel.classList.toggle("is-active", active);
       panel.hidden = !active;
     });
+    if (selected === "feedback") {
+      window.loadFeedback?.().catch((error) => {
+        element("dashboard-error").textContent = error.message;
+        element("dashboard-error").hidden = false;
+      });
+    }
   });
 });
 element("logout").addEventListener("click", async () => {

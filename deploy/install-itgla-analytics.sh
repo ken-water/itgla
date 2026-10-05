@@ -5,6 +5,8 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 REMOTE_HOST="${ITGLA_HOST:?Set ITGLA_HOST, for example root@186.244.233.223}"
 ADMIN_USERNAME="${ITGLA_ADMIN_USERNAME:?Set ITGLA_ADMIN_USERNAME}"
 ADMIN_PASSWORD="${ITGLA_ADMIN_PASSWORD:?Set ITGLA_ADMIN_PASSWORD}"
+RESEND_API_KEY="${RESEND_API_KEY:?Set RESEND_API_KEY}"
+FEEDBACK_FROM="${ITGLA_FEEDBACK_FROM:-service@itgla.com}"
 REMOTE_ROOT="/opt/itgla-analytics"
 
 if [[ ! "$ADMIN_USERNAME" =~ ^[A-Za-z0-9._-]+$ ]]; then
@@ -40,7 +42,9 @@ printf '%s\n' \
   "ITGLA_GEOIP_DB_PATH=/var/lib/itgla-analytics/geo.mmdb" \
   "ITGLA_GEOIP_PROVIDER=local-mmdb" \
   "ITGLA_GEOIP_RETENTION_DAYS=180" \
-  "ITGLA_RETENTION_DAYS=180" > "$ENV_FILE"
+  "ITGLA_RETENTION_DAYS=180" \
+  "RESEND_API_KEY=${RESEND_API_KEY}" \
+  "ITGLA_FEEDBACK_FROM=${FEEDBACK_FROM}" > "$ENV_FILE"
 
 ssh -o BatchMode=yes "$REMOTE_HOST" "set -eu
 id -u itgla >/dev/null 2>&1 || useradd --system --home-dir '$REMOTE_ROOT' --shell /usr/sbin/nologin itgla

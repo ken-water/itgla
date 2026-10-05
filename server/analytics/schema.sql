@@ -80,3 +80,35 @@ create table if not exists admin_sessions (
 
 create index if not exists idx_itgla_sessions_expires_at
     on admin_sessions (expires_at);
+
+create table if not exists feedback_submissions (
+    id bigserial primary key,
+    message text not null,
+    reply_email text,
+    email_status text not null default 'pending'
+        check (email_status in ('pending', 'sent', 'failed', 'not_configured')),
+    email_provider_id text,
+    created_at timestamptz not null default now(),
+    read_at timestamptz
+);
+
+create index if not exists idx_itgla_feedback_created_at
+    on feedback_submissions (created_at desc);
+
+create table if not exists email_signin_tokens (
+    token_hash text primary key,
+    email text not null,
+    expires_at timestamptz not null,
+    used_at timestamptz,
+    created_at timestamptz not null default now()
+);
+
+create index if not exists idx_itgla_email_signin_expires_at
+    on email_signin_tokens (expires_at);
+
+create table if not exists user_sessions (
+    token_hash text primary key,
+    email text not null,
+    expires_at timestamptz not null,
+    created_at timestamptz not null default now()
+);

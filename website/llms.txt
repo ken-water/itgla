@@ -1,0 +1,29 @@
+# ITGLA
+
+> ITGLA is a local-first desktop server inventory for organizing IP addresses, ports, tags, projects, and custom operational fields.
+
+## Product
+
+- ITGLA helps independent developers and small teams keep operational server details in one searchable table.
+- It supports tags, IP addresses, ports, spreadsheet imports, column mapping, custom fields, sorting, filtering, and copying individual cells.
+- The desktop application stores its workspace in a local SQLite database.
+- The current application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools.
+
+## Official pages
+
+- Homepage: https://itgla.com/
+- Downloads: https://itgla.com/downloads.html
+- Server inventory guide: https://itgla.com/server-inventory.html
+- Spreadsheet import guide: https://itgla.com/import-server-inventory.html
+- Privacy: https://itgla.com/privacy.html
+- Terms: https://itgla.com/legal.html
+- Refunds: https://itgla.com/refund.html
+- Cookies: https://itgla.com/cookies.html
+- Sitemap: https://itgla.com/sitemap.xml
+
+## Source
+
+
+## Privacy boundary
+
+Server inventory data belongs to the user and remains in the local desktop workspace. Website analytics are separate from desktop product data; see the privacy policy for website log and retention details.

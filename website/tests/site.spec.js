@@ -17,7 +17,7 @@ for (const viewport of viewports) {
     await page.goto("/");
 
     await expect(page.getByRole("heading", { name: "ITGLA", exact: true })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Download Windows installer" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Download Windows EXE" }).first()).toBeVisible();
     await expect(page.getByText("Current stable download: v0.2.2", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
@@ -36,12 +36,13 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.goto("/downloads.html");
 
   await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.2" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Download installer" })).toHaveAttribute(
+  await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
-    "https://github.com/ken-water/itgla/releases/download/v0.2.2/itgla-v0.2.2-windows-x86_64-setup.exe",
+    "/downloads/itgla-v0.2.2-windows-x86_64-setup.exe",
   );
 
-  for (const name of ["Portable ZIP", "DEB", "RPM", "AppImage", "Download DMG", "Download SHA256SUMS"]) {
+  for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download SHA256SUMS"]) {
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   }
 
@@ -50,13 +51,36 @@ test("download page exposes current verified artifacts", async ({ page, request 
 });
 
 test("secondary documents render", async ({ page }) => {
-  for (const path of ["/privacy.html", "/legal.html", "/refund.html", "/cookies.html", "/feedback.html"]) {
+  for (const path of [
+    "/privacy.html",
+    "/legal.html",
+    "/refund.html",
+    "/cookies.html",
+    "/server-inventory.html",
+    "/import-server-inventory.html",
+    "/custom-server-fields.html",
+    "/server-spreadsheet-alternative.html",
+    "/local-first-server-inventory.html",
+    "/server-inventory-example.html",
+  ]) {
     const response = await page.goto(path);
     expect(response?.ok()).toBeTruthy();
     await expect(page.locator("h1")).toBeVisible();
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
   }
+});
+
+test("product content exposes structured-data and GEO entry points", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "A direct answer before you download." })).toBeVisible();
+  await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(2);
+  await page.goto("/import-server-inventory.html");
+  await expect(page.getByRole("heading", { name: "Import a server inventory from Excel or CSV" })).toBeVisible();
+  await page.goto("/server-inventory-example.html");
+  await expect(page.locator("table")).toBeVisible();
+  await page.goto("/");
+  await expect(page.locator("#feedback-form")).toBeVisible();
 });
 
 test("compliance disclosures match current behavior", async ({ page }) => {
@@ -70,4 +94,10 @@ test("compliance disclosures match current behavior", async ({ page }) => {
   await page.goto("/cookies.html");
   await expect(page.getByText("itgla_admin_session", { exact: true })).toBeVisible();
   await expect(page.getByText("do not set analytics, advertising", { exact: false })).toBeVisible();
+});
+
+test("email sign-in does not fall through to a 404", async ({ page }) => {
+  await page.goto("/signin.html");
+  await expect(page.locator("#email-signin-form")).toBeVisible();
+  await expect(page.locator("#email-signin-form")).toHaveAttribute("id", "email-signin-form");
 });

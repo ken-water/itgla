@@ -14,6 +14,6 @@ sudo apt-get install gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 python3 zip 
 ./scripts/package-windows.sh
 ```
 
-The packaging script performs a locked release build, strips the copied executable, verifies that it is a 64-bit Windows GUI PE binary, creates `dist/itgla-v<version>-windows-x86_64.zip`, and writes a sibling `.sha256` file.
+The packaging script performs a locked release build, embeds the ITGLA Windows icon into the executable, creates a per-user NSIS installer with Start Menu/Desktop shortcuts and an uninstaller, verifies that it is a 64-bit Windows GUI PE binary, and creates both `dist/itgla-v<version>-windows-x86_64-setup.exe` and the portable `dist/itgla-v<version>-windows-x86_64.zip` with SHA-256 sidecars.
 
 The Linux cross-build verifies compilation, linking, package contents, and executable metadata. It does not replace launch and workflow testing on a supported Windows host.

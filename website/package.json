@@ -3,8 +3,9 @@
   "private": true,
   "version": "0.2.2",
   "scripts": {
-    "test": "npm run test:language && playwright test",
-    "test:language": "node ../scripts/check-english-ui.mjs"
+    "test": "npm run test:language && npm run test:footer && playwright test",
+    "test:language": "node ../scripts/check-english-ui.mjs",
+    "test:footer": "node ../scripts/check-footer-consistency.mjs"
   },
   "devDependencies": {
     "@playwright/test": "1.63.0"

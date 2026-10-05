@@ -18,6 +18,9 @@ const config = {
   visitorSalt: process.env.ITGLA_VISITOR_SALT,
   geoIpDbPath: process.env.ITGLA_GEOIP_DB_PATH || "",
   geoProvider: process.env.ITGLA_GEOIP_PROVIDER || "local-mmdb",
+  resendApiKey: process.env.RESEND_API_KEY || "",
+  feedbackFrom: process.env.ITGLA_FEEDBACK_FROM || "service@itgla.com",
+  publicBaseUrl: process.env.ITGLA_PUBLIC_BASE_URL || "https://itgla.com",
   geoRetentionDays: Math.max(1, Number(process.env.ITGLA_GEOIP_RETENTION_DAYS || 180)),
   retentionDays: Math.max(30, Number(process.env.ITGLA_RETENTION_DAYS || 365)),
 };
@@ -104,7 +107,79 @@ async function authenticated(request) {
 
 function sameOrigin(request) {
   const origin = String(request.headers.origin || "");
-  return !origin || origin === "https://itgla.com";
+  if (!origin) return true;
+  const host = String(request.headers.host || "").split(":")[0];
+  return origin === "https://itgla.com"
+    || origin === "https://www.itgla.com"
+    || origin === `https://${host}`
+    || origin === `http://${host}`;
+}
+
+const feedbackAttempts = new Map();
+
+function allowFeedback(request) {
+  const key = clientAddress(request);
+  const now = Date.now();
+  const attempts = (feedbackAttempts.get(key) || []).filter((time) => now - time < 60 * 60 * 1000);
+  if (attempts.length >= 5) return false;
+  attempts.push(now);
+  feedbackAttempts.set(key, attempts);
+  return true;
+}
+
+function validEmail(value) {
+  if (value == null || value === "") return null;
+  if (typeof value !== "string" || value.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return undefined;
+  return value;
+}
+
+async function sendFeedbackEmail(id, message, replyEmail) {
+  if (!config.resendApiKey || !config.feedbackFrom) return { status: "not_configured", providerId: null };
+  try {
+    const result = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.resendApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: config.feedbackFrom,
+        to: ["service@itgla.com"],
+        ...(replyEmail ? { reply_to: replyEmail } : {}),
+        subject: `ITGLA website feedback #${id}`,
+        text: `Feedback submission #${id}\n\n${message}${replyEmail ? `\n\nReply email: ${replyEmail}` : "\n\nNo reply email provided."}`,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await result.json().catch(() => ({}));
+    return result.ok
+      ? { status: "sent", providerId: body.id || null }
+      : { status: "failed", providerId: null };
+  } catch {
+    return { status: "failed", providerId: null };
+  }
+}
+
+async function sendSigninEmail(email, token) {
+  if (!config.resendApiKey || !config.feedbackFrom) return { status: "not_configured", providerId: null };
+  const verifyUrl = `${config.publicBaseUrl}/auth/email/verify?token=${encodeURIComponent(token)}`;
+  try {
+    const result = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${config.resendApiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from: config.feedbackFrom,
+        to: [email],
+        subject: "Your ITGLA sign-in link",
+        text: `Use this one-time link to sign in to ITGLA:\n\n${verifyUrl}\n\nThis link expires in 15 minutes and can only be used once.`,
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    const body = await result.json().catch(() => ({}));
+    return result.ok ? { status: "sent", providerId: body.id || null } : { status: "failed", providerId: null };
+  } catch {
+    return { status: "failed", providerId: null };
+  }
 }
 
 function allowLogin(request) {
@@ -368,7 +443,71 @@ async function handle(request, response) {
     await pool.query("select 1");
     return json(response, 200, { status: "ok" });
   }
+  if (request.method === "GET" && pathname === "/feedback.js") return asset(response, "feedback.js", "text/javascript; charset=utf-8");
+  if (request.method === "GET" && pathname === "/auth.js") return asset(response, "auth.js", "text/javascript; charset=utf-8");
+  if (request.method === "GET" && pathname === "/auth/email/verify") {
+    const token = url.searchParams.get("token") || "";
+    if (!/^[a-f0-9]{64}$/.test(token)) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
+    const result = await pool.query(
+      "select email from email_signin_tokens where token_hash=$1 and used_at is null and expires_at > now()",
+      [hash(token)],
+    );
+    if (!result.rowCount) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");
+    const session = crypto.randomBytes(32).toString("hex");
+    await pool.query("update email_signin_tokens set used_at=now() where token_hash=$1", [hash(token)]);
+    await pool.query(
+      "insert into user_sessions (token_hash,email,expires_at) values ($1,$2,now()+interval '30 days')",
+      [hash(session), result.rows[0].email],
+    );
+    response.writeHead(302, {
+      Location: "/signin.html?verified=1",
+      "Set-Cookie": `itgla_user_session=${session}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`,
+      ...securityHeaders("text/plain; charset=utf-8"),
+    });
+    return response.end();
+  }
+  if (request.method === "POST" && pathname === "/auth/email/start") {
+    if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+    const payload = await readBody(request).catch(() => null);
+    const email = payload && validEmail(payload.email);
+    if (email === undefined || !email) return json(response, 400, { message: "Enter a valid email address." });
+    if (!config.resendApiKey) return json(response, 503, { message: "Email delivery is temporarily unavailable. Please try again later." });
+    const token = crypto.randomBytes(32).toString("hex");
+    await pool.query(
+      "insert into email_signin_tokens (token_hash,email,expires_at) values ($1,$2,now()+interval '15 minutes')",
+      [hash(token), email],
+    );
+    const delivery = await sendSigninEmail(email, token);
+    if (delivery.status !== "sent") {
+      await pool.query("delete from email_signin_tokens where token_hash=$1", [hash(token)]);
+      return json(response, 502, { message: "The verification email could not be sent. Please try again." });
+    }
+    return json(response, 202, { message: "Check your inbox for a one-time ITGLA sign-in link." });
+  }
+  if (request.method === "POST" && pathname === "/api/feedback") {
+    if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+    if (!allowFeedback(request)) return json(response, 429, { message: "Too many feedback submissions. Please try again later." }, { "Retry-After": "3600" });
+    const payload = await readBody(request).catch(() => null);
+    if (!payload) return json(response, 400, { message: "Feedback could not be read. Please try again." });
+    if (typeof payload.website === "string" && payload.website.trim()) return json(response, 202, { status: "accepted" });
+    const message = typeof payload.message === "string" ? payload.message.trim() : "";
+    const replyEmail = validEmail(payload.email);
+    if (message.length < 5 || message.length > 5000) return json(response, 400, { message: "Feedback must be between 5 and 5,000 characters." });
+    if (replyEmail === undefined) return json(response, 400, { message: "Enter a valid email address or leave it blank." });
+    const inserted = await pool.query(
+      "insert into feedback_submissions (message,reply_email) values ($1,$2) returning id",
+      [message, replyEmail],
+    );
+    const id = inserted.rows[0].id;
+    const delivery = await sendFeedbackEmail(id, message, replyEmail);
+    await pool.query(
+      "update feedback_submissions set email_status=$2,email_provider_id=$3 where id=$1",
+      [id, delivery.status, delivery.providerId],
+    );
+    return json(response, 201, { status: "received", email_status: delivery.status });
+  }
   if (request.method === "GET" && (pathname === "/admin" || pathname === "/admin/")) return asset(response, "admin.html", "text/html; charset=utf-8");
+  if (request.method === "GET" && pathname === "/admin/feedback.js") return asset(response, "feedback-admin.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/admin/admin.css") return asset(response, "admin.css", "text/css; charset=utf-8");
   if (request.method === "GET" && pathname === "/admin/admin.js") return asset(response, "admin.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/admin/chart.umd.min.js") return asset(response, "chart.umd.min.js", "text/javascript; charset=utf-8");
@@ -416,6 +555,22 @@ async function handle(request, response) {
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));
     if (pathname === "/admin/api/errors") return json(response, 200, await recentErrors(days));
+    if (pathname === "/admin/api/feedback" && request.method === "GET") {
+      const result = await pool.query(
+        `select id,message,reply_email,email_status,created_at,read_at
+         from feedback_submissions order by created_at desc limit 200`,
+      );
+      return json(response, 200, result.rows);
+    }
+    const feedbackReadMatch = pathname.match(/^\/admin\/api\/feedback\/(\d+)\/read$/);
+    if (feedbackReadMatch && request.method === "POST") {
+      const result = await pool.query(
+        "update feedback_submissions set read_at=coalesce(read_at,now()) where id=$1 returning id,read_at",
+        [feedbackReadMatch[1]],
+      );
+      if (!result.rowCount) return json(response, 404, { message: "Feedback not found." });
+      return json(response, 200, result.rows[0]);
+    }
   }
   return json(response, 404, { message: "Not found." });
 }

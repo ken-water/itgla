@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Import a Server Inventory from Excel or CSV - ITGLA</title>
+  <meta name="description" content="Learn how to import a server spreadsheet, map IP and port columns, use tags, and add suggested or custom fields in ITGLA." />
+  <link rel="canonical" href="https://itgla.com/import-server-inventory.html" />
+  <meta property="og:type" content="article" /><meta property="og:title" content="Import a Server Inventory from Excel or CSV" /><meta property="og:description" content="Map spreadsheet columns to server IPs, ports, tags, projects, cloud providers, and custom fields." /><meta property="og:url" content="https://itgla.com/import-server-inventory.html" />
+  <link rel="icon" href="/assets/favicon.ico?v=20261001" sizes="any" /><link rel="stylesheet" href="/styles.css" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"HowTo","name":"Import a server inventory from Excel or CSV into ITGLA","description":"Load a spreadsheet, map source columns, review required fields, and import the records locally.","step":[{"@type":"HowToStep","name":"Choose a spreadsheet","text":"Select an Excel, OpenDocument, CSV, or TSV file with a header row."},{"@type":"HowToStep","name":"Map columns","text":"Map exactly one source column to IP Address and one to Ports. Tags are optional; map other columns to suggested or custom fields."},{"@type":"HowToStep","name":"Import and review","text":"Confirm the mappings and import the rows into the local server inventory."}]}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header"><a class="brand" href="/" aria-label="ITGLA home"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Product</a><a href="/server-inventory.html">Inventory</a><a href="/downloads.html">Downloads</a><a class="nav-signin" href="/signin.html">Sign in</a></nav></header>
+<main id="main" class="document-main legal-document">
+  <header class="page-heading"><p class="eyebrow">Import guide</p><h1>Import a server inventory from Excel or CSV</h1><p>Keep your existing spreadsheet. ITGLA lets you decide how each source column should become a server field.</p></header>
+  <section><h2>Supported files and required columns</h2><p>ITGLA accepts Excel, OpenDocument, CSV, and TSV files with a header row. Every import must map exactly one column to <strong>IP Address</strong> and one to <strong>Ports</strong>. Tags are optional; if you do not provide tags, imported records receive an <code>imported</code> tag.</p><p>You can start from the in-app CSV template, but it is optional. Existing spreadsheets do not need to use ITGLA's exact column names.</p></section>
+  <section><h2>Map columns to tags or structured fields</h2><p>Use Tags for flexible labels such as <code>prod</code>, <code>database</code>, or <code>customer-a</code>. Use structured fields for values you expect to compare consistently, such as Cloud Provider, Region, OS, Project, Environment, Owner, Service, or Domain. You can also map a column to an existing custom field, create a new field, or skip it.</p></section>
+  <section><h2>Prepare a reliable spreadsheet</h2><ul><li>Use one header row and one server per row.</li><li>Keep IP addresses and ports in separate columns.</li><li>Separate multiple tags with commas.</li><li>Use consistent values for fields such as Environment and Cloud Provider.</li><li>Do not include passwords, private keys, access tokens, or other secrets.</li></ul></section>
+  <section><h2>Import stays on your device</h2><p>The desktop app parses the selected file locally and stores records in its SQLite database. The current product does not upload your spreadsheet or server records to ITGLA.</p><p><a href="/downloads.html">Download ITGLA</a> · <a href="/server-inventory.html">Server inventory guide</a> · <a href="/privacy.html">Privacy policy</a></p></section>
+</main>
+<footer class="site-footer compact-footer"><a class="brand footer-brand" href="/"><img src="/assets/itgla-node-map.svg" width="30" height="30" alt="" /><span>ITGLA</span></a><p>A clear place for the server details you use every day.</p><nav aria-label="Footer navigation"><a href="/server-inventory.html">Server inventory</a><a href="/import-server-inventory.html">Import guide</a><a href="/downloads.html">Downloads</a><a href="/privacy.html">Privacy</a><a href="/legal.html">Terms</a><a href="/refund.html">Refunds</a><a href="/cookies.html">Cookies</a></nav><p class="copyright">© 2026 ITGLA</p></footer>
+</body>
+</html>

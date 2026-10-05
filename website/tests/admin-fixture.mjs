@@ -53,6 +53,9 @@ const fixtures = {
   "/admin/api/errors": [
     { occurred_at: "2026-09-24T14:23:00Z", event_name: "page_error", path: "/missing.html", method: "GET", status_code: 404, bytes_sent: 162, referrer: "-", user_agent: "Mozilla/5.0" },
   ],
+  "/admin/api/feedback": [
+    { id: 1, message: "Please add a keyboard shortcut.", reply_email: "user@example.com", email_status: "sent", created_at: "2026-09-25T14:25:00Z", read_at: null },
+  ],
 };
 
 function json(response, status, body, headers = {}) {
@@ -81,6 +84,7 @@ const server = http.createServer(async (request, response) => {
     "/admin/admin.css": ["admin.css", "text/css; charset=utf-8"],
     "/admin/admin.js": ["admin.js", "text/javascript; charset=utf-8"],
     "/admin/chart.umd.min.js": ["chart.umd.min.js", "text/javascript; charset=utf-8"],
+    "/admin/feedback.js": ["feedback-admin.js", "text/javascript; charset=utf-8"],
   };
   const asset = assets[url.pathname];
   if (!asset) return json(response, 404, { message: "Not found." });

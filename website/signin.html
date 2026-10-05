@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in - ITGLA</title>
+  <meta name="description" content="Sign in to ITGLA with Google or a secure email verification link." />
+  <link rel="canonical" href="https://itgla.com/signin.html" />
+  <link rel="icon" href="/assets/favicon.ico?v=20261001" sizes="any" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body class="auth-page">
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header class="site-header"><a class="brand" href="/" aria-label="ITGLA home"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Product</a><a href="/server-inventory.html">Inventory</a><a href="/downloads.html">Downloads</a><a class="nav-signin" href="/signin.html" aria-current="page">Sign in</a></nav></header>
+  <main id="main" class="auth-shell">
+    <section class="auth-card" aria-labelledby="signin-title">
+      <p class="eyebrow">Private workspace access</p>
+      <h1 id="signin-title">Sign in to ITGLA</h1>
+      <p class="auth-intro">Use Google or receive a one-time verification link by email. Your local desktop inventory remains on your device.</p>
+      <a class="auth-provider auth-google" href="/auth/google/start"><span class="google-mark" aria-hidden="true">G</span><span>Continue with Google</span></a>
+      <div class="auth-divider"><span>or use email</span></div>
+      <form class="email-signin" id="email-signin-form">
+        <label for="email">Work email</label>
+        <input id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required />
+        <button class="button button-dark" type="submit">Email me a sign-in link</button>
+      </form>
+      <p class="auth-note">No password to remember. The link expires after a short time and can only be used once.</p>
+      <p class="auth-status" id="auth-status" role="status" aria-live="polite"></p>
+      <a class="auth-back" href="/">Back to ITGLA</a>
+    </section>
+  </main>
+  <script src="/auth.js" defer></script>
+  <footer class="site-footer compact-footer"><a class="brand footer-brand" href="/"><img src="/assets/itgla-node-map.svg" width="30" height="30" alt="" /><span>ITGLA</span></a><p>A clear place for the server details you use every day.</p><nav aria-label="Footer navigation"><a href="/server-inventory.html">Server inventory</a><a href="/import-server-inventory.html">Import guide</a><a href="/downloads.html">Downloads</a><a href="/privacy.html">Privacy</a><a href="/legal.html">Terms</a><a href="/refund.html">Refunds</a><a href="/cookies.html">Cookies</a></nav><p class="copyright">© 2026 ITGLA</p></footer>
+</body>
+</html>

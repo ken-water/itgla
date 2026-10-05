@@ -7,6 +7,7 @@
     <link rel="stylesheet" href="/admin/admin.css" />
     <script src="/admin/chart.umd.min.js" defer></script>
     <script src="/admin/admin.js" defer></script>
+    <script src="/admin/feedback.js" defer></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to main content</a>
@@ -53,6 +54,7 @@
           <button class="tab" id="tab-traffic" role="tab" aria-selected="false" aria-controls="panel-traffic" type="button" data-tab="traffic">Traffic</button>
           <button class="tab" id="tab-downloads" role="tab" aria-selected="false" aria-controls="panel-downloads" type="button" data-tab="downloads">Downloads</button>
           <button class="tab" id="tab-errors" role="tab" aria-selected="false" aria-controls="panel-errors" type="button" data-tab="errors">Errors</button>
+          <button class="tab" id="tab-feedback" role="tab" aria-selected="false" aria-controls="panel-feedback" type="button" data-tab="feedback">Feedback</button>
         </div>
 
         <section class="tab-panel is-active" id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" data-panel="overview">
@@ -126,6 +128,12 @@
           <article class="panel panel-spaced">
             <div class="panel-heading"><div><p class="eyebrow">Error activity</p><h2>Recent page errors</h2></div><p class="muted">HTTP access failures from the website log</p></div>
             <div id="errors-events" class="table-wrap"></div>
+          </article>
+        </section>
+        <section class="tab-panel" id="panel-feedback" role="tabpanel" aria-labelledby="tab-feedback" data-panel="feedback" hidden>
+          <article class="panel">
+            <div class="panel-heading"><div><p class="eyebrow">Inbox</p><h2>Product feedback</h2></div><p id="feedback-status" class="muted">Loading…</p></div>
+            <div id="feedback-list" class="feedback-list"></div>
           </article>
         </section>
       </section>

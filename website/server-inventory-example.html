@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Example Server Inventory for a Small Project - ITGLA</title>
+  <meta name="description" content="See a fictional small-project server inventory and learn how tags, projects, environments, cloud providers, and custom fields fit together." />
+  <link rel="canonical" href="https://itgla.com/server-inventory-example.html" />
+  <meta property="og:type" content="article" /><meta property="og:title" content="Example Server Inventory for a Small Project" /><meta property="og:description" content="A fictional, credential-free example of a small project infrastructure inventory." /><meta property="og:url" content="https://itgla.com/server-inventory-example.html" /><meta property="og:image" content="https://itgla.com/assets/itgla-workspace.png" />
+  <meta name="twitter:card" content="summary_large_image" /><meta name="twitter:title" content="Example Server Inventory for a Small Project" /><meta name="twitter:description" content="A safe example of structured server records with tags and custom fields." /><meta name="twitter:image" content="https://itgla.com/assets/itgla-workspace.png" />
+  <link rel="icon" href="/assets/favicon.ico?v=20261001" sizes="any" /><link rel="stylesheet" href="/styles.css" />
+  <script type="application/ld+json">{"@context":"https://schema.org","@type":"Article","headline":"Example Server Inventory for a Small Project","mainEntityOfPage":"https://itgla.com/server-inventory-example.html","author":{"@type":"Organization","name":"ITGLA"}}</script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<header class="site-header"><a class="brand" href="/" aria-label="ITGLA home"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Product</a><a href="/server-inventory.html">Inventory</a><a href="/downloads.html">Downloads</a><a class="nav-signin" href="/signin.html">Sign in</a></nav></header>
+<main id="main" class="document-main legal-document">
+  <header class="page-heading"><p class="eyebrow">Fictional example · not a customer case study</p><h1>Example server inventory for a small software project</h1><p>This sample uses documentation-only IP addresses and made-up names. It contains no real infrastructure, customers, or credentials.</p></header>
+  <section class="policy-table"><table><thead><tr><th>Name</th><th>IP Address</th><th>Ports</th><th>Tags</th><th>Project</th><th>Environment</th><th>Cloud Provider</th><th>OS</th></tr></thead><tbody><tr><td>api-edge-01</td><td>192.0.2.10</td><td>22, 443</td><td>production, api</td><td>Northstar</td><td>Production</td><td>Example Cloud</td><td>Ubuntu LTS</td></tr><tr><td>worker-stage-01</td><td>198.51.100.24</td><td>22, 8080</td><td>staging, worker</td><td>Northstar</td><td>Staging</td><td>Example Cloud</td><td>Debian</td></tr><tr><td>db-dev-01</td><td>203.0.113.18</td><td>22, 5432</td><td>development, database</td><td>Northstar</td><td>Development</td><td>Example Cloud</td><td>Ubuntu LTS</td></tr></tbody></table></section>
+  <section><h2>Why this example uses both tags and fields</h2><p>Project, Environment, Cloud Provider, and OS have one consistent meaning across rows, so they work well as structured fields. Tags are more flexible: they capture concerns that can overlap, such as <code>production</code>, <code>api</code>, <code>worker</code>, or <code>database</code>.</p></section>
+  <section><h2>Keep sensitive details out</h2><p>This example deliberately has no usernames, passwords, private keys, access tokens, or real server addresses. Put secrets in a dedicated secrets manager, not in an inventory table.</p><p>See the <a href="/server-inventory.html">server inventory guide</a>, <a href="/custom-server-fields.html">tags and custom fields guide</a>, or <a href="/import-server-inventory.html">spreadsheet import guide</a>.</p></section>
+</main>
+<footer class="site-footer compact-footer"><a class="brand footer-brand" href="/"><img src="/assets/itgla-node-map.svg" width="30" height="30" alt="" /><span>ITGLA</span></a><p>A clear place for the server details you use every day.</p><nav aria-label="Footer navigation"><a href="/server-inventory.html">Server inventory</a><a href="/import-server-inventory.html">Import guide</a><a href="/downloads.html">Downloads</a><a href="/privacy.html">Privacy</a><a href="/legal.html">Terms</a><a href="/refund.html">Refunds</a><a href="/cookies.html">Cookies</a></nav><p class="copyright">© 2026 ITGLA</p></footer>
+</body>
+</html>

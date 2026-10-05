@@ -108,3 +108,10 @@ td.numeric { font-variant-numeric: tabular-nums; }
   .toolbar select { grid-column: 1 / -1; }
   .panel { padding: 16px; }
 }
+.feedback-list { display: grid; gap: 12px; }
+.feedback-entry { padding: 18px; border: 1px solid #d7e3dc; border-radius: 8px; background: #fbfdfb; }
+.feedback-entry.is-read { opacity: .72; }
+.feedback-entry-head, .feedback-entry-foot { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; color: #68736d; font-size: 12px; }
+.feedback-entry-head span { margin-left: auto; color: #126a57; font-weight: 700; }
+.feedback-entry p { white-space: pre-wrap; margin: 14px 0; color: #18201d; line-height: 1.6; }
+.feedback-entry-foot button { border: 0; background: transparent; color: #126a57; cursor: pointer; font: inherit; font-weight: 700; }

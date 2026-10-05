@@ -36,6 +36,9 @@ for (const viewport of [
     await expect(page.locator("#errors-trend canvas")).toBeVisible();
     await expect(page.locator("#errors-events tbody tr")).toHaveCount(1);
     await expect(page.locator("#errors-events")).toContainText("404 Not found");
+    await page.getByRole("tab", { name: "Feedback" }).click();
+    await expect(page.getByRole("heading", { name: "Product feedback" })).toBeVisible();
+    await expect(page.locator("#feedback-list")).toContainText("Please add a keyboard shortcut.");
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
