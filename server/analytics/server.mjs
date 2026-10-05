@@ -515,6 +515,23 @@ async function handle(request, response) {
       );
       return json(response, 201, result.rows[0]);
     }
+    const updateMatch = pathname.match(/^\/api\/workspace\/servers\/(\d+)$/);
+    if (request.method === "PATCH" && updateMatch) {
+      if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+      const payload = await readBody(request).catch(() => null);
+      const fields = ["name", "tags", "ip_address", "ports"];
+      if (!payload || typeof payload.name !== "string" || !payload.name.trim() || payload.name.length > 160) {
+        return json(response, 400, { message: "Server name is required and must be 160 characters or fewer." });
+      }
+      if (fields.some((field) => field !== "name" && typeof payload[field] !== "string" || (typeof payload[field] === "string" && payload[field].length > 2000))) {
+        return json(response, 400, { message: "Server fields are invalid." });
+      }
+      const result = await pool.query(
+        "update user_servers set name=$1,tags=$2,ip_address=$3,ports=$4,updated_at=now() where id=$5 and email=$6 returning id,name,tags,ip_address,ports,created_at,updated_at",
+        [payload.name.trim(), payload.tags.trim(), payload.ip_address.trim(), payload.ports.trim(), updateMatch[1], email],
+      );
+      return result.rowCount ? json(response, 200, result.rows[0]) : json(response, 404, { message: "Server not found." });
+    }
     const deleteMatch = pathname.match(/^\/api\/workspace\/servers\/(\d+)$/);
     if (request.method === "DELETE" && deleteMatch) {
       if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
