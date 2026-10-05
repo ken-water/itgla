@@ -1,7 +1,7 @@
 {
   "name": "itgla-website",
   "private": true,
-  "version": "0.2.2",
+  "version": "0.2.3",
   "scripts": {
     "test": "npm run test:language && npm run test:footer && playwright test",
     "test:language": "node ../scripts/check-english-ui.mjs",

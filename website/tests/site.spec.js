@@ -18,7 +18,7 @@ for (const viewport of viewports) {
 
     await expect(page.getByRole("heading", { name: "ITGLA", exact: true })).toBeVisible();
     await expect(page.getByRole("link", { name: "Download Windows EXE" }).first()).toBeVisible();
-    await expect(page.getByText("Current stable download: v0.2.2", { exact: false })).toBeVisible();
+    await expect(page.getByText("Current stable download: v0.2.3", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Copy exactly" })).toBeVisible();
@@ -35,11 +35,11 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.2" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.2.3" })).toBeVisible();
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
-    "/downloads/itgla-v0.2.2-windows-x86_64-setup.exe",
+    "/downloads/itgla-v0.2.3-windows-x86_64-setup.exe",
   );
 
   for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download SHA256SUMS"]) {
