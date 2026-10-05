@@ -118,3 +118,17 @@ create table if not exists user_sessions (
     expires_at timestamptz not null,
     created_at timestamptz not null default now()
 );
+
+create table if not exists user_servers (
+    id bigserial primary key,
+    email text not null references users(email) on delete cascade,
+    name text not null check (length(trim(name)) between 1 and 160),
+    tags text not null default '',
+    ip_address text not null default '',
+    ports text not null default '',
+    created_at timestamptz not null default now(),
+    updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_itgla_user_servers_email
+    on user_servers (email, updated_at desc);

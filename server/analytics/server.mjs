@@ -95,6 +95,20 @@ function sessionToken(request) {
   return cookieValue(request, "itgla_admin_session");
 }
 
+function userSessionToken(request) {
+  return cookieValue(request, "itgla_user_session");
+}
+
+async function userEmail(request) {
+  const token = userSessionToken(request);
+  if (!token) return null;
+  const result = await pool.query(
+    "select email from user_sessions where token_hash=$1 and expires_at > now()",
+    [hash(token)],
+  );
+  return result.rows[0]?.email || null;
+}
+
 async function authenticated(request) {
   const token = sessionToken(request);
   if (!token) return null;
@@ -472,15 +486,44 @@ async function handle(request, response) {
     return response.end();
   }
   if (request.method === "GET" && pathname === "/auth/me") {
-    const token = cookieValue(request, "itgla_user_session");
-    if (!token) return json(response, 200, { authenticated: false });
-    const result = await pool.query(
-      "select u.email from user_sessions s join users u on u.email=s.email where s.token_hash=$1 and s.expires_at > now()",
-      [hash(token)],
-    );
-    return json(response, 200, result.rowCount
-      ? { authenticated: true, email: result.rows[0].email }
-      : { authenticated: false });
+    const email = await userEmail(request);
+    return json(response, 200, email ? { authenticated: true, email } : { authenticated: false });
+  }
+  if (pathname.startsWith("/api/workspace/")) {
+    const email = await userEmail(request);
+    if (!email) return json(response, 401, { message: "Sign-in required." });
+    if (request.method === "GET" && pathname === "/api/workspace/servers") {
+      const result = await pool.query(
+        "select id,name,tags,ip_address,ports,created_at from user_servers where email=$1 order by updated_at desc,id desc",
+        [email],
+      );
+      return json(response, 200, result.rows);
+    }
+    if (request.method === "POST" && pathname === "/api/workspace/servers") {
+      if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+      const payload = await readBody(request).catch(() => null);
+      const fields = ["name", "tags", "ip_address", "ports"];
+      if (!payload || typeof payload.name !== "string" || !payload.name.trim() || payload.name.length > 160) {
+        return json(response, 400, { message: "Server name is required and must be 160 characters or fewer." });
+      }
+      if (fields.some((field) => field !== "name" && typeof payload[field] !== "string" || (typeof payload[field] === "string" && payload[field].length > 2000))) {
+        return json(response, 400, { message: "Server fields are invalid." });
+      }
+      const result = await pool.query(
+        "insert into user_servers (email,name,tags,ip_address,ports) values ($1,$2,$3,$4,$5) returning id,name,tags,ip_address,ports,created_at",
+        [email, payload.name.trim(), payload.tags.trim(), payload.ip_address.trim(), payload.ports.trim()],
+      );
+      return json(response, 201, result.rows[0]);
+    }
+    const deleteMatch = pathname.match(/^\/api\/workspace\/servers\/(\d+)$/);
+    if (request.method === "DELETE" && deleteMatch) {
+      if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
+      const result = await pool.query(
+        "delete from user_servers where id=$1 and email=$2 returning id",
+        [deleteMatch[1], email],
+      );
+      return result.rowCount ? json(response, 200, { deleted: true }) : json(response, 404, { message: "Server not found." });
+    }
   }
   if (request.method === "POST" && pathname === "/auth/email/start") {
     if (!sameOrigin(request)) return json(response, 403, { message: "Origin not allowed." });
