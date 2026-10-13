@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## [0.2.4] - 2026-10-13
+
+### Added
+
+- Double-click any server-table cell to edit and save its value in place.
+- Drag sortable table headers to resize columns manually.
+- Added an Auto column-width action that fits columns to visible headers and values.
+- Persisted font-size and column-width preferences in the local SQLite workspace.
+
+### Fixed
+
+- Kept table row/header models synchronized while importing custom columns to prevent the desktop window from exiting after import.
+
 ## [0.2.3] - 2026-10-05
 
 ### Added

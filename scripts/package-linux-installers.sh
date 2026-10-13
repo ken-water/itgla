@@ -12,6 +12,7 @@ for required_command in cargo cargo-packager rpmbuild python3 sha256sum; do
 done
 
 version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+release_date="$(date -u '+%a %b %d %Y')"
 package_stem="itgla-v${version}-linux-x86_64"
 output_directory="${repository_root}/dist"
 build_root="$(mktemp -d "${TMPDIR:-/tmp}/itgla-linux-installers.XXXXXX")"
@@ -59,7 +60,7 @@ install -D -m 0755 %{SOURCE0} %{buildroot}/usr/bin/itgla
 /usr/bin/itgla
 
 %changelog
-* Thu Sep 25 2026 ITGLA <hello@itgla.com> - ${version}-1
+* ${release_date} ITGLA <hello@itgla.com> - ${version}-1
 - Package ITGLA ${version}
 EOF
 rpmbuild --define "_topdir ${rpm_top}" -bb "${rpm_top}/SPECS/itgla.spec"

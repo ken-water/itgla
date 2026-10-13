@@ -11,7 +11,7 @@ use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
 use domain::{ServerColumn, ServerDraft, ServerRecord, server_tags_from_input};
 use import_data::{TabularData, read_tabular};
 use slint::{Model, ModelRc, SharedString, VecModel};
-use storage::{Repository, ServerImportTarget, StorageError};
+use storage::{Repository, ServerImportDefaults, ServerImportTarget, StorageError};
 
 slint::include_modules!();
 
@@ -176,9 +176,15 @@ fn refresh(
         .map(to_row)
         .collect::<Vec<_>>();
 
+    // Clear rows before changing the custom-column model. Importing a file can
+    // add several columns at once; keeping the old rows alive while the
+    // headers/count are changing briefly leaves Slint with mismatched models.
+    // That transient mismatch can index a custom header that does not exist
+    // yet and terminate the desktop process. Replacing the models in this
+    // order keeps every rendered row/header pair consistent.
+    window.set_servers(ModelRc::new(VecModel::default()));
     window.set_server_count(rows.len() as i32);
     window.set_hidden_count(hidden_records.len() as i32);
-    window.set_servers(ModelRc::new(VecModel::from(rows)));
     window.set_available_tags(ModelRc::new(VecModel::from(
         tags.into_iter().map(SharedString::from).collect::<Vec<_>>(),
     )));
@@ -189,7 +195,73 @@ fn refresh(
             .collect::<Vec<_>>(),
     )));
     window.set_custom_column_count(columns.len() as i32);
+    ensure_column_widths(window, columns.len());
+    window.set_servers(ModelRc::new(VecModel::from(rows)));
     Ok(())
+}
+
+fn ensure_column_widths(window: &AppWindow, custom_count: usize) {
+    let mut widths = window.get_column_widths().iter().collect::<Vec<_>>();
+    widths.resize(3 + custom_count, 160.0);
+    if widths.len() >= 3 {
+        widths[0] = widths[0].clamp(96.0, 420.0);
+        widths[1] = widths[1].clamp(96.0, 420.0);
+        widths[2] = widths[2].clamp(96.0, 420.0);
+    }
+    widths.truncate(3 + custom_count);
+    window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
+    window.set_table_width(table_width_for(&widths));
+}
+
+fn table_width_for(widths: &[f32]) -> f32 {
+    let defaults = [180.0, 160.0, 130.0, 160.0];
+    816.0
+        + widths
+            .iter()
+            .enumerate()
+            .map(|(index, width)| *width - defaults.get(index).copied().unwrap_or(160.0))
+            .sum::<f32>()
+}
+
+fn update_column_width(window: &AppWindow, index: usize, width: f32) {
+    let model = window.get_column_widths();
+    let mut widths = model.iter().collect::<Vec<_>>();
+    if let Some(current) = widths.get_mut(index) {
+        *current = width.clamp(96.0, 420.0);
+        window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
+        window.set_table_width(table_width_for(&widths));
+    }
+}
+
+fn auto_fit_column_widths(window: &AppWindow) -> Vec<f32> {
+    let mut widths = window
+        .get_custom_headers()
+        .iter()
+        .map(|header| (header.chars().count() as f32 * 8.0 + 36.0).clamp(96.0, 420.0))
+        .collect::<Vec<_>>();
+    widths.insert(0, 72.0);
+    widths.insert(1, 112.0);
+    widths.insert(2, 76.0);
+    for (index, width) in widths.iter_mut().enumerate() {
+        for row_index in 0..window.get_servers().row_count() {
+            let Some(row) = window.get_servers().row_data(row_index) else {
+                continue;
+            };
+            let value = match index {
+                0 => row.tags.to_string(),
+                1 => row.ip_address.to_string(),
+                2 => row.ports.to_string(),
+                custom => row
+                    .custom_values
+                    .row_data(custom - 3)
+                    .map(|value| value.to_string())
+                    .unwrap_or_default(),
+            };
+            *width = (*width).max(value.chars().count() as f32 * 8.0 + 36.0);
+        }
+        *width = (*width).clamp(96.0, 420.0);
+    }
+    widths
 }
 
 fn mapping_options(columns: &[ServerColumn]) -> Vec<SharedString> {
@@ -219,13 +291,22 @@ fn default_mapping(header: &str, columns: &[ServerColumn]) -> usize {
         .filter(|character| character.is_ascii_alphanumeric())
         .collect::<String>()
         .to_ascii_lowercase();
-    if matches!(normalized.as_str(), "tag" | "tags" | "label" | "labels") {
+    if matches!(
+        normalized.as_str(),
+        "tag" | "tags" | "label" | "labels" | "category" | "categories"
+    ) {
         return 1;
     }
-    if matches!(normalized.as_str(), "ip" | "ipaddress" | "address" | "host") {
+    if matches!(
+        normalized.as_str(),
+        "ip" | "ipaddress" | "address" | "serverip" | "publicip" | "privateip"
+    ) {
         return 2;
     }
-    if matches!(normalized.as_str(), "port" | "ports" | "openports") {
+    if matches!(
+        normalized.as_str(),
+        "port" | "ports" | "openports" | "serviceport" | "serviceports"
+    ) {
         return 3;
     }
     if let Some(index) = columns
@@ -241,6 +322,65 @@ fn default_mapping(header: &str, columns: &[ServerColumn]) -> usize {
         return 4 + columns.len() + index;
     }
     4 + columns.len() + SUGGESTED_CUSTOM_FIELDS.len()
+}
+
+fn automatic_mappings(data: &TabularData, columns: &[ServerColumn]) -> Vec<usize> {
+    let mut mappings = data
+        .headers
+        .iter()
+        .map(|header| default_mapping(header, columns))
+        .collect::<Vec<_>>();
+    let mut has_ip = mappings.contains(&2);
+    let mut has_ports = mappings.contains(&3);
+    for (index, values) in column_values(data).into_iter().enumerate() {
+        if !has_ip && values.iter().any(|value| value.parse::<IpAddr>().is_ok()) {
+            mappings[index] = 2;
+            has_ip = true;
+            continue;
+        }
+        if !has_ports
+            && values.iter().any(|value| {
+                !value.is_empty()
+                    && value
+                        .split(',')
+                        .all(|part| part.trim().parse::<u16>().is_ok_and(|port| port > 0))
+            })
+        {
+            mappings[index] = 3;
+            has_ports = true;
+        }
+    }
+    dedupe_required_mappings(&mut mappings);
+    mappings
+}
+
+fn column_values(data: &TabularData) -> Vec<Vec<String>> {
+    (0..data.headers.len())
+        .map(|index| {
+            data.rows
+                .iter()
+                .take(10)
+                .filter_map(|row| row.get(index))
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
+fn dedupe_required_mappings(mappings: &mut [usize]) {
+    for required in [1, 2, 3] {
+        let mut seen = false;
+        for mapping in mappings.iter_mut() {
+            if *mapping == required {
+                if seen {
+                    *mapping = 0;
+                } else {
+                    seen = true;
+                }
+            }
+        }
+    }
 }
 
 fn normalize_header(value: &str) -> String {
@@ -279,6 +419,28 @@ fn import_target(
     }
 }
 
+fn import_column_rows(data: &TabularData, mappings: &[usize]) -> Vec<ImportColumnRow> {
+    data.headers
+        .iter()
+        .enumerate()
+        .map(|(index, header)| ImportColumnRow {
+            index: index as i32,
+            source_name: header.as_str().into(),
+            sample: data
+                .rows
+                .iter()
+                .take(3)
+                .filter_map(|row| row.get(index))
+                .filter(|value| !value.is_empty())
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(" | ")
+                .into(),
+            mapping_index: mappings[index] as i32,
+        })
+        .collect()
+}
+
 fn show_error(window: &AppWindow, error: &dyn std::fmt::Display) {
     window.set_status_message(SharedString::from(error.to_string()));
     window.set_status_is_error(true);
@@ -301,6 +463,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let table_state = Rc::new(RefCell::new(TableState::default()));
     let import_session = Rc::new(RefCell::new(ImportSession::default()));
     let window = AppWindow::new()?;
+    window.set_font_size_step(repository.borrow().font_size_step()? as i32);
+    window.set_column_widths(ModelRc::new(VecModel::from(
+        repository.borrow().column_widths()?,
+    )));
     let project_rows = repository
         .borrow()
         .project_plans()?
@@ -350,6 +516,80 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     window.on_tab_selected(move |tab| {
         if let Some(window) = weak.upgrade() {
             window.set_active_tab(tab);
+        }
+    });
+
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
+    window.on_font_size_changed(move |step| {
+        let step = step.clamp(0, 2);
+        if callback_repository
+            .borrow()
+            .set_font_size_step(i64::from(step))
+            .is_err()
+        {
+            return;
+        }
+        if let Some(window) = weak.upgrade() {
+            window.set_font_size_step(step);
+        }
+    });
+
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
+    window.on_column_width_changed(move |index, width| {
+        let Some(window) = weak.upgrade() else { return };
+        update_column_width(&window, index.max(0) as usize, width);
+        let widths = window.get_column_widths().iter().collect::<Vec<_>>();
+        let _ = callback_repository.borrow().set_column_widths(&widths);
+    });
+
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
+    window.on_auto_fit_columns(move || {
+        if let Some(window) = weak.upgrade() {
+            let widths = auto_fit_column_widths(&window);
+            window.set_column_widths(ModelRc::new(VecModel::from(widths)));
+            window.set_table_width(table_width_for(
+                &window.get_column_widths().iter().collect::<Vec<_>>(),
+            ));
+            let saved = window.get_column_widths().iter().collect::<Vec<_>>();
+            let _ = callback_repository.borrow().set_column_widths(&saved);
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_edit_cell(move |id, column, value| {
+        if let Some(window) = weak.upgrade() {
+            window.set_editing_cell_id(id);
+            window.set_editing_cell_column(column);
+            window.set_editing_cell_value(value);
+        }
+    });
+
+    let callback_repository = Rc::clone(&repository);
+    let callback_state = Rc::clone(&table_state);
+    let weak = window.as_weak();
+    window.on_save_cell_edit(move |id, column, value| {
+        let Some(window) = weak.upgrade() else { return };
+        match callback_repository.borrow_mut().update_server_cell(
+            i64::from(id),
+            column.max(0) as usize,
+            value.as_str(),
+        ) {
+            Ok(()) => {
+                window.set_editing_cell_column(-1);
+                if let Err(error) = refresh(
+                    &window,
+                    &callback_repository.borrow(),
+                    &callback_state.borrow(),
+                ) {
+                    show_error(&window, &error);
+                } else {
+                    show_status(&window, "Cell saved");
+                }
+            }
+            Err(error) => show_error(&window, &error),
         }
     });
 
@@ -635,31 +875,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         match read_tabular(&PathBuf::from(path.as_str())) {
             Ok(data) => match callback_repository.borrow().server_columns() {
                 Ok(columns) => {
-                    let mappings = data
-                        .headers
-                        .iter()
-                        .map(|header| default_mapping(header, &columns))
-                        .collect::<Vec<_>>();
-                    let column_rows = data
-                        .headers
-                        .iter()
-                        .enumerate()
-                        .map(|(index, header)| ImportColumnRow {
-                            index: index as i32,
-                            source_name: header.as_str().into(),
-                            sample: data
-                                .rows
-                                .iter()
-                                .take(3)
-                                .filter_map(|row| row.get(index))
-                                .filter(|value| !value.is_empty())
-                                .cloned()
-                                .collect::<Vec<_>>()
-                                .join(" | ")
-                                .into(),
-                            mapping_index: mappings[index] as i32,
-                        })
-                        .collect::<Vec<_>>();
+                    let mappings = automatic_mappings(&data, &columns);
+                    let column_rows = import_column_rows(&data, &mappings);
                     window.set_import_mapping_options(ModelRc::new(VecModel::from(
                         mapping_options(&columns),
                     )));
@@ -676,6 +893,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             },
             Err(error) => window.set_import_error(error.to_string().into()),
         }
+    });
+
+    let weak = window.as_weak();
+    let callback_import = Rc::clone(&import_session);
+    window.on_auto_map_import(move || {
+        let Some(window) = weak.upgrade() else { return };
+        let mut session = callback_import.borrow_mut();
+        let Some(data) = session.data.as_ref() else {
+            return;
+        };
+        let mappings = automatic_mappings(data, &session.existing_columns);
+        let column_rows = import_column_rows(data, &mappings);
+        session.mappings = mappings;
+        window.set_import_columns(ModelRc::new(VecModel::from(column_rows)));
+        window.set_import_error(SharedString::new());
     });
 
     let callback_import = Rc::clone(&import_session);
@@ -707,9 +939,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             window.set_import_error("A column mapping is no longer valid".into());
             return;
         };
+        let defaults = ServerImportDefaults {
+            tags: window.get_import_default_tags().to_string(),
+            ip_address: window.get_import_default_ip_address().to_string(),
+            ports: window.get_import_default_ports().to_string(),
+        };
         match callback_repository
             .borrow_mut()
-            .import_servers(data, &targets)
+            .import_servers_with_defaults(data, &targets, &defaults)
         {
             Ok(count) => {
                 drop(session);
@@ -808,6 +1045,18 @@ mod tests {
         assert_eq!(
             default_mapping("Unrecognized Column", &columns),
             4 + columns.len() + SUGGESTED_CUSTOM_FIELDS.len()
+        );
+    }
+
+    #[test]
+    fn auto_mapping_uses_headers_and_sample_values_without_duplicates() {
+        let data = TabularData {
+            headers: vec!["Server".into(), "Public IP".into(), "Service".into()],
+            rows: vec![vec!["api".into(), "203.0.113.10".into(), "22,443".into()]],
+        };
+        assert_eq!(
+            automatic_mappings(&data, &[]),
+            [4 + SUGGESTED_CUSTOM_FIELDS.len(), 2, 3]
         );
     }
 

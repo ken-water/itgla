@@ -18,13 +18,14 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 6;
+const SCHEMA_VERSION: i64 = 7;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
 const MAX_ASSETS: usize = 10_000;
 const MAX_RELATIONSHIPS: usize = 50_000;
 const MAX_SERVER_CUSTOM_COLUMNS: usize = 32;
+const DEFAULT_COLUMN_WIDTHS: [f32; 3] = [180.0, 160.0, 130.0];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ServerImportTarget {
@@ -59,6 +60,13 @@ pub struct OperationRecord {
 pub struct PriorityOption {
     pub label: String,
     pub color: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ServerImportDefaults {
+    pub tags: String,
+    pub ip_address: String,
+    pub ports: String,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -239,15 +247,73 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction
                 .execute_batch(include_str!("../migrations/005_server_custom_columns.sql"))?;
-            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            transaction.pragma_update(None, "user_version", 5)?;
             transaction.commit()?;
         }
         if self.schema_version()? == 5 {
             let transaction = self.connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/006_planning.sql"))?;
+            transaction.pragma_update(None, "user_version", 6)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 6 {
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/007_app_settings.sql"))?;
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
+        Ok(())
+    }
+
+    pub fn font_size_step(&self) -> Result<i64, StorageError> {
+        let value = self.connection.query_row(
+            "SELECT value FROM app_settings WHERE key='font_size_step'",
+            [],
+            |row| row.get::<_, String>(0),
+        )?;
+        Ok(value.parse::<i64>().unwrap_or(1).clamp(0, 2))
+    }
+
+    pub fn set_font_size_step(&self, step: i64) -> Result<(), StorageError> {
+        self.connection.execute(
+            "INSERT INTO app_settings (key,value,updated_at) VALUES ('font_size_step',?1,CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP",
+            [step.clamp(0, 2).to_string()],
+        )?;
+        Ok(())
+    }
+
+    pub fn column_widths(&self) -> Result<Vec<f32>, StorageError> {
+        let value = self.connection.query_row(
+            "SELECT value FROM app_settings WHERE key='column_widths'",
+            [],
+            |row| row.get::<_, String>(0),
+        );
+        let mut widths = value
+            .ok()
+            .and_then(|value| serde_json::from_str::<Vec<f32>>(&value).ok())
+            .unwrap_or_else(|| DEFAULT_COLUMN_WIDTHS.to_vec());
+        for width in &mut widths {
+            *width = width.clamp(96.0, 420.0);
+        }
+        if widths.len() < DEFAULT_COLUMN_WIDTHS.len() {
+            widths.resize(DEFAULT_COLUMN_WIDTHS.len(), 160.0);
+        }
+        Ok(widths)
+    }
+
+    pub fn set_column_widths(&self, widths: &[f32]) -> Result<(), StorageError> {
+        let widths = widths
+            .iter()
+            .map(|width| width.clamp(96.0, 420.0))
+            .collect::<Vec<_>>();
+        let value = serde_json::to_string(&widths)
+            .map_err(|error| StorageError::InvalidImport(error.to_string()))?;
+        self.connection.execute(
+            "INSERT INTO app_settings (key,value,updated_at) VALUES ('column_widths',?1,CURRENT_TIMESTAMP)
+             ON CONFLICT(key) DO UPDATE SET value=excluded.value,updated_at=CURRENT_TIMESTAMP",
+            [value],
+        )?;
         Ok(())
     }
 
@@ -440,12 +506,21 @@ impl Repository {
         data: &TabularData,
         mappings: &[ServerImportTarget],
     ) -> Result<usize, StorageError> {
+        self.import_servers_with_defaults(data, mappings, &ServerImportDefaults::default())
+    }
+
+    pub fn import_servers_with_defaults(
+        &mut self,
+        data: &TabularData,
+        mappings: &[ServerImportTarget],
+        defaults: &ServerImportDefaults,
+    ) -> Result<usize, StorageError> {
         if mappings.len() != data.headers.len() {
             return Err(StorageError::InvalidImport(
                 "Every source column needs a mapping".into(),
             ));
         }
-        validate_server_mappings(mappings)?;
+        validate_server_mappings(mappings, defaults)?;
         let transaction = self.connection.transaction()?;
         let resolved = resolve_server_import_targets(&transaction, mappings)?;
 
@@ -475,7 +550,16 @@ impl Repository {
                 }
             }
             if tags.iter().all(|tag| tag.trim().is_empty()) {
+                tags.extend(defaults.tags.split(',').map(str::to_owned));
+            }
+            if tags.iter().all(|tag| tag.trim().is_empty()) {
                 tags.push("imported".into());
+            }
+            if ip_address.trim().is_empty() {
+                ip_address = defaults.ip_address.trim().to_owned();
+            }
+            if ports.trim().is_empty() {
+                ports = defaults.ports.trim().to_owned();
             }
             let draft = validate_server(&ServerDraft {
                 tags,
@@ -530,6 +614,58 @@ impl Repository {
             self.connection.last_insert_rowid()
         };
         Ok(result)
+    }
+
+    pub fn update_server_cell(
+        &mut self,
+        server_id: i64,
+        column_index: usize,
+        value: &str,
+    ) -> Result<(), StorageError> {
+        if value.chars().count() > 2_048 {
+            return Err(StorageError::InvalidImport(
+                "Cell values must be 2,048 characters or fewer".into(),
+            ));
+        }
+        let value = value.trim();
+        match column_index {
+            0..=2 => {
+                let (tags, ip_address, ports): (String, String, String) =
+                    self.connection.query_row(
+                        "SELECT tags,ip_address,ports FROM server_records WHERE id=?1",
+                        [server_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )?;
+                let draft = ServerDraft {
+                    tags: if column_index == 0 {
+                        value.split(',').map(str::to_owned).collect()
+                    } else {
+                        tags.split(',').map(str::to_owned).collect()
+                    },
+                    ip_address: if column_index == 1 {
+                        value
+                    } else {
+                        &ip_address
+                    }
+                    .to_owned(),
+                    ports: if column_index == 2 { value } else { &ports }.to_owned(),
+                };
+                self.save_server(Some(server_id), &draft).map(|_| ())
+            }
+            custom_index => {
+                let column_id: i64 = self.connection.query_row(
+                    "SELECT id FROM server_custom_columns ORDER BY position,id LIMIT 1 OFFSET ?1",
+                    [i64::try_from(custom_index - 3).unwrap_or(i64::MAX)],
+                    |row| row.get(0),
+                )?;
+                self.connection.execute(
+                    "INSERT INTO server_custom_values(server_id,column_id,value) VALUES(?1,?2,?3)
+                     ON CONFLICT(server_id,column_id) DO UPDATE SET value=excluded.value",
+                    params![server_id, column_id, value],
+                )?;
+                Ok(())
+            }
+        }
     }
 
     pub fn hide_server(&self, id: i64) -> Result<(), StorageError> {
@@ -1028,7 +1164,10 @@ enum ResolvedServerImportTarget {
     Custom(i64),
 }
 
-fn validate_server_mappings(mappings: &[ServerImportTarget]) -> Result<(), StorageError> {
+fn validate_server_mappings(
+    mappings: &[ServerImportTarget],
+    defaults: &ServerImportDefaults,
+) -> Result<(), StorageError> {
     let ip_count = mappings
         .iter()
         .filter(|target| matches!(target, ServerImportTarget::IpAddress))
@@ -1041,9 +1180,19 @@ fn validate_server_mappings(mappings: &[ServerImportTarget]) -> Result<(), Stora
         .iter()
         .filter(|target| matches!(target, ServerImportTarget::Tags))
         .count();
-    if ip_count != 1 || port_count != 1 || tag_count > 1 {
+    if ip_count > 1 || port_count > 1 || tag_count > 1 {
         return Err(StorageError::InvalidImport(
-            "Map exactly one IP Address and Ports column, and at most one Tags column".into(),
+            "Map at most one IP Address, Ports, and Tags column".into(),
+        ));
+    }
+    if ip_count == 0 && defaults.ip_address.trim().is_empty() {
+        return Err(StorageError::InvalidImport(
+            "Map an IP Address column or set a default IP address".into(),
+        ));
+    }
+    if port_count == 0 && defaults.ports.trim().is_empty() {
+        return Err(StorageError::InvalidImport(
+            "Map a Ports column or set default ports".into(),
         ));
     }
 
@@ -1522,7 +1671,7 @@ mod tests {
     #[test]
     fn migrates_and_seeds_an_empty_database() -> Result<(), StorageError> {
         let repository = Repository::in_memory()?;
-        assert_eq!(repository.schema_version()?, 6);
+        assert_eq!(repository.schema_version()?, 7);
         assert!(repository.server_records()?.is_empty());
         assert_eq!(repository.projects()?.len(), 3);
         assert_eq!(repository.assets_for_project(1)?.len(), 6);
@@ -1552,7 +1701,7 @@ mod tests {
             error,
             Some(StorageError::UnsupportedSchema {
                 found: 99,
-                supported: 6
+                supported: 7
             })
         ));
         Ok(())
@@ -1657,7 +1806,7 @@ mod tests {
         connection.execute_batch(include_str!("../migrations/seed.sql"))?;
         connection.pragma_update(None, "user_version", 1)?;
         let repository = Repository::from_connection(connection, None)?;
-        assert_eq!(repository.schema_version()?, 6);
+        assert_eq!(repository.schema_version()?, 7);
         assert_eq!(repository.relationships_for_project(1)?.len(), 4);
         let cross_project: i64 = repository.connection.query_row(
             "SELECT COUNT(*) FROM relationships r
@@ -1801,6 +1950,72 @@ mod tests {
     }
 
     #[test]
+    fn imports_rows_with_defaults_for_missing_required_values() -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        let data = TabularData {
+            headers: vec!["Host".into(), "Owner".into()],
+            rows: vec![
+                vec!["203.0.113.30".into(), "Platform".into()],
+                vec!["203.0.113.31".into(), "Data".into()],
+            ],
+        };
+        let mappings = [
+            ServerImportTarget::IpAddress,
+            ServerImportTarget::NewCustom("Owner".into()),
+        ];
+        let defaults = ServerImportDefaults {
+            tags: "imported, prod".into(),
+            ip_address: String::new(),
+            ports: "443".into(),
+        };
+        assert_eq!(
+            repository.import_servers_with_defaults(&data, &mappings, &defaults)?,
+            2
+        );
+        let records = repository.server_records()?;
+        assert_eq!(records[0].tags, ["imported", "prod"]);
+        assert_eq!(records[0].ports, "443");
+        Ok(())
+    }
+
+    #[test]
+    fn updates_standard_and_custom_server_cells() -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        let id = repository.save_server(
+            None,
+            &ServerDraft {
+                tags: vec!["prod".into()],
+                ip_address: "203.0.113.40".into(),
+                ports: "22".into(),
+            },
+        )?;
+        let data = TabularData {
+            headers: vec!["IP".into(), "Ports".into(), "Region".into()],
+            rows: vec![vec!["203.0.113.40".into(), "22".into(), "Asia".into()]],
+        };
+        repository.import_servers(
+            &data,
+            &[
+                ServerImportTarget::IpAddress,
+                ServerImportTarget::Ports,
+                ServerImportTarget::NewCustom("Region".into()),
+            ],
+        )?;
+        repository.update_server_cell(id, 0, "prod, edge")?;
+        repository.update_server_cell(id, 2, "443, 8443")?;
+        repository.update_server_cell(id, 3, "Singapore")?;
+        let record = repository
+            .server_records()?
+            .into_iter()
+            .find(|record| record.id == id)
+            .expect("saved server should exist");
+        assert_eq!(record.tags, ["prod", "edge"]);
+        assert_eq!(record.ports, "443, 8443");
+        assert_eq!(record.custom_values, ["Singapore"]);
+        Ok(())
+    }
+
+    #[test]
     fn migrates_schema_three_purpose_into_tags() -> Result<(), StorageError> {
         let connection = Connection::open_in_memory()?;
         connection.execute_batch(include_str!("../migrations/001_initial.sql"))?;
@@ -1813,7 +2028,7 @@ mod tests {
         connection.pragma_update(None, "user_version", 3)?;
 
         let repository = Repository::from_connection(connection, None)?;
-        assert_eq!(repository.schema_version()?, 6);
+        assert_eq!(repository.schema_version()?, 7);
         assert_eq!(repository.server_records()?[0].tags, vec!["Legacy API"]);
         Ok(())
     }
