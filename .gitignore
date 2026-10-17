@@ -14,6 +14,7 @@
 /server/analytics/node_modules/
 /website/test-results/
 /website/playwright-report/
+/test-results/
 /website/downloads/**/*.zip
 /website/downloads/**/*.tar.gz
 .DS_Store
