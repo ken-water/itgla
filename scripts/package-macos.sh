@@ -21,6 +21,9 @@ cargo packager --release --formats dmg --out-dir "${output_directory}"
 dmg="$(find "${output_directory}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
 [[ -n "${dmg}" ]] || { echo "cargo-packager did not produce a DMG" >&2; exit 1; }
 mv "${dmg}" "${output_directory}/${package_stem}.dmg"
-shasum -a 256 "${output_directory}/${package_stem}.dmg" > "${output_directory}/${package_stem}.dmg.sha256"
+(
+    cd "${output_directory}"
+    shasum -a 256 "${package_stem}.dmg" > "${package_stem}.dmg.sha256"
+)
 
 echo "Created ${output_directory}/${package_stem}.dmg"
