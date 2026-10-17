@@ -4,13 +4,24 @@
 
 ## 0.3.30 - 2026-10-18
 
-- Added a dedicated Settings workspace with curated themes, three text sizes, table density, compact hover previews, fit-on-open, and persistent import/backup preferences.
-- Added managed Environment and Status choices with defaults, safe rename semantics, and dropdown editors for Servers and Sites.
 - Added managed tag suggestions while preserving free-form tags, plus typed custom Server fields with defaults, ordering, and reversible hiding in storage.
 - Added deterministic duplicate handling for CSV/Excel imports: create new, skip existing, or update by Server IP/Site URL.
 - Added timestamped validated SQLite backups with configurable 1–30 file retention.
+- Published verified Windows EXE/ZIP, Linux DEB/RPM/AppImage, and macOS arm64 DMG packages with a combined SHA-256 manifest.
+
+## 0.3.29 - 2026-10-18
+
+- Added a dedicated Settings workspace with Field Atlas, Slate, Sand, and High Contrast themes.
+- Added persistent text size, table density, compact cell-preview, and fit-columns-on-open preferences.
 - Added an isolated, resettable Demo workspace containing fictional Servers, Sites, tags, environments, statuses, and custom fields; real workspace data never enters the demo database.
+- Added a visible Demo state with Reset and Exit actions so experimentation cannot be mistaken for the real workspace.
+
+## 0.3.28 - 2026-10-18
+
+- Added managed Environment and Status choices with defaults, safe rename semantics, and dropdown editors for Servers and Sites.
 - Added additive schema 015 and compatibility-preserving migration of historical Environment and Status values.
+- Applied configured Environment and Status defaults to new records and spreadsheet imports.
+- Added persistent preference foundations for default sorting, visible standard columns, default ports/tags, import behavior, and backup retention.
 
 - Simplified the visible workspace to two consistent resource tabs: Servers and Sites.
 - Added persistent Sites with Name, URL, Environment, Status, Purpose, and Tags fields.
