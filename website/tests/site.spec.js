@@ -42,7 +42,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
     "/downloads/v0.3.30/itgla-v0.3.30-windows-x86_64-setup.exe",
   );
 
-  for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download SHA256SUMS"]) {
+  for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download sha256sums"]) {
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole("link", { name: /View full release notes/ })).toHaveAttribute(
@@ -63,7 +63,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
     "itgla-v0.3.30-linux-x86_64.rpm",
     "itgla-v0.3.30-linux-x86_64.AppImage",
     "itgla-v0.3.30-macos-arm64.dmg",
-    "SHA256SUMS",
+    "sha256sums",
   ];
   for (const artifact of artifacts) {
     const response = await request.get(`/downloads/v0.3.30/${artifact}`);
