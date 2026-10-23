@@ -7,14 +7,19 @@
 - ITGLA helps independent developers and small teams keep operational server details in one searchable table.
 - It supports tags, IP addresses, ports, spreadsheet imports, column mapping, custom fields, sorting, filtering, and copying individual cells.
 - The desktop application stores its workspace in a local SQLite database.
-- The current application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools.
+- The desktop application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools. Website sign-in and hosted workspaces are separate from the local desktop application.
 
 ## Official pages
 
 - Homepage: https://itgla.com/
 - Downloads: https://itgla.com/downloads.html
+- Release notes: https://itgla.com/release-notes.html
 - Server inventory guide: https://itgla.com/server-inventory.html
 - Spreadsheet import guide: https://itgla.com/import-server-inventory.html
+- Custom server fields: https://itgla.com/custom-server-fields.html
+- Spreadsheet alternative: https://itgla.com/server-spreadsheet-alternative.html
+- Local-first server inventory: https://itgla.com/local-first-server-inventory.html
+- Server inventory example: https://itgla.com/server-inventory-example.html
 - Privacy: https://itgla.com/privacy.html
 - Terms: https://itgla.com/legal.html
 - Refunds: https://itgla.com/refund.html
@@ -23,6 +28,7 @@
 
 ## Source
 
+- Official repository: https://github.com/ken-water/itgla
 
 ## Privacy boundary
 

@@ -23,3 +23,11 @@ The official website is a dependency-free static site under `website/`. Product 
 5. Run `nginx -t`, HTTPS health, page, asset, download, checksum, and responsive smoke checks.
 
 Rollback is an atomic Nginx config/root switch back to the recorded backup, followed by the same health and download checks. The deployment must not edit the VeloWrite vhost, PostgreSQL cluster, Redis, DNS, or user data.
+
+## Discovery and legacy URL checks
+
+- Keep every public page listed in `sitemap.xml` in `llms.txt`; the latter also links to the sitemap and official repository. Account and error pages remain outside this page inventory.
+- `/llm.txt` permanently redirects to `/llms.txt`.
+- `/downloads/v0.3.30/SHA256SUMS` permanently redirects to the canonical lowercase `sha256sums` manifest. Use the exact Nginx location rather than case-colliding files, so Windows checkouts preserve compatibility.
+- Validate both redirects through candidate Nginx and production HTTPS, following each to a 200 response. Run `sha256sum -c sha256sums` against all six release packages.
+- Offer only implemented sign-in providers. The website currently supports email verification links.

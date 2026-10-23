@@ -125,5 +125,18 @@ test("compliance disclosures match current behavior", async ({ page }) => {
 test("email sign-in does not fall through to a 404", async ({ page }) => {
   await page.goto("/signin.html");
   await expect(page.locator("#email-signin-form")).toBeVisible();
+  await expect(page.locator('a[href="/auth/google/start"]')).toHaveCount(0);
   await expect(page.locator("#email-signin-form")).toHaveAttribute("id", "email-signin-form");
+});
+
+test("LLM discovery covers every sitemap page", async ({ request }) => {
+  const sitemap = await request.get("/sitemap.xml");
+  const llms = await request.get("/llms.txt");
+  expect(sitemap.ok()).toBeTruthy();
+  expect(llms.ok()).toBeTruthy();
+  const sitemapPages = [...(await sitemap.text()).matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]).sort();
+  const llmsText = await llms.text();
+  const llmsPages = [...llmsText.matchAll(/https:\/\/itgla\.com\/[^\s]*/g)].map((match) => match[0]).filter((url) => !url.endsWith("/sitemap.xml")).sort();
+  expect(llmsPages).toEqual(sitemapPages);
+  expect(llmsText).toContain("https://github.com/ken-water/itgla");
 });
