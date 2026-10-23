@@ -22,7 +22,7 @@ output_directory="${repository_root}/dist"
 mkdir -p "${output_directory}"
 
 cargo build --release --locked
-lipo -verify_arch "${package_arch}" target/release/itgla
+lipo target/release/itgla -verify_arch "${package_arch}"
 cargo packager --release --formats dmg --out-dir "${output_directory}"
 dmg="$(find "${output_directory}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
 [[ -n "${dmg}" ]] || { echo "cargo-packager did not produce a DMG" >&2; exit 1; }
