@@ -10,6 +10,8 @@
 - The desktop application stores its workspace in a local SQLite database.
 - The desktop application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools. Website sign-in and hosted workspaces are separate from the local desktop application.
 
+- macOS 14+ downloads are available separately for Apple silicon (arm64) and Intel (x86_64). Both packages are unsigned and not notarized.
+
 ## Official pages
 
 - Homepage: https://itgla.com/

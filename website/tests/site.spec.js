@@ -42,7 +42,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
     "/downloads/v0.4.0/itgla-v0.4.0-windows-x86_64-setup.exe",
   );
 
-  for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download DMG", "Download sha256sums"]) {
+  for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download Apple silicon DMG", "Download Intel DMG", "Download sha256sums"]) {
     await expect(page.getByRole("link", { name, exact: true })).toBeVisible();
   }
   await expect(page.getByRole("link", { name: /View full release notes/ })).toHaveAttribute(
@@ -63,6 +63,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
     "itgla-v0.4.0-linux-x86_64.rpm",
     "itgla-v0.4.0-linux-x86_64.AppImage",
     "itgla-v0.4.0-macos-arm64.dmg",
+    "itgla-v0.4.0-macos-x86_64.dmg",
     "sha256sums",
   ];
   for (const artifact of artifacts) {
@@ -140,3 +141,25 @@ test("LLM discovery covers every sitemap page", async ({ request }) => {
   expect(llmsPages).toEqual(sitemapPages);
   expect(llmsText).toContain("https://github.com/ken-water/itgla");
 });
+
+for (const viewport of viewports) {
+  test(`both Mac architectures are usable at ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/downloads.html");
+    for (const [label, arch] of [["Apple silicon", "arm64"], ["Intel", "x86_64"]]) {
+      await expect(page.getByRole("heading", { name: `macOS 14+ \u00b7 ${label}`, exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `/downloads/v0.4.0/itgla-v0.4.0-macos-${arch}.dmg`);
+    }
+    const downloads = page.locator(".download-actions a");
+    await expect(downloads).toHaveCount(7);
+    const firstSize = await downloads.first().boundingBox();
+    for (const link of await downloads.all()) {
+      await expect(link).toHaveClass("button button-dark");
+      const size = await link.boundingBox();
+      expect(size.height).toBeGreaterThanOrEqual(44);
+      expect(Math.abs(size.width - firstSize.width)).toBeLessThanOrEqual(1);
+      expect(Math.abs(size.height - firstSize.height)).toBeLessThanOrEqual(1);
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
+  });
+}

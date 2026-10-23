@@ -285,14 +285,15 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 .download-list .download-actions {
-  min-width: 520px;
-  flex-direction: row;
+  min-width: 260px;
+  flex-direction: column;
   flex-wrap: wrap;
   justify-content: flex-end;
 }
 
 .download-list .download-actions .button {
-  flex: 0 0 176px;
+  flex: 0 0 auto;
+  width: 260px;
 }
 
 .auth-page { min-height: 100svh; display: flex; flex-direction: column; }
@@ -315,9 +316,10 @@ button, a { -webkit-tap-highlight-color: transparent; }
 .auth-status { min-height: 1.4em; margin: 12px 0 0; color: var(--teal-dark); font-size: 13px; }
 
 @media (max-width: 820px) {
+  .download-list article { align-items: stretch; flex-direction: column; gap: 20px; }
   .download-list .download-actions { min-width: 0; width: 100%; justify-content: stretch; }
   .download-list .download-actions .button,
-  .download-list > article > .button { flex: 1 1 100%; width: 100%; }
+  .download-list > article > .button { flex: 0 0 auto; width: 100%; }
 }
 
 .hero-note { margin: 14px 0 0; color: #cbd9d5; font-size: 12px; }

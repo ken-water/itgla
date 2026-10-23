@@ -32,6 +32,12 @@
       "name": "itgla-v0.4.0-windows-x86_64.zip",
       "bytes": 10690840,
       "sha256": "25acf757c9af8c5e585d08c8f65428663edc55c0bf2ae7182448968e5b6266fb"
+    },
+    {
+      "name": "itgla-v0.4.0-macos-x86_64.dmg",
+      "bytes": 10335055,
+      "sha256": "989f22e70fd43c726429e6745346b3e8151f22786d4c84ac7d4a25b42556ef43"
     }
-  ]
+  ],
+  "macos_intel_build": "https://github.com/ken-water/itgla/actions/runs/40033837091"
 }
