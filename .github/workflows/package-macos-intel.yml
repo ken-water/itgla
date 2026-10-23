@@ -1,0 +1,63 @@
+name: Build macOS Intel DMG
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release source tag (v-prefixed)
+        required: true
+        default: v0.4.0
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  macos-intel:
+    runs-on: macos-15-intel
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+    steps:
+      - name: Check out packaging tools
+        uses: actions/checkout@v5
+        with:
+          path: packaging-tools
+          sparse-checkout: scripts/package-macos.sh
+          sparse-checkout-cone-mode: false
+      - name: Check out immutable release source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.release_tag }}
+          path: source
+      - name: Validate release and architecture
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        working-directory: source
+        run: |
+          [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          test "$(uname -m)" = x86_64
+          version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
+          test "v$version" = "$RELEASE_TAG"
+          git rev-parse HEAD
+      - name: Test release source
+        working-directory: source
+        run: cargo test --all-features --locked
+      - name: Build and verify unsigned Intel DMG
+        env:
+          ITGLA_PACKAGE_ROOT: ${{ github.workspace }}/source
+        run: |
+          cargo install cargo-packager --locked --version 0.11.8
+          bash packaging-tools/scripts/package-macos.sh
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: itgla-macos-x86_64
+          path: |
+            source/dist/*-macos-x86_64.dmg
+            source/dist/*-macos-x86_64.dmg.sha256
+          if-no-files-found: error
+      - name: Attach Intel package to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag }}
+        run: gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" source/dist/*-macos-x86_64.dmg source/dist/*-macos-x86_64.dmg.sha256
