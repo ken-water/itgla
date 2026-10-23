@@ -31,3 +31,7 @@ Rollback is an atomic Nginx config/root switch back to the recorded backup, foll
 - `/downloads/v0.3.30/SHA256SUMS` permanently redirects to the canonical lowercase `sha256sums` manifest. Use the exact Nginx location rather than case-colliding files, so Windows checkouts preserve compatibility.
 - Validate both redirects through candidate Nginx and production HTTPS, following each to a 200 response. Run `sha256sum -c sha256sums` against all six release packages.
 - Offer only implemented sign-in providers. The website currently supports email verification links.
+
+## v0.4.0 publishing
+
+The desktop source is tagged v0.4.0. Platform binaries are immutable GitHub Release assets, fetched by website CI before link/download checks rather than committed to Git. The website deploy includes all six packages and their lowercase sha256sums manifest in downloads/v0.4.0, preserving historical directories. New Linux builds may set ITGLA_APPIMAGE_RUNTIME_SOURCE to the previous verified AppImage if the upstream runtime download is unavailable; only its launcher runtime prefix is reused, with the application filesystem rebuilt from the current binary.

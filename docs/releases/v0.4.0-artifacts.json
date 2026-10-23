@@ -1,0 +1,37 @@
+{
+  "version": "0.4.0",
+  "source_commit": "a7cde2cf3ce1003ac2f42bc75bb4c16c752e52cf",
+  "macos_build": "https://github.com/ken-water/itgla/actions/runs/39992131369",
+  "files": [
+    {
+      "name": "itgla-v0.4.0-linux-x86_64.AppImage",
+      "bytes": 13220344,
+      "sha256": "2b2bd5610c8ae9276ce762f558ad5d632ccdd134db7146f94763103ac82107c2"
+    },
+    {
+      "name": "itgla-v0.4.0-linux-x86_64.deb",
+      "bytes": 13264726,
+      "sha256": "eff9842a04702d0e7d66eb32815f4c60fc642b3093f50294b765c35235cb373f"
+    },
+    {
+      "name": "itgla-v0.4.0-linux-x86_64.rpm",
+      "bytes": 13216699,
+      "sha256": "2a2d6598314ada03d8d5614169f6ae32a8cbb4e5f25b5109d83eeeb155ec77bc"
+    },
+    {
+      "name": "itgla-v0.4.0-macos-arm64.dmg",
+      "bytes": 9781353,
+      "sha256": "48ddec8bf362a370deef8ba18d6664f2408073473ff73b5e0e18dcc2ad5e9322"
+    },
+    {
+      "name": "itgla-v0.4.0-windows-x86_64-setup.exe",
+      "bytes": 10821115,
+      "sha256": "28e7064e03a8c967e1111490ada6cd57d9ddf172781659c56f45351550bd5658"
+    },
+    {
+      "name": "itgla-v0.4.0-windows-x86_64.zip",
+      "bytes": 10690840,
+      "sha256": "25acf757c9af8c5e585d08c8f65428663edc55c0bf2ae7182448968e5b6266fb"
+    }
+  ]
+}

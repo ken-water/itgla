@@ -35,6 +35,14 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v5
 
+      - name: Fetch immutable desktop release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag="v$(node -p 'require("./package.json").version')"
+          gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" --dir "downloads/$release_tag" --clobber
+          (cd "downloads/$release_tag" && sha256sum -c sha256sums)
+
       - name: Install test dependencies
         run: npm ci
 

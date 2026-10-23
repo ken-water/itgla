@@ -44,7 +44,7 @@ packager_status=0
 # rebuilt from the current release binary.
 if [[ ${packager_status} -ne 0 ]]; then
     app_dir="${package_output}/.cargo-packager/appimage/itgla.AppDir"
-    previous_appimage="${output_directory}/${package_stem}.AppImage"
+    previous_appimage="${ITGLA_APPIMAGE_RUNTIME_SOURCE:-${output_directory}/${package_stem}.AppImage}"
     plugin="${user_home_directory}/.cache/.cargo-packager/AppImage/linuxdeploy-plugin-appimage.AppImage"
     if [[ ! -d "${app_dir}" || ! -x "${previous_appimage}" || ! -x "${plugin}" ]]; then
         echo "cargo-packager failed and no verified AppImage runtime is available" >&2

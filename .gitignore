@@ -18,3 +18,6 @@
 /website/downloads/**/*.zip
 /website/downloads/**/*.tar.gz
 .DS_Store
+
+# Release binaries are fetched from immutable GitHub release assets for CI/deploy.
+/website/downloads/v0.4.0/
