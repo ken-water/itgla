@@ -1,3 +1,4 @@
+import { InventoryPanel, InventoryForm, InventoryRow, InventoryChoice } from "inventory.slint";
 import { Button, CheckBox, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
 
 export struct ServerRow { id: int, name: string, ip-address: string, ports: string, environment: string, status: string, purpose: string, tags: string, custom-values: [string] }
@@ -506,6 +507,35 @@ export component AppWindow inherits Window {
     in-out property <[length]> site-column-widths: [180px, 260px, 140px, 120px, 220px, 180px];
     in-out property <length> site-table-width: 1216px;
     in-out property <length> site-table-scroll-x: 0px;
+    in-out property <InventoryForm> inventory-form;
+    in-out property <[InventoryRow]> inventory-rows;
+    in-out property <[InventoryChoice]> inventory-hosts;
+    in-out property <[InventoryChoice]> inventory-targets;
+    in-out property <[string]> inventory-target-labels;
+    in-out property <[InventoryRow]> inventory-relations;
+    in-out property <string> inventory-query;
+    in-out property <string> inventory-filter-label: "All servers";
+    in-out property <int> inventory-server-filter: 0;
+    in-out property <bool> inventory-show-hidden: false;
+    in-out property <bool> inventory-credentials-available: false;
+    in-out property <string> inventory-username;
+    in-out property <string> inventory-password;
+    in-out property <bool> inventory-reveal: false;
+    in-out property <bool> inventory-clear-credentials: false;
+    in-out property <int> inventory-target-index: 0;
+    in-out property <int> inventory-relation-kind: 0;
+    in-out property <string> inventory-relation-notes;
+    callback inventory-refresh();
+    callback inventory-select(int);
+    callback inventory-new(int);
+    callback inventory-save();
+    callback inventory-hide(int,bool);
+    callback inventory-unlock();
+    callback inventory-copy-secret(bool);
+    callback inventory-relation-add();
+    callback inventory-relation-remove(int);
+    callback open-server-inventory(int);
+    Timer { interval: 30s; running: root.inventory-reveal; triggered => { root.inventory-reveal = false; } }
     callback search-changed(string);
     callback tag-selected(string);
     callback sort-selected(int);
@@ -579,7 +609,7 @@ export component AppWindow inherits Window {
         Text { x: 28px; y: 12px; text: "ITGLA"; color: #d7ee9d; font-size: 20px; font-weight: 800; letter-spacing: 1px; }
         Text { x: 29px; y: 40px; text: "FIELD ATLAS  /  LOCAL WORKSPACE"; color: #a9c7ad; font-size: root.caption-font-size; font-weight: 700; letter-spacing: 1px; }
         if root.demo-mode: Text { x: 260px; y: 22px; width: 154px; text: "DEMO WORKSPACE"; color: #fff2bb; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
-        Text { x: parent.width - 590px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : "SETTINGS"; color: #c8ddb0; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
+        Text { x: parent.width - 590px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "INVENTORY" : "SETTINGS"; color: #c8ddb0; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
         Button { x: parent.width - 468px; y: 18px; width: 76px; height: 36px; text: "Guide"; clicked => { root.onboarding-open = true; } }
         Button { x: parent.width - 386px; y: 18px; width: 92px; height: 36px; text: "Fit columns"; enabled: root.active-tab < 2; clicked => { if root.active-tab == 0 { root.auto-fit-columns(); root.server-table-scroll-x = 0px; } else if root.active-tab == 1 { root.auto-fit-site-columns(); root.site-table-scroll-x = 0px; } } }
         Button { x: parent.width - 286px; y: 18px; width: 34px; height: 36px; text: "A−"; enabled: root.font-size-step > 0; clicked => { root.font-size-changed(root.font-size-step - 1); } }
@@ -592,6 +622,32 @@ export component AppWindow inherits Window {
         servers-tab := NavigationTab { x: 4px; y: 4px; width: 112px; height: 34px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.tab-selected(0); } }
         sites-tab := NavigationTab { x: 120px; y: 4px; width: 112px; height: 34px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.tab-selected(1); } }
         settings-tab := NavigationTab { x: 236px; y: 4px; width: 112px; height: 34px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.tab-selected(2); } }
+        NavigationTab { x: 352px; y: 4px; width: 160px; height: 34px; label: "Services & Domains"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.tab-selected(4); } }
+    }
+
+    if root.active-tab == 4: InventoryPanel {
+        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px;
+        form <=> root.inventory-form; rows: root.inventory-rows; hosts <=> root.inventory-hosts;
+        relations: root.inventory-relations; target-labels: root.inventory-target-labels;
+        target-index <=> root.inventory-target-index; relation-kind <=> root.inventory-relation-kind;
+        relation-notes <=> root.inventory-relation-notes; query <=> root.inventory-query;
+        show-hidden <=> root.inventory-show-hidden; filter-label: root.inventory-filter-label;
+        server-filtered: root.inventory-server-filter != 0;
+        credentials-available: root.inventory-credentials-available;
+        username <=> root.inventory-username; password <=> root.inventory-password;
+        reveal <=> root.inventory-reveal; clear-credentials <=> root.inventory-clear-credentials;
+        status: root.status-message; status-error: root.status-is-error;
+        refresh => { root.inventory-refresh(); }
+        new-record(kind) => { root.inventory-new(kind); }
+        select-record(id) => { root.inventory-select(id); }
+        save => { root.inventory-save(); }
+        hide(id,hidden) => { root.inventory-hide(id,hidden); }
+        unlock => { root.inventory-unlock(); }
+        copy-secret(password) => { root.inventory-copy-secret(password); }
+        copy(value,label) => { root.copy-value(value,label); }
+        clear-filter => { root.inventory-server-filter = 0; root.inventory-refresh(); }
+        add-relation => { root.inventory-relation-add(); }
+        remove-relation(id) => { root.inventory-relation-remove(id); }
     }
 
     if root.active-tab == 0: Rectangle {
@@ -646,6 +702,7 @@ export component AppWindow inherits Window {
                 HelperText { x: 18px; y: 366px; width: 292px; text: "Name, IP, ports, environment, and status are required."; token-size: root.body-font-size; }
                 Button { x: 18px; y: 410px; width: 292px; height: 36px; text: root.editing-id == 0 ? "Add server" : "Save changes"; clicked => { root.save-server(root.editing-id, root.editing-name, root.editing-ip-address, root.editing-ports, root.editing-environment, root.editing-status, root.editing-purpose, root.editing-tags); } }
                 if root.status-message != "": Text { x: 18px; y: 454px; width: 292px; text: (root.status-is-error ? "Save failed · " : "Saved · ") + root.status-message; color: root.status-is-error ? #a33a32 : #16715e; font-size: root.body-font-size; font-weight: 650; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+                if root.editing-id != 0: Button { x: 128px; y: 10px; width: 90px; height: 30px; text: "Services"; clicked => { root.open-server-inventory(root.editing-id); } }
                 Rectangle { x: 18px; y: 494px; width: 292px; height: 1px; background: #e2e7e5; }
                 SectionLabel { x: 18px; y: 512px; text: "FILTER BY TAG"; token-size: root.caption-font-size; }
                 VerticalLayout {

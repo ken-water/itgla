@@ -3,6 +3,8 @@
 #[allow(dead_code)]
 mod domain;
 mod import_data;
+mod operational;
+mod secrets;
 #[allow(dead_code)]
 mod storage;
 
@@ -1067,6 +1069,14 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             window.set_onboarding_open(false);
             window.set_import_dialog_open(true);
         }
+        Ok(view @ ("inventory" | "domains")) => {
+            window.set_active_tab(4);
+            window.set_onboarding_open(false);
+            window.invoke_inventory_new(if view == "domains" { 1 } else { 0 });
+            if let Some(row) = window.get_inventory_rows().row_data(0) {
+                window.invoke_inventory_select(row.id);
+            }
+        }
         Ok("guide") => window.set_onboarding_open(true),
         _ => {}
     }
@@ -1094,6 +1104,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let site_import_session = Rc::new(RefCell::new(SiteImportSession::default()));
     let work_list_state = Rc::new(RefCell::new(WorkListState::default()));
     let window = AppWindow::new()?;
+    operational::setup(&window, repository.clone());
     let preferences = repository.borrow().workspace_preferences();
     apply_preferences(&window, &preferences);
     window.set_column_widths(ModelRc::new(VecModel::from(
@@ -1170,8 +1181,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let weak = window.as_weak();
     window.on_tab_selected(move |tab| {
         if let Some(window) = weak.upgrade() {
+            operational::clear_credentials(&window);
             window.set_active_tab(tab);
+            if tab == 4 {
+                window.invoke_inventory_new(window.get_inventory_form().kind);
+            }
             window.set_status_message(SharedString::new());
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_open_server_inventory(move |id| {
+        if let Some(window) = weak.upgrade() {
+            operational::clear_credentials(&window);
+            window.set_inventory_server_filter(id);
+            window.set_active_tab(4);
+            window.invoke_inventory_new(0);
         }
     });
 
@@ -1821,6 +1846,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             Ok(demo) => {
                 let real = std::mem::replace(&mut *callback_repository.borrow_mut(), demo);
                 *callback_real_repository.borrow_mut() = Some(real);
+                operational::clear_credentials(&window);
+                window.set_inventory_server_filter(0);
                 window.set_demo_mode(true);
                 let _ = refresh(
                     &window,
@@ -1879,6 +1906,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         };
         let _demo = std::mem::replace(&mut *callback_repository.borrow_mut(), real);
+        operational::clear_credentials(&window);
+        window.set_inventory_server_filter(0);
         window.set_demo_mode(false);
         let preferences = callback_repository.borrow().workspace_preferences();
         apply_preferences(&window, &preferences);
@@ -2884,7 +2913,10 @@ mod tests {
             .filter_map(|element| element.accessible_label())
             .map(|label| label.to_string())
             .collect::<Vec<_>>();
-        assert_eq!(labels, ["Servers", "Sites", "Settings"]);
+        assert_eq!(
+            labels,
+            ["Servers", "Sites", "Settings", "Services & Domains"]
+        );
 
         let sites_tab = ElementHandle::find_by_accessible_label(&window, "Sites")
             .next()

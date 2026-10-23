@@ -21,7 +21,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 15;
+const SCHEMA_VERSION: i64 = 16;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -291,7 +291,7 @@ pub enum StorageError {
 }
 
 pub struct Repository {
-    connection: Connection,
+    pub(crate) connection: Connection,
     database_path: Option<PathBuf>,
 }
 
@@ -446,6 +446,14 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction
                 .execute_batch(include_str!("../migrations/015_workspace_preferences.sql"))?;
+            transaction.pragma_update(None, "user_version", 15)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 15 {
+            self.automatic_backup("pre-schema-16.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction
+                .execute_batch(include_str!("../migrations/016_operational_inventory.sql"))?;
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
@@ -2819,7 +2827,8 @@ impl Repository {
     pub fn reset_demo_fixture(&mut self) -> Result<(), StorageError> {
         let transaction = self.connection.transaction()?;
         transaction.execute_batch(
-            "DELETE FROM server_custom_values;
+            "DELETE FROM operational_inventory;
+             DELETE FROM server_custom_values;
              DELETE FROM server_custom_columns;
              DELETE FROM server_records;
              DELETE FROM sites;",
@@ -4961,7 +4970,7 @@ mod tests {
     #[test]
     fn schema_fifteen_preferences_options_and_demo_are_isolated() -> Result<(), StorageError> {
         let mut repository = Repository::in_memory()?;
-        assert_eq!(repository.schema_version()?, 15);
+        assert_eq!(repository.schema_version()?, SCHEMA_VERSION);
         assert!(
             repository
                 .resource_options("environment", false)?
@@ -5076,6 +5085,90 @@ mod tests {
     }
 
     #[test]
+    fn inventory_migration_backup_restore_and_reopen_preserve_links() -> Result<(), StorageError> {
+        let directory = temporary_path("inventory-migration", "data");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("source.db");
+        let backup = directory.join("inventory.db");
+        let mut repository = Repository::open(path.clone())?;
+        repository.reset_demo_fixture()?;
+        let servers = repository.server_records()?;
+        // Model an existing v15 database, including its real server identifiers.
+        repository.connection.execute_batch("DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; PRAGMA user_version=15;")?;
+        drop(repository);
+        let mut repository = Repository::open(path.clone())?;
+        assert_eq!(repository.schema_version()?, SCHEMA_VERSION);
+        assert_eq!(repository.server_records()?.len(), servers.len());
+        let before = Connection::open(directory.join("backups/pre-schema-16.db"))?;
+        assert_eq!(
+            before.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
+            15
+        );
+        drop(before);
+        let details = |name: &str| crate::operational::Details {
+            name: name.into(),
+            tags: "production, orders".into(),
+            ..Default::default()
+        };
+        let primary =
+            repository.save_inventory(0, 0, details("database primary"), &[servers[0].id], None)?;
+        let replica =
+            repository.save_inventory(0, 0, details("database replica"), &[servers[1].id], None)?;
+        let mut domain = details("api.example.com");
+        domain.parent = "example.com".into();
+        domain.cdn = "Cloudflare".into();
+        repository.save_inventory(0, 1, domain, &[servers[0].id, servers[1].id], None)?;
+        repository.add_inventory_relation(primary, replica, 1, "synthetic replication")?;
+        repository.create_backup(&backup)?;
+        repository.set_inventory_hidden(primary, true)?;
+        repository.restore_backup(&backup)?;
+        drop(repository);
+        let repository = Repository::open(path)?;
+        let entries = repository.inventory_entries()?;
+        assert_eq!(entries.len(), 3);
+        assert!(entries.iter().all(|e| !e.hidden));
+        assert_eq!(entries.iter().find(|e| e.kind == 1).unwrap().hosts.len(), 2);
+        assert_eq!(
+            repository.connection.query_row(
+                "SELECT COUNT(*) FROM operational_relations WHERE source_id=?1 AND target_id=?2",
+                params![primary, replica],
+                |r| r.get::<_, i64>(0)
+            )?,
+            1
+        );
+        assert_eq!(
+            repository
+                .connection
+                .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?,
+            "ok"
+        );
+        drop(repository);
+        let _ = fs::remove_dir_all(directory);
+        Ok(())
+    }
+
+    #[test]
+    fn failed_inventory_migration_rolls_back_schema_and_preserves_servers()
+    -> Result<(), StorageError> {
+        let mut repository = Repository::in_memory()?;
+        repository.reset_demo_fixture()?;
+        let count = repository.server_records()?.len();
+        repository.connection.execute_batch("DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; CREATE TABLE operational_hosts(collision INTEGER); PRAGMA user_version=15;")?;
+        assert!(repository.migrate_remaining().is_err());
+        assert_eq!(repository.schema_version()?, 15);
+        assert_eq!(repository.server_records()?.len(), count);
+        assert_eq!(
+            repository.connection.query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name='operational_inventory'",
+                [],
+                |r| r.get::<_, i64>(0)
+            )?,
+            0
+        );
+        Ok(())
+    }
+
+    #[test]
     fn managed_backup_prunes_old_files_to_retention() -> Result<(), StorageError> {
         let directory = temporary_path("managed-backup", "data");
         fs::create_dir_all(&directory).map_err(|source| StorageError::FileOperation {
@@ -5107,8 +5200,15 @@ mod tests {
                 source,
             })?
             .filter_map(Result::ok)
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("itgla-backup-")
+            })
             .count();
         assert_eq!(remaining, 2);
+        assert!(backups.join("pre-schema-16.db").exists());
         drop(repository);
         let _ = fs::remove_dir_all(directory);
         Ok(())

@@ -1,5 +1,10 @@
 [advisories]
 ignore = [
+    # Scoped unmaintained advisories: Linux accessibility, no safe upgrade available.
+    # Owner ken-water; reassess by 2026-11-24. See docs/releases/v0.4.0.md.
+    { id = "RUSTSEC-2026-0370", reason = "Existing Slint/accesskit Linux accessibility requires zvariant; no safe fixed upgrade. Desktop local inventory has no network service; track upstream migration." },
+    { id = "RUSTSEC-2026-0371", reason = "Existing Slint/accesskit Linux accessibility requires zbus_names; no safe fixed upgrade. Track upstream migration without disabling accessibility." },
+    { id = "RUSTSEC-2026-0372", reason = "Existing Slint/accesskit Linux accessibility requires zvariant_derive at build time; no safe fixed upgrade. Track upstream migration." },
     { id = "RUSTSEC-2026-0192", reason = "Transitive Linux window-decoration font parser; no fixed release is available. Track through Slint/winit updates." },
     { id = "RUSTSEC-2026-0367", reason = "Calamine only reads ZIP entries in memory; ITGLA never calls ZipArchive::extract or writes archive permissions." },
     { id = "RUSTSEC-2026-0368", reason = "Calamine only reads ZIP entries in memory; ITGLA never extracts ZIP symlinks to the filesystem." },

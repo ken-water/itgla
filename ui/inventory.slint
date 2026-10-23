@@ -1,0 +1,185 @@
+import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit } from "std-widgets.slint";
+
+export struct InventoryForm {
+    id: int, kind: int, name: string, address: string, version: string, ports: string,
+    parent: string, registrar: string, registered: string, expires: string, cdn: string,
+    tags: string, notes: string, has-credentials: bool,
+}
+export struct InventoryRow { id: int, name: string, summary: string, hosts: string, tags: string, notes: string }
+export struct InventoryChoice { id: int, label: string, selected: bool }
+
+component Label inherits Text { color: #183c32; font-size: 12px; font-weight: 650; }
+
+export component InventoryPanel inherits Rectangle {
+    in-out property <InventoryForm> form;
+    in property <[InventoryRow]> rows;
+    in-out property <[InventoryChoice]> hosts;
+    in property <[InventoryRow]> relations;
+    in property <[string]> target-labels;
+    in-out property <int> target-index;
+    in-out property <int> relation-kind;
+    in-out property <string> relation-notes;
+    in-out property <string> query;
+    in-out property <bool> show-hidden;
+    in property <string> filter-label;
+    in property <bool> server-filtered;
+    in property <bool> credentials-available;
+    in-out property <string> username;
+    in-out property <string> password;
+    in-out property <bool> reveal;
+    in-out property <bool> clear-credentials;
+    in property <string> status;
+    in property <bool> status-error;
+    callback refresh();
+    callback new-record(int);
+    callback select-record(int);
+    callback save();
+    callback hide(int,bool);
+    callback unlock();
+    callback copy-secret(bool);
+    callback copy(string,string);
+    callback clear-filter();
+    callback add-relation();
+    callback remove-relation(int);
+
+    background: transparent;
+    HorizontalLayout {
+        spacing: 16px;
+        VerticalLayout {
+            min-width: 280px; horizontal-stretch: 1; spacing: 8px;
+            HorizontalLayout {
+                height: 34px;
+                Text { text: "Inventory"; color: #183c32; font-size: 24px; font-weight: 750; }
+                ComboBox { width: 130px; model: ["Services", "Domains"]; current-index <=> root.form.kind; selected => { root.new-record(self.current-index); } }
+                Button { width: 76px; horizontal-stretch: 0; text: "New"; clicked => { root.new-record(root.form.kind); } }
+            }
+            Label { text: "Servers → services · Domains → origins"; }
+            HorizontalLayout {
+                height: 30px;
+                Text { text: root.filter-label; color: #52685c; overflow: elide; }
+                if root.server-filtered: Button { text: "All servers"; clicked => { root.clear-filter(); } }
+                CheckBox { text: "Hidden"; checked <=> root.show-hidden; toggled => { root.new-record(root.form.kind); } }
+            }
+            LineEdit { accessible-label: "Search inventory"; height: 36px; placeholder-text: "Search name, tag, note, host, version…"; text <=> root.query; edited => { root.refresh(); } }
+            ScrollView {
+                vertical-stretch: 1;
+                VerticalLayout {
+                    spacing: 6px;
+                    for entry in root.rows: Rectangle {
+                        height: 194px; background: root.form.id == entry.id ? #e4eedf : #ffffff;
+                        border-width: 1px; border-color: #cedbcf; border-radius: 5px;
+                        VerticalLayout {
+                            padding: 10px; spacing: 4px;
+                            HorizontalLayout {
+                                height: 28px;
+                                Text { text: entry.name; color: #183c32; font-size: 15px; font-weight: 700; overflow: elide; }
+                                Button { width: 80px; horizontal-stretch: 0; text: root.show-hidden ? "Restore" : "Edit"; clicked => { if root.show-hidden { root.hide(entry.id,false); } else { root.select-record(entry.id); } } }
+                            }
+                            Text { text: entry.summary; color: #52685c; overflow: elide; }
+                            Text { text: entry.hosts == "" ? "No hosting server linked" : entry.hosts; color: #52685c; overflow: elide; }
+                            Text { text: entry.tags == "" ? "No tags" : entry.tags; color: #32735e; overflow: elide; }
+                            Text { text: entry.notes; color: #52685c; overflow: elide; }
+                            HorizontalLayout {
+                                Button { text: "Copy summary"; clicked => { root.copy(entry.name + "\n" + entry.summary + "\n" + entry.hosts,"Service / domain summary"); } }
+                                if !root.show-hidden: Button { text: "Hide"; clicked => { root.hide(entry.id,true); } }
+                            }
+                        }
+                    }
+                    if root.rows.length == 0: Text { height: 80px; text: "No matching records. Add one or adjust your filters."; color: #52685c; wrap: word-wrap; }
+                }
+            }
+            Text { height: 40px; text: "Use Settings → Create backup for this inventory. Legacy project JSON does not include these records."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+        }
+        Rectangle {
+            width: root.width > 1100px ? 480px : 390px;
+            background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+            ScrollView {
+                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                VerticalLayout {
+                    padding: 14px; spacing: 8px;
+                    Text { text: (root.form.id == 0 ? "Add " : "Edit ") + (root.form.kind == 0 ? "service" : "domain / hostname"); color: #183c32; font-size: 19px; font-weight: 700; }
+                    Label { text: root.form.kind == 0 ? "NAME *" : "DOMAIN / HOSTNAME *"; }
+                    LineEdit { accessible-label: "Service name or domain"; placeholder-text: root.form.kind == 0 ? "Orders PostgreSQL primary" : "api.example.com"; text <=> root.form.name; }
+                    if root.form.kind == 0: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "VERSION / PORTS"; }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Service version"; placeholder-text: "16.4"; text <=> root.form.version; }
+                            LineEdit { accessible-label: "Service ports"; placeholder-text: "5432, 9187"; text <=> root.form.ports; }
+                        }
+                        Label { text: "ACCESS ADDRESS"; }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Access address or DNS target"; placeholder-text: "postgresql.example.com"; text <=> root.form.address; }
+                            Button { text: "Copy"; clicked => { root.copy(root.form.address,"Access address"); } }
+                        }
+                        Button { text: "Copy ports"; clicked => { root.copy(root.form.ports,"Ports"); } }
+                    }
+                    if root.form.kind == 1: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "PARENT DOMAIN / REGISTRAR"; }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Parent domain"; placeholder-text: "example.com (optional)"; text <=> root.form.parent; }
+                            LineEdit { accessible-label: "Domain registrar"; placeholder-text: "Registrar"; text <=> root.form.registrar; }
+                        }
+                        Label { text: "REGISTERED / EXPIRES (YYYY-MM-DD)"; }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Registration date YYYY-MM-DD"; placeholder-text: "2026-01-01"; text <=> root.form.registered; }
+                            LineEdit { accessible-label: "Expiry date YYYY-MM-DD"; placeholder-text: "2027-01-01"; text <=> root.form.expires; }
+                        }
+                        Label { text: "CDN / PROXY"; }
+                        LineEdit { accessible-label: "CDN or proxy"; placeholder-text: "Cloudflare proxied; zone/account reference"; text <=> root.form.cdn; }
+                        Label { text: "DNS TARGET / ACCESS ADDRESS"; }
+                        LineEdit { accessible-label: "Access address or DNS target"; placeholder-text: "CNAME or public address (not the origin)"; text <=> root.form.address; }
+                    }
+                    Label { text: "TAGS (COMMA-SEPARATED)"; }
+                    LineEdit { accessible-label: "Tags separated by commas"; placeholder-text: "production, orders, critical"; text <=> root.form.tags; }
+                    Label { text: "NOTES"; }
+                    TextEdit { accessible-label: "Notes"; height: 78px; text <=> root.form.notes; }
+                    Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS (INDEPENDENT OF DNS / CDN IPs)"; }
+                    Text { text: "Select existing servers; add missing servers in the Servers tab."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+                    ScrollView {
+                        height: 100px;
+                        VerticalLayout {
+                            for host[index] in root.hosts: CheckBox { text: host.label; checked: host.selected; toggled => { root.hosts[index].selected = self.checked; } }
+                            if root.hosts.length == 0: Text { text: "No servers available yet."; color: #52685c; }
+                        }
+                    }
+                    if root.form.kind == 0: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "ACCESS ACCOUNT (OPTIONAL)"; }
+                        Text { text: root.credentials-available ? "Protected for this Windows user. Device/profile changes require re-entering credentials. Metadata and notes are not encrypted." : "Credential storage is available on Windows only. Keep secrets in your password manager on this platform."; font-size: 11px; color: #52685c; wrap: word-wrap; }
+                        if root.form.has-credentials: Button { text: "Unlock saved account (30 sec)"; enabled: root.credentials-available; clicked => { root.unlock(); } }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Service username"; placeholder-text: "Username"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.username; }
+                            Button { text: "Copy user"; enabled: root.credentials-available; clicked => { root.copy-secret(false); } }
+                        }
+                        HorizontalLayout {
+                            LineEdit { accessible-label: "Service password"; placeholder-text: "Password"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.password; }
+                            Button { text: "Copy password"; enabled: root.credentials-available; clicked => { root.copy-secret(true); } }
+                        }
+                        CheckBox { text: "Show account fields"; checked <=> root.reveal; enabled: root.credentials-available; }
+                        if root.form.has-credentials: CheckBox { text: "Remove saved account on save"; checked <=> root.clear-credentials; }
+                        Text { text: "Blank fields keep the saved account. Enter both fields to replace it. Clipboard history may retain copied secrets."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+                    }
+                    Button { height: 36px; text: "Save record"; enabled: !root.show-hidden; clicked => { root.save(); } }
+                    if root.status != "": Text { text: root.status; color: root.status-error ? #a33a32 : #16715e; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+                    if root.form.kind == 0 && root.form.id != 0: VerticalLayout {
+                        spacing: 8px;
+                        Label { text: "SERVICE RELATIONS · SOURCE → TARGET"; }
+                        Text { text: "The current service is the source. Reverse links appear on the target service too."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+                        ComboBox { model: ["Depends on", "Replicates to", "Fails over to", "Balances to"]; current-index <=> root.relation-kind; }
+                        ComboBox { model: root.target-labels; current-index <=> root.target-index; }
+                        LineEdit { accessible-label: "Service relation notes"; placeholder-text: "Relation notes"; text <=> root.relation-notes; }
+                        Button { text: "Add / update relation"; enabled: root.target-labels.length > 0; clicked => { root.add-relation(); } }
+                        for relation in root.relations: VerticalLayout {
+                            spacing: 3px;
+                            Text { text: relation.name; color: #183c32; wrap: word-wrap; }
+                            Text { text: relation.notes; color: #52685c; wrap: word-wrap; }
+                            Button { text: "Remove relation"; clicked => { root.remove-relation(relation.id); } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

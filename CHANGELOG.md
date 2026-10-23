@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.4.0 - 2026-10-24
+
+- Added a Services & Domains inventory linked to existing servers, with versions, ports, access addresses, tags and notes.
+- Added optional Windows CurrentUser DPAPI-protected service accounts with masked fields, explicit show/copy and 30-second unlock expiry. Linux/macOS support metadata; credential storage is Windows-only.
+- Added directed dependency, replication, failover and load-balancing relations visible from both service endpoints.
+- Added domain/hostname parent, registrar, registration/expiry dates, CDN/DNS targets and multiple origin servers.
+- Added schema 16 with a pre-migration backup, transactional migration and backup/restore regression coverage. Full SQLite backups include inventory; legacy project JSON does not. Older binaries require the pre-migration database to roll back.
+
 ## 0.3.30 - 2026-10-18
 
 - Added managed tag suggestions while preserving free-form tags, plus typed custom Server fields with defaults, ordering, and reversible hiding in storage.
