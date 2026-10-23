@@ -285,7 +285,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 .download-list .download-actions {
-  min-width: 260px;
+  min-width: 300px;
   flex-direction: column;
   flex-wrap: wrap;
   justify-content: flex-end;
@@ -293,7 +293,7 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .download-list .download-actions .button {
   flex: 0 0 auto;
-  width: 260px;
+  width: 300px;
 }
 
 .auth-page { min-height: 100svh; display: flex; flex-direction: column; }
