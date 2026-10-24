@@ -202,8 +202,15 @@ function renderCountrySummary(target, rows) {
   ]);
 }
 
-function renderDownloadCountryTrend(target, rows) {
-  const countries = [...new Set(rows.map((row) => row.country))].slice(0, 6);
+function renderDownloadCountryTrend(target, rows, summary) {
+  // Pick countries by their total downloads for the selected period. The daily
+  // result is ordered by date, so taking its first rows can show unrelated
+  // countries with zero downloads on the day being inspected.
+  const countries = summary
+    .filter((row) => Number(row.downloads || 0) > 0)
+    .sort((left, right) => Number(right.downloads || 0) - Number(left.downloads || 0) || left.country.localeCompare(right.country))
+    .slice(0, 6)
+    .map((row) => row.country);
   const days = [...new Set(rows.map((row) => row.day))];
   const byDay = new Map(days.map((day) => [day, new Map()]));
   rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row.downloads || 0)));
@@ -315,7 +322,7 @@ async function loadDashboard() {
     renderPages("overview-pages", pages);
     renderEvents("overview-events", events);
     renderDownloadEvents("downloads-events", downloads.events);
-    renderDownloadCountryTrend("download-country-trend", downloadCountries.daily);
+    renderDownloadCountryTrend("download-country-trend", downloadCountries.daily, downloadCountries.summary);
     renderDownloadCountrySummary("download-country-summary", downloadCountries.summary);
     element("downloads-funnel").innerHTML = [
       ["Download page visitors", downloads.summary.page_visitors],
