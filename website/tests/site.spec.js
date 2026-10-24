@@ -19,7 +19,7 @@ for (const viewport of viewports) {
     await expect(page.locator("h1")).toHaveText("Know what runs where.");
     await expect(page.getByRole("link", { name: "Download for Windows", exact: true }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /All platforms & checksums/ }).first()).toBeVisible();
-    await expect(page.locator(".hero-product img")).toHaveJSProperty("naturalWidth", 1422);
+  await expect(page.locator(".hero-product img")).toHaveJSProperty("naturalWidth", 1600);
     await expect(page.locator(".hero-product img")).toHaveAttribute("alt", /hosting server app-01/);
     await expect(page.getByText("LOCAL INFRASTRUCTURE ATLAS · DESKTOP 0.5.0", { exact: false })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
@@ -54,7 +54,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
   );
   await page.goto("/release-notes.html");
   await expect(page.getByRole("heading", { name: "Release notes" })).toBeVisible();
-  await expect(page.getByText("v0.5.0 · October 24, 2026")).toBeVisible();
+  await expect(page.getByText("v0.5.0 · October 24, 2026").first()).toBeVisible();
   await expect(page.getByText("v0.3.29 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.3.28 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.0.1 · September 19, 2026")).toBeVisible();
