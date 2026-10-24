@@ -1,0 +1,15 @@
+# Desktop actions and appearance
+
+The desktop's white action buttons were too similar to its input fields. Actions now share `ui/controls.slint`: a muted green fill and visible border for secondary actions, a dark green fill for the main add/save action, and explicit hover, pressed, focus, selected and disabled states. White native inputs retain their existing editing behavior. Reading surfaces use a slightly softened white. Inventory action groups have gaps between neighboring buttons.
+
+`ui/appearance.slint` owns the shared appearance choices and live sample. The always-visible **Appearance** toolbar button opens them over the current workspace. Color swatches, text-size buttons and row-spacing buttons replace hidden dropdown choices. Both the sample and the existing workspace properties update immediately; only **Save settings** persists them. Closing the popup keeps the current preview, and Escape dismisses it. Failed saves retain the preview and display the error before the generic unsaved hint.
+
+Color styles retain the application's existing scope: header and workspace background. They do not introduce complete dark or high-contrast themes. Text-size and spacing changes affect the existing configurable workspace/table roles; some inventory labels retain their established fixed sizes.
+
+The shared action component preserves the properties used by its consumers (`text`, `enabled`, `primary`, `checked`, `clicked`) and exposes named button semantics. Appearance choices additionally expose checkable state. Disabled actions reject both pointer and accessibility activation. Space/Enter activate focused actions, and focus has a separate outer ring.
+
+Verification uses Rust 1.92.0, the existing locked dependencies and Windows software rendering. All 71 tests pass; Slint tests cover navigation, selection exclusivity, preview without persistence, save parameters, disabled actions and visible save errors. Windows UI Automation checks keyboard activation, immediate preview, explicit persistence and Escape. A real SQLite writer lock also verifies visible save failure, retained selection and successful retry after unlocking. All native checks use isolated fictional databases.
+
+Playwright in Chromium and WebKit reviews the actual Windows captures through a local evidence viewer. It samples the rendered primary/secondary/input colors, compares before/after header pixels, and checks capture presentation at three viewer sizes. This is not a browser implementation or a Playwright E2E test of the native executable. Native captures include wide and narrow windows at Windows 125% scaling. Evidence lives in `.planning/desktop-actions/`.
+
+Changed action text contrast is at least 7.4:1 across normal/hover/pressed states; action borders are 3.12:1 against their fill. These measurements and the quieter visual hierarchy support readability, but do not establish reduced eye strain in a user study. Native screen-reader sessions, other operating systems and production packaging were not performed in this local UI iteration.

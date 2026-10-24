@@ -1,11 +1,12 @@
-import { Button, CheckBox, ComboBox, LineEdit, ScrollView, TextEdit } from "std-widgets.slint";
+import { CheckBox, ComboBox, LineEdit, ScrollView, TextEdit } from "std-widgets.slint";
+import { Button, UiColors } from "controls.slint";
 
 export struct InventoryForm {
     id: int, kind: int, name: string, address: string, version: string, ports: string,
     parent: string, registrar: string, registered: string, expires: string, cdn: string,
-    tags: string, notes: string, has-credentials: bool,
+    tags: string, notes: string, has-credentials: bool, verified-at: string,
 }
-export struct InventoryRow { id: int, name: string, summary: string, hosts: string, tags: string, notes: string }
+export struct InventoryRow { id: int, name: string, summary: string, hosts: string, tags: string, notes: string, verification: string, verified: bool }
 export struct InventoryChoice { id: int, label: string, selected: bool }
 
 component Label inherits Text { color: #183c32; font-size: 12px; font-weight: 650; }
@@ -41,6 +42,8 @@ export component InventoryPanel inherits Rectangle {
     callback clear-filter();
     callback add-relation();
     callback remove-relation(int);
+    callback verify();
+    callback export();
 
     background: transparent;
     HorizontalLayout {
@@ -48,7 +51,7 @@ export component InventoryPanel inherits Rectangle {
         VerticalLayout {
             min-width: 280px; horizontal-stretch: 1; spacing: 8px;
             HorizontalLayout {
-                height: 34px;
+                height: 34px; spacing: 8px;
                 Text { text: "Inventory"; color: #183c32; font-size: 24px; font-weight: 750; }
                 ComboBox { width: 130px; model: ["Services", "Domains"]; current-index <=> root.form.kind; selected => { root.new-record(self.current-index); } }
                 Button { width: 76px; horizontal-stretch: 0; text: "New"; clicked => { root.new-record(root.form.kind); } }
@@ -61,12 +64,13 @@ export component InventoryPanel inherits Rectangle {
                 CheckBox { text: "Hidden"; checked <=> root.show-hidden; toggled => { root.new-record(root.form.kind); } }
             }
             LineEdit { accessible-label: "Search inventory"; height: 36px; placeholder-text: "Search name, tag, note, host, version…"; text <=> root.query; edited => { root.refresh(); } }
+            Button { text: "Export CSV"; clicked => { root.export(); } }
             ScrollView {
                 vertical-stretch: 1;
                 VerticalLayout {
                     spacing: 6px;
                     for entry in root.rows: Rectangle {
-                        height: 194px; background: root.form.id == entry.id ? #e4eedf : #ffffff;
+                        height: 220px; background: root.form.id == entry.id ? #e4eedf : #ffffff;
                         border-width: 1px; border-color: #cedbcf; border-radius: 5px;
                         VerticalLayout {
                             padding: 10px; spacing: 4px;
@@ -79,8 +83,11 @@ export component InventoryPanel inherits Rectangle {
                             Text { text: entry.hosts == "" ? "No hosting server linked" : entry.hosts; color: #52685c; overflow: elide; }
                             Text { text: entry.tags == "" ? "No tags" : entry.tags; color: #32735e; overflow: elide; }
                             Text { text: entry.notes; color: #52685c; overflow: elide; }
+                            Text { text: entry.verification; color: entry.verified ? #16715e : #a33a32; overflow: elide; }
                             HorizontalLayout {
+                                spacing: 8px;
                                 Button { text: "Copy summary"; clicked => { root.copy(entry.name + "\n" + entry.summary + "\n" + entry.hosts,"Service / domain summary"); } }
+                                if !root.show-hidden && root.form.id == entry.id: Button { text: "Mark checked"; clicked => { root.verify(); } }
                                 if !root.show-hidden: Button { text: "Hide"; clicked => { root.hide(entry.id,true); } }
                             }
                         }
@@ -104,11 +111,13 @@ export component InventoryPanel inherits Rectangle {
                         spacing: 8px;
                         Label { text: "VERSION / PORTS"; }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Service version"; placeholder-text: "16.4"; text <=> root.form.version; }
                             LineEdit { accessible-label: "Service ports"; placeholder-text: "5432, 9187"; text <=> root.form.ports; }
                         }
                         Label { text: "ACCESS ADDRESS"; }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Access address or DNS target"; placeholder-text: "postgresql.example.com"; text <=> root.form.address; }
                             Button { text: "Copy"; clicked => { root.copy(root.form.address,"Access address"); } }
                         }
@@ -118,11 +127,13 @@ export component InventoryPanel inherits Rectangle {
                         spacing: 8px;
                         Label { text: "PARENT DOMAIN / REGISTRAR"; }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Parent domain"; placeholder-text: "example.com (optional)"; text <=> root.form.parent; }
                             LineEdit { accessible-label: "Domain registrar"; placeholder-text: "Registrar"; text <=> root.form.registrar; }
                         }
                         Label { text: "REGISTERED / EXPIRES (YYYY-MM-DD)"; }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Registration date YYYY-MM-DD"; placeholder-text: "2026-01-01"; text <=> root.form.registered; }
                             LineEdit { accessible-label: "Expiry date YYYY-MM-DD"; placeholder-text: "2027-01-01"; text <=> root.form.expires; }
                         }
@@ -135,14 +146,27 @@ export component InventoryPanel inherits Rectangle {
                     LineEdit { accessible-label: "Tags separated by commas"; placeholder-text: "production, orders, critical"; text <=> root.form.tags; }
                     Label { text: "NOTES"; }
                     TextEdit { accessible-label: "Notes"; height: 78px; text <=> root.form.notes; }
-                    Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS (INDEPENDENT OF DNS / CDN IPs)"; }
-                    Text { text: "Select existing servers; add missing servers in the Servers tab."; color: #52685c; font-size: 11px; wrap: word-wrap; }
-                    ScrollView {
-                        height: 100px;
-                        VerticalLayout {
-                            for host[index] in root.hosts: CheckBox { text: host.label; checked: host.selected; toggled => { root.hosts[index].selected = self.checked; } }
-                            if root.hosts.length == 0: Text { text: "No servers available yet."; color: #52685c; }
+                    VerticalLayout {
+                        padding-top: 12px; padding-bottom: 12px; spacing: 12px;
+                        Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS"; }
+                        Text { text: root.form.kind == 0 ? "Choose all servers that run this service. Save record applies your selection." : "Choose the actual origin servers, independently of DNS or CDN addresses. Save record applies your selection."; color: #52685c; font-size: 12px; wrap: word-wrap; }
+                        ScrollView {
+                            height: root.hosts.length == 0 ? 76px : root.hosts.length < 4 ? root.hosts.length * 64px + 8px : 224px;
+                            VerticalLayout {
+                                spacing: 8px; padding: 4px;
+                                for host[index] in root.hosts: Rectangle {
+                                    height: 56px; background: host.selected ? #e4eedf : #ffffff;
+                                    border-width: 1px; border-color: host.selected ? #32735e : #d3ddd4; border-radius: 5px;
+                                    CheckBox {
+                                        x: 10px; y: 4px; width: parent.width - 20px; height: parent.height - 8px;
+                                        text: host.label; checked: host.selected;
+                                        toggled => { root.hosts[index].selected = self.checked; }
+                                    }
+                                }
+                                if root.hosts.length == 0: Text { height: 64px; text: "No servers yet. Add a server in the Servers tab, then return to link it here."; color: #52685c; wrap: word-wrap; }
+                            }
                         }
+                        Text { text: "Missing a server? Add it in the Servers tab first."; color: #52685c; font-size: 12px; wrap: word-wrap; }
                     }
                     if root.form.kind == 0: VerticalLayout {
                         spacing: 8px;
@@ -150,10 +174,12 @@ export component InventoryPanel inherits Rectangle {
                         Text { text: root.credentials-available ? "Protected for this Windows user. Device/profile changes require re-entering credentials. Metadata and notes are not encrypted." : "Credential storage is available on Windows only. Keep secrets in your password manager on this platform."; font-size: 11px; color: #52685c; wrap: word-wrap; }
                         if root.form.has-credentials: Button { text: "Unlock saved account (30 sec)"; enabled: root.credentials-available; clicked => { root.unlock(); } }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Service username"; placeholder-text: "Username"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.username; }
                             Button { text: "Copy user"; enabled: root.credentials-available; clicked => { root.copy-secret(false); } }
                         }
                         HorizontalLayout {
+                            spacing: 8px;
                             LineEdit { accessible-label: "Service password"; placeholder-text: "Password"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.password; }
                             Button { text: "Copy password"; enabled: root.credentials-available; clicked => { root.copy-secret(true); } }
                         }
@@ -161,7 +187,8 @@ export component InventoryPanel inherits Rectangle {
                         if root.form.has-credentials: CheckBox { text: "Remove saved account on save"; checked <=> root.clear-credentials; }
                         Text { text: "Blank fields keep the saved account. Enter both fields to replace it. Clipboard history may retain copied secrets."; color: #52685c; font-size: 11px; wrap: word-wrap; }
                     }
-                    Button { height: 36px; text: "Save record"; enabled: !root.show-hidden; clicked => { root.save(); } }
+                    Button { height: 36px; text: "Save record"; primary: true; enabled: !root.show-hidden; clicked => { root.save(); } }
+                    if root.form.id != 0: Text { text: root.form.verified-at == "" ? "Not yet verified" : "Last verified " + root.form.verified-at; color: #52685c; }
                     if root.status != "": Text { text: root.status; color: root.status-error ? #a33a32 : #16715e; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
                     if root.form.kind == 0 && root.form.id != 0: VerticalLayout {
                         spacing: 8px;

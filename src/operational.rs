@@ -1,5 +1,5 @@
 //! Operational metadata uses the visible server inventory, not legacy planning assets.
-use std::{cell::RefCell, rc::Rc, time::Duration};
+use std::{cell::RefCell, fs, path::Path, rc::Rc, time::Duration};
 
 use rusqlite::params;
 use serde::{Deserialize, Serialize};
@@ -31,6 +31,8 @@ pub struct Entry {
     pub hosts: Vec<i64>,
     pub has_credentials: bool,
     pub hidden: bool,
+    pub verified_at: Option<String>,
+    pub verification_due: bool,
 }
 
 fn invalid(message: &str) -> StorageError {
@@ -148,7 +150,7 @@ impl Details {
 
 impl Repository {
     pub fn inventory_entries(&self) -> Result<Vec<Entry>, StorageError> {
-        let mut statement=self.connection.prepare("SELECT id,kind,data,credentials IS NOT NULL,hidden FROM operational_inventory ORDER BY id DESC LIMIT 5001")?;
+        let mut statement=self.connection.prepare("SELECT id,kind,data,credentials IS NOT NULL,hidden,verified_at,verified_at IS NULL OR date(verified_at)<date('now','-90 days') FROM operational_inventory ORDER BY id DESC LIMIT 5001")?;
         let values = statement
             .query_map([], |row| {
                 Ok((
@@ -157,6 +159,8 @@ impl Repository {
                     row.get::<_, String>(2)?,
                     row.get::<_, bool>(3)?,
                     row.get::<_, bool>(4)?,
+                    row.get::<_, Option<String>>(5)?,
+                    row.get::<_, bool>(6)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -168,18 +172,22 @@ impl Repository {
         )?;
         values
             .into_iter()
-            .map(|(id, kind, json, has_credentials, hidden)| {
-                Ok(Entry {
-                    id,
-                    kind,
-                    details: serde_json::from_str(&json)?,
-                    has_credentials,
-                    hidden,
-                    hosts: hosts
-                        .query_map([id], |row| row.get(0))?
-                        .collect::<Result<Vec<_>, _>>()?,
-                })
-            })
+            .map(
+                |(id, kind, json, has_credentials, hidden, verified_at, verification_due)| {
+                    Ok(Entry {
+                        id,
+                        kind,
+                        details: serde_json::from_str(&json)?,
+                        has_credentials,
+                        hidden,
+                        verified_at,
+                        verification_due,
+                        hosts: hosts
+                            .query_map([id], |row| row.get(0))?
+                            .collect::<Result<Vec<_>, _>>()?,
+                    })
+                },
+            )
             .collect()
     }
 
@@ -221,9 +229,27 @@ impl Repository {
             )?;
             transaction.last_insert_rowid()
         } else {
+            let old_data: String = transaction
+                .query_row(
+                    "SELECT data FROM operational_inventory WHERE id=?1 AND kind=?2 AND hidden=0",
+                    params![id, kind],
+                    |row| row.get(0),
+                )
+                .map_err(|_| invalid("Record is hidden, missing, or has a different type"))?;
+            let mut host_statement = transaction.prepare(
+                "SELECT server_id FROM operational_hosts WHERE inventory_id=?1 ORDER BY server_id",
+            )?;
+            let mut old_hosts = host_statement
+                .query_map([id], |row| row.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            let mut new_hosts = hosts.to_vec();
+            old_hosts.sort_unstable();
+            new_hosts.sort_unstable();
+            new_hosts.dedup();
+            let changed = old_data != json || old_hosts != new_hosts;
             if transaction.execute(
-                "UPDATE operational_inventory SET data=?1 WHERE id=?2 AND kind=?3 AND hidden=0",
-                params![json, id, kind],
+                "UPDATE operational_inventory SET verified_at=CASE WHEN ?1 THEN NULL ELSE verified_at END,data=?2 WHERE id=?3 AND kind=?4 AND hidden=0",
+                params![changed, json, id, kind],
             )? != 1
             {
                 return Err(invalid(
@@ -290,6 +316,91 @@ impl Repository {
         Ok(())
     }
 
+    pub fn mark_inventory_verified(&self, id: i64) -> Result<(), StorageError> {
+        if self.connection.execute(
+            "UPDATE operational_inventory SET verified_at=date('now') WHERE id=?1 AND hidden=0",
+            [id],
+        )? != 1
+        {
+            return Err(invalid("Inventory record is hidden or no longer exists"));
+        }
+        Ok(())
+    }
+
+    pub fn export_inventory_csv(
+        &self,
+        path: &Path,
+        kind: i32,
+        query: &str,
+        host_filter: i64,
+        show_hidden: bool,
+    ) -> Result<usize, StorageError> {
+        let entries = self.inventory_entries()?;
+        let servers = self.server_records()?;
+        let query = query.trim().to_lowercase();
+        let mut output = String::from(
+            "Type,Name,Address,Version,Ports,Parent,Registrar,Registered,Expires,CDN,Servers,Tags,Notes,Last verified\r\n",
+        );
+        let mut count = 0;
+        for entry in entries.iter().filter(|entry| {
+            entry.hidden == show_hidden
+                && entry.kind == kind
+                && (host_filter == 0 || entry.hosts.contains(&host_filter))
+        }) {
+            let host_names = entry
+                .hosts
+                .iter()
+                .filter_map(|id| servers.iter().find(|server| server.id == *id))
+                .map(|server| server.name.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            let searchable =
+                format!("{} {host_names}", serde_json::to_string(&entry.details)?).to_lowercase();
+            if !query.is_empty() && !searchable.contains(&query) {
+                continue;
+            }
+            let values = [
+                if kind == 0 { "Service" } else { "Domain" },
+                &entry.details.name,
+                &entry.details.address,
+                &entry.details.version,
+                &entry.details.ports,
+                &entry.details.parent,
+                &entry.details.registrar,
+                &entry.details.registered,
+                &entry.details.expires,
+                &entry.details.cdn,
+                &host_names,
+                &entry.details.tags,
+                &entry.details.notes,
+                entry.verified_at.as_deref().unwrap_or(""),
+            ];
+            for (index, value) in values.iter().enumerate() {
+                if index != 0 {
+                    output.push(',');
+                }
+                output.push('"');
+                let first = value
+                    .trim_start_matches([' ', '\t', '\r', '\n'])
+                    .chars()
+                    .next();
+                let safe_value = if matches!(first, Some('=' | '+' | '-' | '@')) {
+                    format!("'{}", value)
+                } else {
+                    (*value).to_owned()
+                };
+                output.push_str(&safe_value.replace('"', "\"\""));
+                output.push('"');
+            }
+            output.push_str("\r\n");
+            count += 1;
+        }
+        fs::write(path, output).map_err(|error| {
+            StorageError::InvalidImport(format!("Could not write CSV export: {error}"))
+        })?;
+        Ok(count)
+    }
+
     pub fn add_inventory_relation(
         &self,
         source: i64,
@@ -350,6 +461,7 @@ fn form(entry: &Entry) -> InventoryForm {
         tags: d.tags.clone().into(),
         notes: d.notes.clone().into(),
         has_credentials: entry.has_credentials,
+        verified_at: entry.verified_at.clone().unwrap_or_default().into(),
     }
 }
 
@@ -402,6 +514,19 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
                 hosts: host_names.into(),
                 tags: d.tags.clone().into(),
                 notes: d.notes.clone().into(),
+                verification: if entry.verification_due {
+                    entry.verified_at.as_deref().map_or_else(
+                        || "Not verified · due".to_owned(),
+                        |date| format!("Last checked {date} · due"),
+                    )
+                } else {
+                    format!(
+                        "Last checked {}",
+                        entry.verified_at.as_deref().unwrap_or_default()
+                    )
+                }
+                .into(),
+                verified: !entry.verification_due,
             });
         }
     }
@@ -615,6 +740,43 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
     });
     let weak = window.as_weak();
     let repo = repository.clone();
+    window.on_inventory_verify(move || {
+        let Some(w) = weak.upgrade() else { return };
+        let id = i64::from(w.get_inventory_form().id);
+        let result = repo.borrow().mark_inventory_verified(id);
+        if result.is_ok() {
+            let _ = refresh(&w, &repo.borrow());
+            w.invoke_inventory_select(id as i32);
+            crate::show_status(&w, "Inventory marked as checked");
+        }
+        message(&w, result);
+    });
+    let weak = window.as_weak();
+    let repo = repository.clone();
+    window.on_inventory_export(move || {
+        let Some(w) = weak.upgrade() else { return };
+        if let Some(path) = rfd::FileDialog::new()
+            .add_filter("CSV", &["csv"])
+            .set_file_name("itgla-inventory.csv")
+            .save_file()
+        {
+            let form = w.get_inventory_form();
+            match repo.borrow().export_inventory_csv(
+                &path,
+                form.kind,
+                &w.get_inventory_query(),
+                i64::from(w.get_inventory_server_filter()),
+                w.get_inventory_show_hidden(),
+            ) {
+                Ok(count) => {
+                    crate::show_status(&w, &format!("Exported {count} records without credentials"))
+                }
+                Err(error) => message(&w, Err(error)),
+            }
+        }
+    });
+    let weak = window.as_weak();
+    let repo = repository.clone();
     window.on_inventory_hide(move |id, hidden| {
         let Some(w) = weak.upgrade() else { return };
         let result = repo.borrow().set_inventory_hidden(i64::from(id), hidden);
@@ -735,6 +897,45 @@ mod tests {
         d.registered = "2026-10-24".into();
         d.expires = "2026-10-23".into();
         assert!(d.validate(1).is_err());
+    }
+
+    #[test]
+    fn verification_resets_on_edit_and_csv_is_filtered_and_formula_safe() -> Result<(), StorageError>
+    {
+        let mut repository = Repository::in_memory()?;
+        let mut details = service("production-api");
+        details.tags = "production".into();
+        details.notes = "=HYPERLINK(\"https://example.invalid\")".into();
+        let id = repository.save_inventory(0, 0, details.clone(), &[], None)?;
+        assert!(repository.inventory_entries()?[0].verification_due);
+        repository.mark_inventory_verified(id)?;
+        let checked = repository.inventory_entries()?.remove(0);
+        assert!(!checked.verification_due);
+        assert!(checked.verified_at.is_some());
+
+        details.version = "2.0".into();
+        repository.save_inventory(id, 0, details, &[], None)?;
+        assert!(repository.inventory_entries()?[0].verification_due);
+        let path = std::env::temp_dir().join(format!(
+            "itgla-inventory-{}.csv",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        assert_eq!(
+            repository.export_inventory_csv(&path, 0, "production", 0, false)?,
+            1
+        );
+        let csv = fs::read_to_string(&path).unwrap();
+        assert!(csv.contains("'=HYPERLINK"));
+        assert!(csv.contains("production-api"));
+        assert_eq!(
+            repository.export_inventory_csv(&path, 0, "not-a-match", 0, false)?,
+            0
+        );
+        let _ = fs::remove_file(path);
+        Ok(())
     }
 
     #[test]

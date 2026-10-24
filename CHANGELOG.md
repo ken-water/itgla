@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.5.0 - 2026-10-24
+
+- Improved desktop action clarity with distinct primary and secondary buttons, visible focus states, and safer disabled actions.
+- Added immediate Appearance previews for color, text size, and row spacing, with explicit saving and recoverable error feedback.
+- Added a dedicated New status input in Settings and preserved independent environment drafts.
+- Added inventory verification dates, CSV export, and formula-safe exported values.
+- Refreshed the official website homepage, download journey, release notes, sitemap, and `llms.txt` content.
+
 ## 0.4.0 - 2026-10-24
 
 - Added a Services & Domains inventory linked to existing servers, with versions, ports, access addresses, tags and notes.

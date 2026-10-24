@@ -1,0 +1,4 @@
+Name,IP Address,Ports,Tags,Purpose,Environment
+app-01,198.51.100.42,"22,443,8080","production,api",Application API host,Production
+db-01,192.0.2.76,"22,5432","production,database",Orders primary database,Production
+edge-01,203.0.113.18,"22,80,443","production,edge",Public entry point,Production

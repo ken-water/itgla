@@ -1064,6 +1064,10 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             window.set_active_tab(1);
             window.set_onboarding_open(false);
         }
+        Ok("settings") => {
+            window.set_active_tab(2);
+            window.set_onboarding_open(false);
+        }
         Ok("import") => {
             window.set_active_tab(0);
             window.set_onboarding_open(false);
@@ -1754,7 +1758,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         );
         match save_result {
             Ok(_) => {
-                window.set_settings_option_input(SharedString::new());
+                if kind.as_str() == "status" {
+                    window.set_settings_status_input(SharedString::new());
+                } else {
+                    window.set_settings_option_input(SharedString::new());
+                }
                 let _ = refresh_settings_models(&window, &callback_repository.borrow());
                 show_status(&window, "Managed choice added");
             }
@@ -2915,7 +2923,7 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             labels,
-            ["Servers", "Sites", "Settings", "Services & Domains"]
+            ["Servers", "Sites", "Services & Domains", "Settings"]
         );
 
         let sites_tab = ElementHandle::find_by_accessible_label(&window, "Sites")
@@ -2923,6 +2931,141 @@ mod tests {
             .expect("Sites tab in accessibility tree");
         sites_tab.invoke_accessible_default_action();
         assert_eq!(window.get_active_tab(), 1);
+        let settings_tab = ElementHandle::find_by_accessible_label(&window, "Settings")
+            .next()
+            .expect("Settings tab in accessibility tree");
+        settings_tab.invoke_accessible_default_action();
+        assert_eq!(window.get_active_tab(), 2);
+    }
+
+    #[test]
+    fn settings_save_dispatches_all_preferences_at_minimum_window_size() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(2);
+        window.window().set_size(PhysicalSize::new(1_000, 640));
+        window.set_theme_index(1);
+        window.set_font_size_step(2);
+        window.set_table_density(0);
+        window.set_show_cell_tooltips(false);
+        window.set_fit_columns_on_open(true);
+        window.set_import_duplicate_policy(2);
+        window.set_backup_retention(14);
+        let saved = Rc::new(RefCell::new(None));
+        let observed = Rc::clone(&saved);
+        window.on_preferences_changed(
+            move |theme, font, density, hover, fit, duplicate, retention| {
+                *observed.borrow_mut() =
+                    Some((theme, font, density, hover, fit, duplicate, retention));
+            },
+        );
+        window.show().expect("show settings");
+        for label in [
+            "Color: Field Atlas",
+            "Text size: Large",
+            "Row spacing: Comfy",
+        ] {
+            assert!(
+                ElementHandle::find_by_accessible_label(&window, label)
+                    .next()
+                    .is_some()
+            );
+        }
+        let save = ElementHandle::find_by_accessible_label(&window, "Save settings")
+            .next()
+            .expect("persistent save action");
+        save.invoke_accessible_default_action();
+        assert_eq!(*saved.borrow(), Some((1, 2, 0, false, true, 2, 14)));
+    }
+
+    #[test]
+    fn appearance_choices_preview_without_saving_and_keep_one_selection() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(2);
+        window.window().set_size(PhysicalSize::new(1_000, 800));
+        window.show().expect("show settings");
+        let saved = Rc::new(RefCell::new(None));
+        let observed = Rc::clone(&saved);
+        window.on_preferences_changed(move |theme, font, density, _, _, _, _| {
+            *observed.borrow_mut() = Some((theme, font, density));
+        });
+        for label in ["Color: Sand", "Text size: Small", "Row spacing: Roomy"] {
+            let choice = ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .expect("visible appearance choice");
+            choice.invoke_accessible_default_action();
+            choice.invoke_accessible_default_action();
+            assert_eq!(choice.accessible_checked(), Some(true));
+        }
+        assert_eq!(window.get_theme_index(), 2);
+        assert_eq!(window.get_font_size_step(), 0);
+        assert_eq!(window.get_table_density(), 2);
+        assert!(window.get_appearance_dirty());
+        assert_eq!(*saved.borrow(), None, "preview must not silently persist");
+        let old_theme = ElementHandle::find_by_accessible_label(&window, "Color: Field Atlas")
+            .next()
+            .expect("previous theme");
+        assert_eq!(old_theme.accessible_checked(), Some(false));
+        ElementHandle::find_by_accessible_label(&window, "Save settings")
+            .next()
+            .expect("save button")
+            .invoke_accessible_default_action();
+        assert_eq!(*saved.borrow(), Some((2, 0, 2)));
+        assert!(!window.get_appearance_dirty());
+    }
+
+    #[test]
+    fn failed_preferences_save_keeps_preview_and_exposes_error() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(2);
+        window.window().set_size(PhysicalSize::new(1_000, 800));
+        window.show().expect("show settings");
+        let weak = window.as_weak();
+        window.on_preferences_changed(move |_, _, _, _, _, _, _| {
+            let window = weak.upgrade().expect("live window");
+            window.set_status_is_error(true);
+            window.set_status_message("Preferences could not be saved".into());
+        });
+        ElementHandle::find_by_accessible_label(&window, "Color: Sand")
+            .next()
+            .expect("color choice")
+            .invoke_accessible_default_action();
+        ElementHandle::find_by_accessible_label(&window, "Save settings")
+            .next()
+            .expect("save button")
+            .invoke_accessible_default_action();
+        assert_eq!(window.get_theme_index(), 2);
+        assert!(window.get_appearance_dirty());
+        assert!(window.get_appearance_error());
+        assert!(
+            ElementHandle::find_by_accessible_label(&window, "Preferences could not be saved")
+                .next()
+                .is_some(),
+            "error must take priority over the unsaved-preview hint"
+        );
+    }
+
+    #[test]
+    fn disabled_action_rejects_accessibility_activation() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(2);
+        let calls = Rc::new(RefCell::new(0));
+        let observed = Rc::clone(&calls);
+        window.on_auto_fit_columns(move || *observed.borrow_mut() += 1);
+        window.show().expect("show window");
+        let action = ElementHandle::find_by_accessible_label(&window, "Fit columns")
+            .next()
+            .expect("disabled header action");
+        assert_eq!(action.accessible_enabled(), Some(false));
+        action.invoke_accessible_default_action();
+        assert_eq!(*calls.borrow(), 0);
     }
 
     #[test]

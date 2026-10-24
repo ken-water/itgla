@@ -7,6 +7,13 @@ function escapeText(value) {
 function showSignedOut() {
   const login = nav.querySelector(".nav-signin");
   if (!login) return;
+  if (document.body.classList.contains("marketing-site")) {
+    login.textContent = "Account";
+    login.setAttribute("aria-label", "Website account (optional)");
+    login.title = "Website features only. The desktop app needs no account.";
+    login.href = "/signin.html";
+    return;
+  }
   login.textContent = "Log in";
   login.href = "/signin.html";
   login.classList.add("nav-login");

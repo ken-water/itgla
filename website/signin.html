@@ -7,16 +7,16 @@
   <meta name="description" content="Sign in to ITGLA with a secure email verification link." />
   <link rel="canonical" href="https://itgla.com/signin.html" />
   <link rel="icon" href="/assets/favicon.ico?v=20261001" sizes="any" />
-  <link rel="stylesheet" href="/styles.css" />
+  <link rel="stylesheet" href="/styles.css" /><link rel="stylesheet" href="/marketing.css" />
 </head>
-<body class="auth-page">
+<body class="marketing-site auth-page">
   <a class="skip-link" href="#main">Skip to main content</a>
   <header class="site-header"><a class="brand" href="/" aria-label="ITGLA home"><img src="/assets/itgla-node-map.svg" width="34" height="34" alt="" /><span>ITGLA</span></a><nav class="site-nav" aria-label="Main navigation"><a href="/">Product</a><a href="/server-inventory.html">Inventory</a><a href="/downloads.html">Downloads</a><a class="nav-signin" href="/signin.html" aria-current="page">Sign in</a></nav></header>
-  <main id="main" class="auth-shell">
+  <main id="main" tabindex="-1" class="auth-shell">
     <section class="auth-card" aria-labelledby="signin-title">
-      <p class="eyebrow">Private workspace access</p>
+      <p class="eyebrow">Optional website account</p>
       <h1 id="signin-title">Sign in to ITGLA</h1>
-      <p class="auth-intro">Receive a one-time verification link by email. Open the link on your phone or computer; this browser will sign in automatically.</p>
+      <p class="account-boundary">This account is for website features. The desktop app needs no account, and signing in here does not sync your desktop inventory. <a href="/downloads.html">Download the desktop app</a>.</p><p class="auth-intro">Receive a one-time verification link by email. Open the link on your phone or computer; this browser will sign in automatically.</p>
       <form class="email-signin" id="email-signin-form">
         <label for="email">Work email</label>
         <input id="email" name="email" type="email" autocomplete="email" placeholder="you@company.com" required />

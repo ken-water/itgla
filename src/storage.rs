@@ -21,7 +21,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 16;
+const SCHEMA_VERSION: i64 = 17;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -454,6 +454,14 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction
                 .execute_batch(include_str!("../migrations/016_operational_inventory.sql"))?;
+            transaction.pragma_update(None, "user_version", 16)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 16 {
+            self.automatic_backup("pre-schema-17.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction
+                .execute_batch(include_str!("../migrations/017_inventory_verification.sql"))?;
             transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
             transaction.commit()?;
         }
@@ -5099,12 +5107,14 @@ mod tests {
         let mut repository = Repository::open(path.clone())?;
         assert_eq!(repository.schema_version()?, SCHEMA_VERSION);
         assert_eq!(repository.server_records()?.len(), servers.len());
+        assert!(repository.inventory_entries()?.is_empty());
         let before = Connection::open(directory.join("backups/pre-schema-16.db"))?;
         assert_eq!(
             before.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
             15
         );
         drop(before);
+        assert!(directory.join("backups/pre-schema-17.db").exists());
         let details = |name: &str| crate::operational::Details {
             name: name.into(),
             tags: "production, orders".into(),
@@ -5142,6 +5152,41 @@ mod tests {
                 .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?,
             "ok"
         );
+        drop(repository);
+        let _ = fs::remove_dir_all(directory);
+        Ok(())
+    }
+
+    #[test]
+    fn verification_migration_preserves_existing_inventory() -> Result<(), StorageError> {
+        let directory = temporary_path("verification-migration", "data");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("source.db");
+        let mut repository = Repository::open(path.clone())?;
+        repository.reset_demo_fixture()?;
+        let host = repository.server_records()?[0].id;
+        let id = repository.save_inventory(
+            0,
+            0,
+            crate::operational::Details {
+                name: "Existing service".into(),
+                ..Default::default()
+            },
+            &[host],
+            None,
+        )?;
+        repository.connection.execute_batch(
+            "ALTER TABLE operational_inventory DROP COLUMN verified_at; PRAGMA user_version=16;",
+        )?;
+        drop(repository);
+        let repository = Repository::open(path)?;
+        let entries = repository.inventory_entries()?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].id, id);
+        assert_eq!(entries[0].hosts, vec![host]);
+        assert!(entries[0].verified_at.is_none());
+        assert!(entries[0].verification_due);
+        assert!(directory.join("backups/pre-schema-17.db").exists());
         drop(repository);
         let _ = fs::remove_dir_all(directory);
         Ok(())

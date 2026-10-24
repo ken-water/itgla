@@ -1,0 +1,69 @@
+import { Button, UiColors } from "controls.slint";
+
+export component AppearanceControls inherits Rectangle {
+    in-out property <int> theme-index;
+    in-out property <int> font-size-step;
+    in-out property <int> table-density;
+    out property <length> preview-row-height: root.table-density == 0 ? 34px : root.table-density == 1 ? 42px : 50px;
+    callback edited;
+    background: transparent;
+    VerticalLayout {
+        spacing: 10px;
+        Text { text: "Color style · click a swatch"; color: UiColors.text; font-size: 12px; font-weight: 650; }
+        HorizontalLayout {
+            height: 52px; spacing: 8px;
+            for theme[index] in ["Field Atlas", "Slate", "Sand", "Contrast"]: Button {
+                horizontal-stretch: 1; height: 52px; label-size: 12px;
+                text: theme; accessible-label: "Color: " + theme;
+                swatch: index == 0 ? #183c32 : index == 1 ? #24313a : index == 2 ? #51402d : #000000;
+                accessible-checkable: true; checked: root.theme-index == index;
+                clicked => { root.theme-index = index; root.edited(); }
+            }
+        }
+        HorizontalLayout {
+            spacing: 16px;
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "Text size"; color: UiColors.text; font-size: 12px; font-weight: 650; }
+                HorizontalLayout {
+                    height: 36px; spacing: 4px;
+                    for size[index] in ["Small", "Medium", "Large"]: Button {
+                        horizontal-stretch: 1; height: 36px; label-size: 12px;
+                        text: size; accessible-label: "Text size: " + size;
+                        accessible-checkable: true; checked: root.font-size-step == index;
+                        clicked => { root.font-size-step = index; root.edited(); }
+                    }
+                }
+            }
+            VerticalLayout {
+                spacing: 6px;
+                Text { text: "Row spacing"; color: UiColors.text; font-size: 12px; font-weight: 650; }
+                HorizontalLayout {
+                    height: 36px; spacing: 4px;
+                    for density[index] in ["Compact", "Comfy", "Roomy"]: Button {
+                        horizontal-stretch: 1; height: 36px; label-size: 12px;
+                        text: density; accessible-label: "Row spacing: " + density;
+                        accessible-checkable: true; checked: root.table-density == index;
+                        clicked => { root.table-density = index; root.edited(); }
+                    }
+                }
+            }
+        }
+        Text { text: "LIVE PREVIEW · text and row spacing"; color: UiColors.muted; font-size: 11px; }
+        Rectangle {
+            height: 24px + root.preview-row-height * 2;
+            background: UiColors.surface; border-width: 1px; border-color: #bac8bc; border-radius: 4px;
+            VerticalLayout {
+                spacing: 0px;
+                Rectangle { height: 24px; background: #e7ede5;
+                    Text { x: 12px; width: parent.width - 24px; height: parent.height; text: "SERVER                         ENVIRONMENT / PORTS"; color: UiColors.muted; font-size: 10px; vertical-alignment: center; }
+                }
+                for name in ["app-01", "db-01"]: Rectangle {
+                    height: root.preview-row-height;
+                    Text { x: 12px; width: parent.width - 24px; height: parent.height; text: name + "     Production     " + (name == "app-01" ? "443, 8080" : "5432"); color: UiColors.text; font-size: root.font-size-step == 0 ? 11px : root.font-size-step == 1 ? 12px : 13px; vertical-alignment: center; }
+                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #dce4d9; }
+                }
+            }
+        }
+    }
+}

@@ -1,14 +1,14 @@
-# ITGLA
+﻿# ITGLA
 
-> ITGLA is a local-first desktop server inventory for organizing IP addresses, ports, tags, projects, and custom operational fields.
+> ITGLA is a local-first desktop infrastructure inventory for IT operators and independent developers to manually record services, domains, hosting servers, ports, tags, and notes.
 
 ## Product
 
 - ITGLA helps independent developers and small teams keep operational server details in one searchable table.
 - It supports tags, IP addresses, ports, spreadsheet imports, column mapping, custom fields, sorting, filtering, and copying individual cells.
-- Version 0.4.0 adds manual service/domain inventory with versions, ports, tags, notes, hosting/origin servers, registrar/expiry/CDN fields, and directed service relations. Optional service account protection is Windows-only (CurrentUser DPAPI); Linux/macOS support metadata. Full database backups include this inventory; legacy project JSON does not.
+- Version 0.5.0 adds manual service/domain inventory with versions, ports, tags, notes, hosting/origin servers, registrar/expiry/CDN fields, and directed service relations. Optional service account protection is Windows-only (CurrentUser DPAPI); Linux/macOS support metadata. Full database backups include this inventory; legacy project JSON does not.
 - The desktop application stores its workspace in a local SQLite database.
-- The desktop application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools. Website sign-in and hosted workspaces are separate from the local desktop application.
+- The desktop application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools. Website sign-in is optional and separate from the local desktop application; signing in does not enable desktop cloud sync.
 
 - macOS 14+ downloads are available separately for Apple silicon (arm64) and Intel (x86_64). Both packages are unsigned and not notarized.
 
