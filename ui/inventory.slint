@@ -4,14 +4,51 @@ import { Button, UiColors } from "controls.slint";
 export struct InventoryForm {
     id: int, kind: int, name: string, address: string, version: string, ports: string,
     parent: string, registrar: string, registered: string, expires: string, cdn: string,
-    tags: string, notes: string, has-credentials: bool, verified-at: string,
+    business: string, tags: string, notes: string, has-credentials: bool, verified-at: string,
+    protocol: string, transport: string, pending-confirmation: bool,
 }
-export struct InventoryRow { id: int, name: string, summary: string, hosts: string, tags: string, notes: string, verification: string, verified: bool }
+export struct InventoryHost { id: int, label: string }
+export struct HistoryRow { action: string, summary: string, occurred-at: string }
+export struct ServerDetail { id: int, name: string, ip-address: string, purpose: string, environment: string, status: string, tags: string, ports: string, services: string, created-at: string, updated-at: string, hidden-at: string }
+export struct InventoryRow { id: int, name: string, summary: string, hosts: [InventoryHost], tags: string, notes: string, verification: string, verified: bool, pending-confirmation: bool, updated-at: string }
 export struct InventoryChoice { id: int, label: string, selected: bool }
+export struct ResourceNode { id: int, kind: string, name: string, detail: string, tags: string }
+export struct ResourceEdge { id: int, source-kind: string, source-id: int, target-kind: string, target-id: int, relation-kind: string, source-label: string, target-label: string, notes: string }
+export struct ResourceChoice { id: int, kind: string, label: string }
 
-component Label inherits Text { color: #183c32; font-size: 12px; font-weight: 650; }
+component Label inherits Text { color: UiColors.text; font-size: UiColors.body-size - 1px; font-weight: 650; }
+
+component RecordActions inherits Rectangle {
+    callback action(int);
+    background: transparent;
+    trigger := Button { width: parent.width; height: parent.height; quiet: true; text: "More actions"; clicked => { actions.show(); } }
+    actions := PopupWindow {
+        x: 0; y: root.height; width: 200px; height: 136px;
+        close-policy: close-on-click-outside;
+        forward-focus: menu-focus;
+        menu-focus := FocusScope {
+            key-pressed(event) => {
+                if event.text == Key.Escape { actions.close(); trigger.focus(); return accept; }
+                return reject;
+            }
+            Rectangle {
+                background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 5px;
+                VerticalLayout {
+                    padding: 8px; spacing: 4px;
+                    Button { quiet: true; text: "Copy summary"; clicked => { actions.close(); trigger.focus(); root.action(0); } }
+                    Button { quiet: true; text: "Mark checked"; clicked => { actions.close(); trigger.focus(); root.action(1); } }
+                    Button { quiet: true; text: "Hide record"; clicked => { actions.close(); trigger.focus(); root.action(2); } }
+                }
+            }
+        }
+    }
+}
 
 export component InventoryPanel inherits Rectangle {
+    in-out property <bool> editor-open: false;
+    private property <int> record-kind: root.form.kind;
+    changed record-kind => { root.editor-open = false; }
+    in-out property <int> view-mode: 0;
     in-out property <InventoryForm> form;
     in property <[InventoryRow]> rows;
     in-out property <[InventoryChoice]> hosts;
@@ -31,6 +68,7 @@ export component InventoryPanel inherits Rectangle {
     in-out property <bool> clear-credentials;
     in property <string> status;
     in property <bool> status-error;
+    callback show-map();
     callback refresh();
     callback new-record(int);
     callback select-record(int);
@@ -44,6 +82,8 @@ export component InventoryPanel inherits Rectangle {
     callback remove-relation(int);
     callback verify();
     callback export();
+    callback connect();
+    callback open-host(int);
 
     background: transparent;
     HorizontalLayout {
@@ -51,77 +91,111 @@ export component InventoryPanel inherits Rectangle {
         VerticalLayout {
             min-width: 280px; horizontal-stretch: 1; spacing: 8px;
             HorizontalLayout {
-                height: 34px; spacing: 8px;
-                Text { text: "Inventory"; color: #183c32; font-size: 24px; font-weight: 750; }
-                ComboBox { width: 130px; model: ["Services", "Domains"]; current-index <=> root.form.kind; selected => { root.new-record(self.current-index); } }
-                Button { width: 76px; horizontal-stretch: 0; text: "New"; clicked => { root.new-record(root.form.kind); } }
+                height: 44px; spacing: 8px;
+                Text { text: root.form.kind == 0 ? "Services" : "Domains"; color: UiColors.text; font-size: UiColors.body-size + 11px; font-weight: 750; }
+                Button { compact: true; primary: root.view-mode == 0; text: "Table"; clicked => { root.view-mode = 0; } }
+                Button { compact: true; primary: root.view-mode == 1; text: "Connections"; clicked => { root.show-map(); } }
+                Button { compact: true; quiet: true; text: "Export CSV"; clicked => { root.export(); } }
+                Button { compact: true; primary: true; text: "New"; clicked => { root.new-record(root.form.kind); root.editor-open = true; } }
             }
-            Label { text: "Servers → services · Domains → origins"; }
             HorizontalLayout {
-                height: 30px;
-                Text { text: root.filter-label; color: #52685c; overflow: elide; }
-                if root.server-filtered: Button { text: "All servers"; clicked => { root.clear-filter(); } }
-                CheckBox { text: "Hidden"; checked <=> root.show-hidden; toggled => { root.new-record(root.form.kind); } }
+                min-height: 36px; spacing: 16px;
+                Text { text: root.filter-label; color: UiColors.muted; overflow: elide; }
+                if root.server-filtered: Button { compact: true; quiet: true; text: "All servers"; clicked => { root.clear-filter(); } }
+                ComboBox { accessible-label: "Record visibility"; width: 190px; model: ["Active records", "Hidden records"]; current-index: root.show-hidden ? 1 : 0; selected(value) => { root.show-hidden = self.current-index == 1; root.new-record(root.form.kind); } }
             }
+            if root.show-hidden: Text { text: "Hidden records are kept here. Choose Restore to return one to the active list."; color: UiColors.muted; wrap: word-wrap; }
             LineEdit { accessible-label: "Search inventory"; height: 36px; placeholder-text: "Search name, tag, note, host, version…"; text <=> root.query; edited => { root.refresh(); } }
-            Button { text: "Export CSV"; clicked => { root.export(); } }
+            if root.view-mode == 0: Rectangle {
+                height: 38px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
+                HorizontalLayout { padding-left: 8px; padding-right: 8px; spacing: 0px;
+                    Text { width: 22%; text: root.form.kind == 0 ? "Service" : "Domain"; color: UiColors.muted; font-size: UiColors.body-size - 1px; font-weight: 700; vertical-alignment: center; }
+                    Text { width: 25%; text: root.form.kind == 0 ? "Port / Protocol" : "Registrar / Expiry"; color: UiColors.muted; font-size: UiColors.body-size - 1px; font-weight: 700; vertical-alignment: center; }
+                    Text { width: 28%; text: root.form.kind == 0 ? "Hosting servers" : "Origin servers"; color: UiColors.muted; font-size: UiColors.body-size - 1px; font-weight: 700; vertical-alignment: center; }
+                    Text { width: 17%; text: "Status / Tags"; color: UiColors.muted; font-size: UiColors.body-size - 1px; font-weight: 700; vertical-alignment: center; }
+                    Rectangle { width: 8%; background: transparent; }
+                }
+            }
             ScrollView {
                 vertical-stretch: 1;
                 VerticalLayout {
-                    spacing: 6px;
+                    if root.view-mode == 1: VerticalLayout {
+                        spacing: 10px; padding: 12px;
+                        Text { text: root.form.kind == 0 ? "Service relationship map" : "Domain and origin map"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
+                        Text { text: "Select a row below to edit it. Connected resources are shown as lanes so the same links stay readable at any scale."; color: UiColors.muted; wrap: word-wrap; }
+                        for entry in root.rows: Rectangle {
+                            height: 70px; background: root.form.id == entry.id ? UiColors.selected : UiColors.surface; border-width: 1px; border-color: UiColors.border;
+                            HorizontalLayout { padding: 10px; spacing: 12px;
+                                Rectangle { width: 8px; background: entry.pending-confirmation ? UiColors.warning : UiColors.success; }
+                                VerticalLayout { horizontal-stretch: 1; spacing: 2px; Text { text: entry.name; color: UiColors.text; font-size: UiColors.body-size + 1px; font-weight: 700; } Text { text: entry.summary; color: UiColors.muted; overflow: elide; } Text { text: entry.hosts.length == 0 ? "No linked server" : entry.hosts[0].label + (entry.hosts.length > 1 ? "  +" + (entry.hosts.length - 1) + " servers" : ""); color: UiColors.muted; overflow: elide; } }
+                                Button { compact: true; text: "Open"; clicked => { root.select-record(entry.id); root.editor-open = true; } }
+                            }
+                        }
+                        if root.rows.length == 0: Text { height: 80px; text: "No resources match this map filter."; color: UiColors.muted; }
+                        Text { text: root.relations.length == 0 ? "No service links yet. Open a service and add a relation in the details panel." : "Links in current selection"; color: UiColors.muted; font-weight: 700; }
+                        for relation in root.relations: Rectangle { height: 42px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border; Text { x: 12px; width: parent.width - 24px; height: parent.height; text: relation.name; color: UiColors.text; vertical-alignment: center; overflow: elide; } }
+                    }
+                    if root.view-mode == 0: VerticalLayout {
+                    spacing: 0px;
                     for entry in root.rows: Rectangle {
-                        height: 220px; background: root.form.id == entry.id ? #e4eedf : #ffffff;
-                        border-width: 1px; border-color: #cedbcf; border-radius: 5px;
-                        VerticalLayout {
-                            padding: 10px; spacing: 4px;
-                            HorizontalLayout {
-                                height: 28px;
-                                Text { text: entry.name; color: #183c32; font-size: 15px; font-weight: 700; overflow: elide; }
-                                Button { width: 80px; horizontal-stretch: 0; text: root.show-hidden ? "Restore" : "Edit"; clicked => { if root.show-hidden { root.hide(entry.id,false); } else { root.select-record(entry.id); } } }
-                            }
-                            Text { text: entry.summary; color: #52685c; overflow: elide; }
-                            Text { text: entry.hosts == "" ? "No hosting server linked" : entry.hosts; color: #52685c; overflow: elide; }
-                            Text { text: entry.tags == "" ? "No tags" : entry.tags; color: #32735e; overflow: elide; }
-                            Text { text: entry.notes; color: #52685c; overflow: elide; }
-                            Text { text: entry.verification; color: entry.verified ? #16715e : #a33a32; overflow: elide; }
-                            HorizontalLayout {
-                                spacing: 8px;
-                                Button { text: "Copy summary"; clicked => { root.copy(entry.name + "\n" + entry.summary + "\n" + entry.hosts,"Service / domain summary"); } }
-                                if !root.show-hidden && root.form.id == entry.id: Button { text: "Mark checked"; clicked => { root.verify(); } }
-                                if !root.show-hidden: Button { text: "Hide"; clicked => { root.hide(entry.id,true); } }
-                            }
+                        height: max(58px, UiColors.body-size + 34px); background: root.form.id == entry.id ? UiColors.selected : UiColors.surface; border-width: 1px; border-color: UiColors.border;
+                        HorizontalLayout { padding: 8px; spacing: 0px;
+                            VerticalLayout { width: 22%; spacing: 2px; Text { text: entry.name; color: UiColors.text; font-size: UiColors.body-size; font-weight: 700; overflow: elide; } Text { text: entry.notes; color: UiColors.muted; font-size: UiColors.body-size - 2px; overflow: elide; } }
+                            Text { width: 25%; text: entry.summary; color: UiColors.text; font-size: UiColors.body-size - 1px; overflow: elide; vertical-alignment: center; }
+                            if entry.hosts.length == 0: Text { width: 28%; text: "No hosting server linked"; color: UiColors.muted; font-size: UiColors.body-size - 1px; vertical-alignment: center; }
+                            if entry.hosts.length > 0: Button { width: 28%; quiet: true; text: entry.hosts[0].label + (entry.hosts.length > 1 ? "  +" + (entry.hosts.length - 1) + " more" : ""); clicked => { root.open-host(entry.hosts[0].id); } }
+                            VerticalLayout { width: 17%; spacing: 2px; Text { text: entry.verification; color: entry.pending-confirmation ? UiColors.warning : entry.verified ? UiColors.success : UiColors.muted; font-size: UiColors.body-size - 2px; overflow: elide; } Text { text: entry.tags; color: UiColors.success; font-size: UiColors.body-size - 2px; overflow: elide; } }
+                            Button { width: 8%; min-width: 62px; compact: true; text: root.show-hidden ? "Restore" : entry.pending-confirmation ? "Review" : "Edit"; clicked => { if root.show-hidden { root.hide(entry.id,false); } else { root.select-record(entry.id); root.editor-open = true; } } }
                         }
                     }
-                    if root.rows.length == 0: Text { height: 80px; text: "No matching records. Add one or adjust your filters."; color: #52685c; wrap: word-wrap; }
+                    if root.rows.length == 0: Text { height: 80px; text: "No matching records. Add one or adjust your filters."; color: UiColors.muted; wrap: word-wrap; }
+                    }
                 }
             }
-            Text { height: 40px; text: "Use Settings → Create backup for this inventory. Legacy project JSON does not include these records."; color: #52685c; font-size: 11px; wrap: word-wrap; }
         }
-        Rectangle {
-            width: root.width > 1100px ? 480px : 390px;
-            background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+        if root.editor-open: Rectangle {
+            width: root.width > 1100px ? 440px : 390px;
+            background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
             ScrollView {
-                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - max(40px, UiColors.body-size + 24px) - 28px;
                 VerticalLayout {
                     padding: 14px; spacing: 8px;
-                    Text { text: (root.form.id == 0 ? "Add " : "Edit ") + (root.form.kind == 0 ? "service" : "domain / hostname"); color: #183c32; font-size: 19px; font-weight: 700; }
+                    HorizontalLayout {
+                        Text { text: (root.form.id == 0 ? "Add " : "Edit ") + (root.form.kind == 0 ? "service" : "domain"); color: UiColors.text; font-size: UiColors.body-size + 4px; font-weight: 700; }
+                        Button { compact: true; quiet: true; text: "Close"; clicked => { root.editor-open = false; } }
+                    }
+                    if root.form.pending-confirmation: Text { text: "Pending confirmation. Check the port, protocol and hosting server, then choose Confirm service."; color: UiColors.warning; font-size: UiColors.body-size; wrap: word-wrap; }
                     Label { text: root.form.kind == 0 ? "NAME *" : "DOMAIN / HOSTNAME *"; }
                     LineEdit { accessible-label: "Service name or domain"; placeholder-text: root.form.kind == 0 ? "Orders PostgreSQL primary" : "api.example.com"; text <=> root.form.name; }
+                    Label { text: "BUSINESS / SYSTEM (OPTIONAL)"; }
+                    LineEdit { accessible-label: "Business or system"; placeholder-text: "Customer platform"; text <=> root.form.business; }
                     if root.form.kind == 0: VerticalLayout {
                         spacing: 8px;
-                        Label { text: "VERSION / PORTS"; }
+                        Label { text: "PORT"; }
                         HorizontalLayout {
                             spacing: 8px;
-                            LineEdit { accessible-label: "Service version"; placeholder-text: "16.4"; text <=> root.form.version; }
-                            LineEdit { accessible-label: "Service ports"; placeholder-text: "5432, 9187"; text <=> root.form.ports; }
+                            LineEdit { accessible-label: "Service ports"; placeholder-text: "5432"; text <=> root.form.ports; }
+                            Button { compact: true; quiet: true; text: "Copy port"; clicked => { root.copy(root.form.ports,"Port"); } }
                         }
+                        Text { text: "Add a separate service for each port on the same server."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+                        Label { text: "PROTOCOL / APPLICATION"; }
+                        LineEdit { accessible-label: "Service protocol"; placeholder-text: "SSH, MySQL, PostgreSQL, HTTPS"; text <=> root.form.protocol; }
+                        Label { text: "TRANSPORT"; }
+                        ComboBox { accessible-label: "Service transport"; model: ["Unspecified", "TCP", "UDP"]; current-index: root.form.transport == "TCP" ? 1 : root.form.transport == "UDP" ? 2 : 0; selected(value) => { root.form.transport = value; } }
+                        Label { text: "VERSION"; }
+                            LineEdit { accessible-label: "Service version"; placeholder-text: "16.4"; text <=> root.form.version; }
                         Label { text: "ACCESS ADDRESS"; }
                         HorizontalLayout {
                             spacing: 8px;
                             LineEdit { accessible-label: "Access address or DNS target"; placeholder-text: "postgresql.example.com"; text <=> root.form.address; }
-                            Button { text: "Copy"; clicked => { root.copy(root.form.address,"Access address"); } }
+                            Button { compact: true; quiet: true; text: "Copy"; clicked => { root.copy(root.form.address,"Access address"); } }
                         }
-                        Button { text: "Copy ports"; clicked => { root.copy(root.form.ports,"Ports"); } }
+                        if root.form.id != 0: Button {
+                            compact: true;
+                            text: root.form.protocol == "SSH" ? "Copy SSH command" : root.form.protocol == "HTTP" || root.form.protocol == "HTTPS" ? "Open in browser" : "Copy connection address";
+                            enabled: !root.form.pending-confirmation && !root.show-hidden;
+                            clicked => { root.connect(); }
+                        }
                     }
                     if root.form.kind == 1: VerticalLayout {
                         spacing: 8px;
@@ -149,64 +223,64 @@ export component InventoryPanel inherits Rectangle {
                     VerticalLayout {
                         padding-top: 12px; padding-bottom: 12px; spacing: 12px;
                         Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS"; }
-                        Text { text: root.form.kind == 0 ? "Choose all servers that run this service. Save record applies your selection." : "Choose the actual origin servers, independently of DNS or CDN addresses. Save record applies your selection."; color: #52685c; font-size: 12px; wrap: word-wrap; }
+                        Text { text: root.form.kind == 0 ? "Choose all servers that run this service. Save record applies your selection." : "Choose the actual origin servers, independently of DNS or CDN addresses. Save record applies your selection."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
                         ScrollView {
                             height: root.hosts.length == 0 ? 76px : root.hosts.length < 4 ? root.hosts.length * 64px + 8px : 224px;
                             VerticalLayout {
                                 spacing: 8px; padding: 4px;
                                 for host[index] in root.hosts: Rectangle {
-                                    height: 56px; background: host.selected ? #e4eedf : #ffffff;
-                                    border-width: 1px; border-color: host.selected ? #32735e : #d3ddd4; border-radius: 5px;
+                                    height: 56px; background: host.selected ? UiColors.selected : UiColors.surface;
+                                    border-width: 1px; border-color: host.selected ? UiColors.success : UiColors.border; border-radius: 5px;
                                     CheckBox {
                                         x: 10px; y: 4px; width: parent.width - 20px; height: parent.height - 8px;
                                         text: host.label; checked: host.selected;
                                         toggled => { root.hosts[index].selected = self.checked; }
                                     }
                                 }
-                                if root.hosts.length == 0: Text { height: 64px; text: "No servers yet. Add a server in the Servers tab, then return to link it here."; color: #52685c; wrap: word-wrap; }
+                                if root.hosts.length == 0: Text { height: 64px; text: "No servers yet. Add a server in the Servers tab, then return to link it here."; color: UiColors.muted; wrap: word-wrap; }
                             }
                         }
-                        Text { text: "Missing a server? Add it in the Servers tab first."; color: #52685c; font-size: 12px; wrap: word-wrap; }
+                        Text { text: "Missing a server? Add it in the Servers tab first."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
                     }
                     if root.form.kind == 0: VerticalLayout {
                         spacing: 8px;
                         Label { text: "ACCESS ACCOUNT (OPTIONAL)"; }
-                        Text { text: root.credentials-available ? "Protected for this Windows user. Device/profile changes require re-entering credentials. Metadata and notes are not encrypted." : "Credential storage is available on Windows only. Keep secrets in your password manager on this platform."; font-size: 11px; color: #52685c; wrap: word-wrap; }
-                        if root.form.has-credentials: Button { text: "Unlock saved account (30 sec)"; enabled: root.credentials-available; clicked => { root.unlock(); } }
+                        Text { text: root.credentials-available ? "Protected for this Windows user. Device/profile changes require re-entering credentials. Metadata and notes are not encrypted." : "Credential storage is available on Windows only. Keep secrets in your password manager on this platform."; font-size: UiColors.body-size - 2px; color: UiColors.muted; wrap: word-wrap; }
+                        if root.form.has-credentials: Button { compact: true; quiet: true; text: "Unlock saved account (30 sec)"; enabled: root.credentials-available; clicked => { root.unlock(); } }
                         HorizontalLayout {
                             spacing: 8px;
                             LineEdit { accessible-label: "Service username"; placeholder-text: "Username"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.username; }
-                            Button { text: "Copy user"; enabled: root.credentials-available; clicked => { root.copy-secret(false); } }
+                            Button { compact: true; quiet: true; text: "Copy user"; enabled: root.credentials-available; clicked => { root.copy-secret(false); } }
                         }
                         HorizontalLayout {
                             spacing: 8px;
                             LineEdit { accessible-label: "Service password"; placeholder-text: "Password"; enabled: root.credentials-available; input-type: root.reveal ? InputType.text : InputType.password; text <=> root.password; }
-                            Button { text: "Copy password"; enabled: root.credentials-available; clicked => { root.copy-secret(true); } }
+                            Button { compact: true; quiet: true; text: "Copy password"; enabled: root.credentials-available; clicked => { root.copy-secret(true); } }
                         }
                         CheckBox { text: "Show account fields"; checked <=> root.reveal; enabled: root.credentials-available; }
                         if root.form.has-credentials: CheckBox { text: "Remove saved account on save"; checked <=> root.clear-credentials; }
-                        Text { text: "Blank fields keep the saved account. Enter both fields to replace it. Clipboard history may retain copied secrets."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+                        Text { text: "Blank fields keep the saved account. Enter both fields to replace it. Clipboard history may retain copied secrets."; color: UiColors.muted; font-size: UiColors.body-size - 2px; wrap: word-wrap; }
                     }
-                    Button { height: 36px; text: "Save record"; primary: true; enabled: !root.show-hidden; clicked => { root.save(); } }
-                    if root.form.id != 0: Text { text: root.form.verified-at == "" ? "Not yet verified" : "Last verified " + root.form.verified-at; color: #52685c; }
-                    if root.status != "": Text { text: root.status; color: root.status-error ? #a33a32 : #16715e; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+                    if root.form.id != 0: Text { text: root.form.verified-at == "" ? "Not yet verified" : "Last verified " + root.form.verified-at; color: UiColors.muted; }
+                    if root.status != "": Text { text: root.status; color: root.status-error ? UiColors.error : UiColors.success; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
                     if root.form.kind == 0 && root.form.id != 0: VerticalLayout {
                         spacing: 8px;
                         Label { text: "SERVICE RELATIONS · SOURCE → TARGET"; }
-                        Text { text: "The current service is the source. Reverse links appear on the target service too."; color: #52685c; font-size: 11px; wrap: word-wrap; }
+                        Text { text: "The current service is the source. Reverse links appear on the target service too."; color: UiColors.muted; font-size: UiColors.body-size - 2px; wrap: word-wrap; }
                         ComboBox { model: ["Depends on", "Replicates to", "Fails over to", "Balances to"]; current-index <=> root.relation-kind; }
                         ComboBox { model: root.target-labels; current-index <=> root.target-index; }
                         LineEdit { accessible-label: "Service relation notes"; placeholder-text: "Relation notes"; text <=> root.relation-notes; }
-                        Button { text: "Add / update relation"; enabled: root.target-labels.length > 0; clicked => { root.add-relation(); } }
+                        Button { compact: true; quiet: true; text: "Add / update relation"; enabled: root.target-labels.length > 0; clicked => { root.add-relation(); } }
                         for relation in root.relations: VerticalLayout {
                             spacing: 3px;
-                            Text { text: relation.name; color: #183c32; wrap: word-wrap; }
-                            Text { text: relation.notes; color: #52685c; wrap: word-wrap; }
-                            Button { text: "Remove relation"; clicked => { root.remove-relation(relation.id); } }
+                            Text { text: relation.name; color: UiColors.text; wrap: word-wrap; }
+                            Text { text: relation.notes; color: UiColors.muted; wrap: word-wrap; }
+                            Button { compact: true; quiet: true; text: "Remove relation"; clicked => { root.remove-relation(relation.id); } }
                         }
                     }
                 }
             }
+            Button { x: parent.width - self.width - 14px; y: parent.height - max(40px, UiColors.body-size + 24px) - 14px; width: 190px; height: max(40px, UiColors.body-size + 24px); text: root.form.pending-confirmation ? "Confirm service" : "Save record"; primary: true; enabled: !root.show-hidden; clicked => { root.save(); } }
         }
     }
 }

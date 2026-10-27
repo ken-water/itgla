@@ -1,29 +1,44 @@
-// Semantic action colors are shared by all desktop pages. Inputs stay white.
+// Shared semantic palette for workspace surfaces, text, states and actions.
 export global UiColors {
-    out property <color> surface: #fbfcf9;
-    out property <color> text: #203c30;
-    out property <color> muted: #52645b;
-    out property <color> action: #dce8df;
-    out property <color> action-hover: #ccdcd0;
-    out property <color> action-pressed: #bdd0c2;
-    out property <color> action-border: #718579;
-    out property <color> primary: #245947;
-    out property <color> primary-hover: #1b4838;
-    out property <color> primary-pressed: #123829;
-    out property <color> on-primary: #ffffff;
-    out property <color> focus: #0f7665;
-    out property <color> disabled: #e4e8e3;
-    out property <color> disabled-text: #68756b;
+    in-out property <int> theme-index: 0;
+    in-out property <int> font-step: 2;
+    out property <bool> dark: theme-index == 4;
+    out property <length> body-size: font-step <= 2 ? (11 + font-step) * 1px : (9 + font-step * 2) * 1px;
+    out property <color> canvas: dark ? #141b23 : theme-index == 1 ? #e5edf8 : theme-index == 2 ? #f2e7d5 : theme-index == 3 ? #ffffff : #eef1eb;
+    out property <color> surface: dark ? #1e2833 : theme-index == 1 ? #f4f8ff : theme-index == 2 ? #fff8ec : #fbfcf9;
+    out property <color> raised: dark ? #273442 : theme-index == 1 ? #dce8fa : theme-index == 2 ? #edddc3 : #e7ede5;
+    out property <color> text: dark ? #edf2f7 : theme-index == 1 ? #1e3557 : theme-index == 2 ? #49331e : theme-index == 3 ? #000000 : #203c30;
+    out property <color> muted: dark ? #bbc9d7 : theme-index == 1 ? #485d79 : theme-index == 2 ? #6c563e : #52645b;
+    out property <color> border: dark ? #65798e : theme-index == 3 ? #52645b : #aebfb1;
+    out property <color> selected: dark ? #314a60 : theme-index == 1 ? #cbdff9 : theme-index == 2 ? #e9d5b1 : #dceee8;
+    out property <color> header: dark ? #101720 : theme-index == 1 ? #203f71 : theme-index == 2 ? #634426 : theme-index == 3 ? #000000 : #183c32;
+    out property <color> action: dark ? #34485c : theme-index == 1 ? #d5e4fa : theme-index == 2 ? #e9d8ba : #dce8df;
+    out property <color> action-hover: dark ? #425c76 : theme-index == 1 ? #bfd5f5 : theme-index == 2 ? #ddc69e : #ccdcd0;
+    out property <color> action-pressed: dark ? #4b6885 : #bdd0c2;
+    out property <color> action-border: dark ? #8aa2b8 : #718579;
+    out property <color> primary: dark ? #a5d9ca : theme-index == 1 ? #285a98 : theme-index == 2 ? #705027 : theme-index == 3 ? #000000 : #245947;
+    out property <color> primary-hover: dark ? #c1ecdf : theme-index == 1 ? #1e467a : theme-index == 2 ? #573b1b : #1b4838;
+    out property <color> primary-pressed: dark ? #88c6b4 : #123829;
+    out property <color> on-primary: dark ? #132c26 : #ffffff;
+    out property <color> focus: dark ? #8bdcc7 : #0f7665;
+    out property <color> disabled: dark ? #2b3541 : #e4e8e3;
+    out property <color> disabled-text: dark ? #9caebf : #68756b;
+    out property <color> success: dark ? #8bdcc7 : #16715e;
+    out property <color> error: dark ? #ffb4ac : #a33a32;
+    out property <color> warning: dark ? #f4cf8e : #76501d;
+    out property <color> warning-surface: dark ? #493c29 : #fff6e7;
 }
 
 export component Button inherits Rectangle {
     in property <string> text;
     in property <bool> enabled: true;
     in property <bool> primary: false;
+    in property <bool> quiet: false;
+    in property <bool> compact: false;
     in property <bool> checkable: false;
     in-out property <bool> checked: false;
     in property <color> swatch: transparent;
-    in property <length> label-size: 13px;
+    in property <length> label-size: UiColors.body-size;
     out property <bool> has-focus: button-focus.has-focus;
     out property <bool> pressed: root.enabled && button-touch.pressed;
     callback clicked;
@@ -35,14 +50,15 @@ export component Button inherits Rectangle {
     }
     min-width: 28px; min-height: 28px;
     preferred-width: button-label.preferred-width + 24px;
+    max-width: root.compact ? button-label.preferred-width + 28px : 100000px;
     preferred-height: 36px;
     horizontal-stretch: 0; vertical-stretch: 0;
     border-radius: 5px;
     border-width: root.has-focus ? 2px : 1px;
-    border-color: root.has-focus ? UiColors.focus : !root.enabled ? #bdc8be : UiColors.action-border;
+    border-color: root.has-focus ? UiColors.focus : root.quiet && !button-touch.has-hover ? transparent : !root.enabled ? #bdc8be : UiColors.action-border;
     background: !root.enabled ? UiColors.disabled : root.primary || root.checked ?
         (root.pressed ? UiColors.primary-pressed : button-touch.has-hover ? UiColors.primary-hover : UiColors.primary) :
-        (root.pressed ? UiColors.action-pressed : button-touch.has-hover ? UiColors.action-hover : UiColors.action);
+        (root.pressed ? UiColors.action-pressed : button-touch.has-hover ? UiColors.action-hover : root.quiet ? transparent : UiColors.action);
     forward-focus: button-focus;
     accessible-role: button;
     accessible-label: root.text;
@@ -51,8 +67,6 @@ export component Button inherits Rectangle {
     accessible-checked: root.checked;
     accessible-action-default => { root.activate(); }
     if root.has-focus: Rectangle { x: -3px; y: -3px; width: parent.width + 6px; height: parent.height + 6px; background: transparent; border-radius: 7px; border-width: 2px; border-color: UiColors.focus; }
-    // A lower edge reinforces the raised action shape without a glowing shadow.
-    Rectangle { x: 2px; y: parent.height - 3px; width: parent.width - 4px; height: 1px; background: root.enabled && !root.pressed ? UiColors.action-border : transparent; }
     if root.swatch != transparent: Rectangle { x: 10px; y: 7px; width: parent.width - 20px; height: 7px; background: root.swatch; border-radius: 2px; border-width: 1px; border-color: root.checked ? #dce8df : UiColors.action-border; }
     button-label := Text {
         x: 5px; y: root.swatch != transparent ? 17px : root.pressed ? 1px : 0px;

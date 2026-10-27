@@ -1,9 +1,11 @@
+import { TopologyPanel, TopologyNode, TopologyEdge, BusinessItem } from "topology.slint";
 import { InventoryPanel, InventoryForm, InventoryRow, InventoryChoice } from "inventory.slint";
-import { CheckBox, ComboBox, LineEdit, ScrollView } from "std-widgets.slint";
+import { CheckBox, ComboBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
 import { Button, UiColors } from "controls.slint";
 import { AppearanceControls } from "appearance.slint";
 
-export struct ServerRow { id: int, name: string, ip-address: string, ports: string, environment: string, status: string, purpose: string, tags: string, custom-values: [string] }
+export struct EndpointRow { id: int, port: string, transport: string, protocol: string, purpose: string, address: string, connect-command: string }
+export struct ServerRow { id: int, name: string, ip-address: string, ports: string, port-count: int, environment: string, status: string, purpose: string, tags: string, custom-values: [string], endpoints: [EndpointRow] }
 export struct SiteRow { id: int, name: string, url: string, environment: string, status: string, purpose: string, tags: string }
 export struct ProjectRow { name: string, description: string, start-at: string, priority: string, launch-at: string }
 export struct OperationRow { name: string, publish-at: string, media: string, channel: string }
@@ -16,37 +18,37 @@ export struct ChecklistRow { id: int, title: string, completed: bool }
 export struct ImportColumnRow { index: int, source-name: string, sample: string, mapping-index: int }
 
 component PageHeader inherits Text {
-    in property <length> token-size: 24px;
-    color: #183c32;
+    in property <length> token-size: UiColors.body-size + 11px;
+    color: UiColors.text;
     font-size: root.token-size;
     font-weight: 750;
 }
 
 component PanelTitle inherits Text {
-    in property <length> token-size: 17px;
-    color: #183c32;
+    in property <length> token-size: UiColors.body-size + 4px;
+    color: UiColors.text;
     font-size: root.token-size;
     font-weight: 750;
 }
 
 component SectionLabel inherits Text {
-    in property <length> token-size: 11px;
-    color: #5f7063;
+    in property <length> token-size: UiColors.body-size - 2px;
+    color: UiColors.muted;
     font-size: root.token-size;
     font-weight: 700;
     letter-spacing: 1px;
 }
 
 component FieldLabel inherits Text {
-    in property <length> token-size: 11px;
-    color: #4e6257;
+    in property <length> token-size: UiColors.body-size - 2px;
+    color: UiColors.muted;
     font-size: root.token-size;
     font-weight: 700;
 }
 
 component HelperText inherits Text {
-    in property <length> token-size: 12px;
-    color: #5c6c64;
+    in property <length> token-size: UiColors.body-size - 1px;
+    color: UiColors.muted;
     font-size: root.token-size;
     wrap: word-wrap;
 }
@@ -54,17 +56,17 @@ component HelperText inherits Text {
 component NavigationTab inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
-    in property <length> label-font-size: 13px;
+    in property <length> label-font-size: UiColors.body-size;
     callback activated;
-    background: root.selected ? #183c32 : tab-touch.has-hover ? #edf4eb : transparent;
+    background: root.selected ? UiColors.primary : tab-touch.has-hover ? UiColors.selected : transparent;
     border-radius: 4px;
     border-width: tab-focus.has-focus ? 2px : root.selected ? 0px : 1px;
-    border-color: tab-focus.has-focus ? #0f7665 : #aebfb1;
+    border-color: tab-focus.has-focus ? UiColors.focus : UiColors.border;
     forward-focus: tab-focus;
     accessible-role: tab;
     accessible-label: root.label;
     accessible-action-default => { root.activated(); }
-    Text { width: parent.width; height: parent.height; text: root.label; color: root.selected ? #ffffff : #183c32; font-size: root.label-font-size; font-weight: 750; horizontal-alignment: center; vertical-alignment: center; }
+    Text { width: parent.width; height: parent.height; text: root.label; color: root.selected ? UiColors.on-primary : UiColors.text; font-size: root.label-font-size; font-weight: 750; horizontal-alignment: center; vertical-alignment: center; }
     tab-touch := TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
     tab-focus := FocusScope {
         width: 0px;
@@ -81,19 +83,19 @@ component NavigationTab inherits Rectangle {
 component ChoiceRow inherits Rectangle {
     in property <string> label;
     in property <bool> selected;
-    in property <length> label-font-size: 12px;
+    in property <length> label-font-size: UiColors.body-size - 1px;
     callback toggled;
-    background: root.selected ? #dceee8 : choice-touch.has-hover ? #eef4ed : transparent;
+    background: root.selected ? UiColors.selected : choice-touch.has-hover ? UiColors.selected : transparent;
     border-radius: 4px;
     border-width: choice-focus.has-focus ? 2px : 0px;
-    border-color: #0f7665;
+    border-color: UiColors.focus;
     forward-focus: choice-focus;
     accessible-role: checkbox;
     accessible-label: root.label;
     accessible-checkable: true;
     accessible-checked: root.selected;
     accessible-action-default => { root.toggled(); }
-    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: (root.selected ? "✓ " : "□ ") + root.label; color: #30463c; font-size: root.label-font-size; vertical-alignment: center; overflow: elide; }
+    Text { x: 8px; width: parent.width - 16px; height: parent.height; text: (root.selected ? "✓ " : "□ ") + root.label; color: UiColors.text; font-size: root.label-font-size; vertical-alignment: center; overflow: elide; }
     choice-touch := TouchArea { mouse-cursor: pointer; clicked => { root.toggled(); } }
     choice-focus := FocusScope {
         width: 0px;
@@ -112,30 +114,30 @@ component DataCell inherits Rectangle {
     in property <int> column-index;
     in property <string> value;
     in property <string> copy-label;
-    in property <length> cell-font-size: 11px;
-    in property <length> hover-font-size: 15px;
+    in property <length> cell-font-size: UiColors.body-size - 2px;
+    in property <length> hover-font-size: UiColors.body-size + 4px;
     in property <bool> show-tooltip: true;
     callback copy(string, string);
     callback edit(int, int, string);
-    background: cell-touch.has-hover ? #e7f1dc : transparent;
+    background: cell-touch.has-hover ? UiColors.selected : transparent;
     border-width: cell-focus.has-focus ? 2px : 0px;
-    border-color: #0f7665;
+    border-color: UiColors.focus;
     forward-focus: cell-focus;
     accessible-role: button;
     accessible-label: root.copy-label + ": " + (root.value == "" ? "empty" : root.value);
     accessible-description: "Press Space to copy. Press Enter to edit.";
     accessible-action-default => { root.copy(root.value, root.copy-label); }
-    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #e1e7df; }
-    Text { x: 10px; y: 0; width: parent.width - 38px; height: parent.height; text: root.value; color: #25342d; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
+    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.raised; }
+    Text { x: 10px; y: 0; width: parent.width - 38px; height: parent.height; text: root.value; color: UiColors.text; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
     if root.show-tooltip && measurement.preferred-width > root.width - 38px: Tooltip {
         Rectangle {
             width: min(240px, measurement.preferred-width + 20px); height: 36px;
-            background: UiColors.surface; border-width: 1px; border-color: #9db89b; border-radius: 5px;
-            Text { x: 10px; width: parent.width - 20px; height: parent.height; text: root.value; color: #183c32; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
+            background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 5px;
+            Text { x: 10px; width: parent.width - 20px; height: parent.height; text: root.value; color: UiColors.text; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
         }
     }
     measurement := Text { visible: false; text: root.value; font-size: root.cell-font-size; }
-    Text { x: parent.width - 28px; y: 0; width: 18px; height: parent.height; text: "⧉"; color: #6f8e55; font-size: 15px; vertical-alignment: center; horizontal-alignment: center; }
+    Text { x: parent.width - 28px; y: 0; width: 18px; height: parent.height; text: "⧉"; color: UiColors.success; font-size: UiColors.body-size + 2px; vertical-alignment: center; horizontal-alignment: center; }
     cell-touch := TouchArea { clicked => { root.copy(root.value, root.copy-label); } double-clicked => { root.edit(root.server-id, root.column-index, root.value); } }
     cell-focus := FocusScope {
         width: 0px;
@@ -155,25 +157,25 @@ component DataCell inherits Rectangle {
 
 component HeaderCell inherits Rectangle {
     in property <string> title;
-    in property <length> header-font-size: 10px;
+    in property <length> header-font-size: UiColors.body-size - 3px;
     in property <int> ascending-mode: -1;
     in property <int> descending-mode: -1;
     in property <int> current-mode: -1;
     property <bool> sorted: root.current-mode == root.ascending-mode || root.current-mode == root.descending-mode;
     callback sort(int);
     callback resize(length);
-    background: sort-touch.pressed ? #c4ddcf : sort-touch.has-hover ? #d7e6d9 : root.sorted ? #dceee8 : #e7ede5;
+    background: sort-touch.pressed ? UiColors.border : sort-touch.has-hover ? UiColors.border : root.sorted ? UiColors.selected : UiColors.raised;
     border-width: header-focus.has-focus ? 2px : 0px;
-    border-color: #0f7665;
+    border-color: UiColors.focus;
     forward-focus: header-focus;
     accessible-role: button;
     accessible-label: root.title + (root.current-mode == root.ascending-mode ? ", sorted ascending" : root.current-mode == root.descending-mode ? ", sorted descending" : ", not sorted");
     accessible-description: root.ascending-mode >= 0 ? "Activate to change sort direction. Use Fit columns to resize without a pointer." : "Table actions column";
     accessible-enabled: root.ascending-mode >= 0;
     accessible-action-default => { if root.ascending-mode >= 0 { root.sort(root.current-mode == root.ascending-mode ? root.descending-mode : root.ascending-mode); } }
-    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: #d3ddd4; }
-    Text { x: 10px; width: parent.width - (root.ascending-mode >= 0 ? 38px : 16px); height: parent.height; text: root.title; color: root.sorted ? #0f5f50 : #465b4d; font-size: root.header-font-size; font-weight: 700; vertical-alignment: center; overflow: elide; }
-    if root.ascending-mode >= 0: Text { x: parent.width - 34px; width: 20px; height: parent.height; text: root.current-mode == root.ascending-mode ? "↑" : root.current-mode == root.descending-mode ? "↓" : "↕"; color: root.sorted ? #0f5f50 : #65776a; font-size: 16px; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; }
+    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.border; }
+    Text { x: 10px; width: parent.width - (root.ascending-mode >= 0 ? 38px : 16px); height: parent.height; text: root.title; color: root.sorted ? UiColors.success : UiColors.muted; font-size: root.header-font-size; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    if root.ascending-mode >= 0: Text { x: parent.width - 34px; width: 20px; height: parent.height; text: root.current-mode == root.ascending-mode ? "↑" : root.current-mode == root.descending-mode ? "↓" : "↕"; color: root.sorted ? UiColors.success : UiColors.muted; font-size: UiColors.body-size + 3px; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; }
     sort-touch := TouchArea {
         width: parent.width - 14px; enabled: root.ascending-mode >= 0; mouse-cursor: pointer;
         clicked => { root.sort(root.current-mode == root.ascending-mode ? root.descending-mode : root.ascending-mode); }
@@ -191,8 +193,8 @@ component HeaderCell inherits Rectangle {
     }
     if root.ascending-mode >= 0: Rectangle {
         x: parent.width - 14px; width: 14px; height: parent.height;
-        background: resize-touch.has-hover || resize-touch.pressed ? #c4ddcf : transparent;
-        Rectangle { x: 11px; y: 6px; width: 2px; height: parent.height - 12px; background: resize-touch.has-hover || resize-touch.pressed ? #0f6b59 : #afc2b2; }
+        background: resize-touch.has-hover || resize-touch.pressed ? UiColors.border : transparent;
+        Rectangle { x: 11px; y: 6px; width: 2px; height: parent.height - 12px; background: resize-touch.has-hover || resize-touch.pressed ? UiColors.success : UiColors.border; }
         resize-touch := TouchArea {
             mouse-cursor: ew-resize;
             moved => { if self.pressed { root.resize(root.width + self.mouse-x - self.pressed-x); } }
@@ -205,20 +207,19 @@ component ServerTableRow inherits Rectangle {
     in property <[string]> custom-headers;
     in property <length> table-width;
     in property <length> data-width;
-    in property <length> cell-font-size: 11px;
-    in property <length> hover-font-size: 15px;
+    in property <length> cell-font-size: UiColors.body-size - 2px;
+    in property <length> hover-font-size: UiColors.body-size + 4px;
     in property <[length]> column-widths;
     in property <bool> hidden;
     in property <bool> show-tooltips: true;
     in property <length> row-height: 42px;
-    callback edit; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string);
+    callback edit; callback ports; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string); callback open-endpoint(string, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
-    Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; }
+    Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
     HorizontalLayout {
         spacing: 0px;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.ip-address; copy-label: "IP address"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
-        DataCell { width: root.column-widths[2]; server-id: root.item.id; column-index: 2; value: root.item.ports; copy-label: "Ports"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[3]; server-id: root.item.id; column-index: 3; value: root.item.environment; copy-label: "Environment"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[4]; server-id: root.item.id; column-index: 4; value: root.item.status; copy-label: "Status"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[5]; server-id: root.item.id; column-index: 5; value: root.item.purpose; copy-label: "Purpose"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
@@ -238,24 +239,23 @@ component TableHeader inherits Rectangle {
     in property <[string]> custom-headers;
     in property <length> table-width;
     in property <length> data-width;
-    in property <length> header-font-size: 10px;
+    in property <length> header-font-size: UiColors.body-size - 3px;
     in property <[length]> column-widths;
     in property <int> sort-mode-index;
     callback sort(int);
     callback resize(int, length);
-    width: root.table-width; height: 34px; background: #e7ede5; border-width: 1px; border-color: #d3ddd4;
+    width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
         spacing: 0px;
         HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
         HeaderCell { width: root.column-widths[1]; title: "IP ADDRESS"; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(1, value); } }
-        HeaderCell { width: root.column-widths[2]; title: "PORTS"; header-font-size: root.header-font-size; ascending-mode: 4; descending-mode: 5; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(2, value); } }
         HeaderCell { width: root.column-widths[3]; title: "ENVIRONMENT"; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(3, value); } }
         HeaderCell { width: root.column-widths[4]; title: "STATUS"; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(4, value); } }
         HeaderCell { width: root.column-widths[5]; title: "PURPOSE"; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(5, value); } }
         HeaderCell { width: root.column-widths[6]; title: "TAGS"; header-font-size: root.header-font-size; ascending-mode: 12; descending-mode: 13; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(6, value); } }
         for header[index] in root.custom-headers: HeaderCell { width: root.column-widths[7 + index]; title: header; header-font-size: root.header-font-size; ascending-mode: 14 + index * 2; descending-mode: 15 + index * 2; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(7 + index, value); } }
         HeaderCell { width: 116px; title: "ACTIONS"; header-font-size: root.header-font-size; }
-        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: #e7ede5; }
+        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: UiColors.raised; }
     }
 }
 
@@ -263,10 +263,10 @@ component SiteTableHeader inherits Rectangle {
     in property <[length]> column-widths;
     in property <length> table-width;
     in property <int> sort-mode-index;
-    in property <length> header-font-size: 10px;
+    in property <length> header-font-size: UiColors.body-size - 3px;
     callback sort(int);
     callback resize(int, length);
-    width: root.table-width; height: 34px; background: #e7ede5; border-width: 1px; border-color: #d3ddd4;
+    width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
         spacing: 0px;
         HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
@@ -283,13 +283,13 @@ component SiteTableRow inherits Rectangle {
     in property <SiteRow> item;
     in property <[length]> column-widths;
     in property <length> table-width;
-    in property <length> cell-font-size: 11px;
+    in property <length> cell-font-size: UiColors.body-size - 2px;
     in property <bool> hidden;
     in property <bool> show-tooltips: true;
     in property <length> row-height: 42px;
     callback edit; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
-    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; }
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
     HorizontalLayout {
         spacing: 0px;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
@@ -308,14 +308,14 @@ component SiteTableRow inherits Rectangle {
 }
 
 component TagChoice inherits Rectangle {
-    in property <string> label; in property <bool> selected; in property <length> label-font-size: 12px; callback chosen;
-    height: 34px; background: root.selected ? #dceee8 : tag-touch.has-hover ? #eef4ed : transparent; border-radius: 4px;
-    border-width: tag-focus.has-focus ? 2px : 0px; border-color: #0f7665;
+    in property <string> label; in property <bool> selected; in property <length> label-font-size: UiColors.body-size - 1px; callback chosen;
+    height: 34px; background: root.selected ? UiColors.selected : tag-touch.has-hover ? UiColors.selected : transparent; border-radius: 4px;
+    border-width: tag-focus.has-focus ? 2px : 0px; border-color: UiColors.focus;
     forward-focus: tag-focus;
     accessible-role: button;
     accessible-label: "Filter by " + root.label;
     accessible-action-default => { root.chosen(); }
-    Text { x: 10px; width: parent.width - 20px; height: parent.height; text: root.label; color: root.selected ? #0f5f50 : #44504b; font-size: root.label-font-size; font-weight: root.selected ? 700 : 500; vertical-alignment: center; overflow: elide; }
+    Text { x: 10px; width: parent.width - 20px; height: parent.height; text: root.label; color: root.selected ? UiColors.success : UiColors.muted; font-size: root.label-font-size; font-weight: root.selected ? 700 : 500; vertical-alignment: center; overflow: elide; }
     tag-touch := TouchArea { mouse-cursor: pointer; clicked => { root.chosen(); } }
     tag-focus := FocusScope { width: 0px; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.chosen(); return accept; } return reject; } }
 }
@@ -323,13 +323,13 @@ component TagChoice inherits Rectangle {
 component ImportMappingRow inherits Rectangle {
     in property <ImportColumnRow> column;
     in property <[string]> mapping-options;
-    in property <length> label-font-size: 11px;
-    in property <length> sample-font-size: 10px;
+    in property <length> label-font-size: UiColors.body-size - 2px;
+    in property <length> sample-font-size: UiColors.body-size - 3px;
     callback mapping-changed(int, int);
     height: 62px; background: UiColors.surface;
-    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e5e9e7; }
-    Text { x: 8px; y: 8px; width: 210px; text: root.column.source-name; color: #26312d; font-size: root.label-font-size; font-weight: 700; overflow: elide; }
-    Text { x: 8px; y: 31px; width: 300px; text: root.column.sample == "" ? "No sample value" : root.column.sample; color: #68736e; font-size: root.sample-font-size; overflow: elide; }
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
+    Text { x: 8px; y: 8px; width: 210px; text: root.column.source-name; color: UiColors.text; font-size: root.label-font-size; font-weight: 700; overflow: elide; }
+    Text { x: 8px; y: 31px; width: 300px; text: root.column.sample == "" ? "No sample value" : root.column.sample; color: UiColors.muted; font-size: root.sample-font-size; overflow: elide; }
     mapping-box := ComboBox {
         x: parent.width - 250px; y: 13px; width: 242px; height: 36px;
         model: root.mapping-options; current-index: root.column.mapping-index;
@@ -339,32 +339,51 @@ component ImportMappingRow inherits Rectangle {
 
 component WorkListRow inherits Rectangle {
     in property <WorkRow> item;
-    in property <length> title-font-size: 13px;
-    in property <length> metadata-font-size: 11px;
+    in property <length> title-font-size: UiColors.body-size;
+    in property <length> metadata-font-size: UiColors.body-size - 2px;
     callback selected(int);
     callback quick-status(int, string);
-    height: 82px; background: row-touch.has-hover ? #f5f9f3 : #ffffff;
-    border-width: row-focus.has-focus ? 2px : 0px; border-color: #0f7665;
+    height: 82px; background: row-touch.has-hover ? UiColors.surface : UiColors.surface;
+    border-width: row-focus.has-focus ? 2px : 0px; border-color: UiColors.focus;
     forward-focus: row-focus;
     accessible-role: list-item;
     accessible-label: root.item.title + ", " + root.item.status + ", " + root.item.priority;
     accessible-description: "Activate to open work details.";
     accessible-action-default => { root.selected(root.item.id); }
-    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; }
-    Text { x: 14px; y: 8px; width: parent.width - 170px; height: 24px; text: root.item.title; color: #183c32; font-size: root.title-font-size; font-weight: 700; overflow: elide; }
-    Text { x: 14px; y: 36px; width: 180px; height: 20px; text: root.item.kind + "  ·  " + root.item.checklist; color: #627269; font-size: root.metadata-font-size; overflow: elide; }
-    Text { x: parent.width - 226px; y: 8px; width: 116px; height: 20px; text: root.item.status; color: root.item.status == "Done" ? #526b59 : root.item.status == "Blocked" ? #a33a32 : #176b59; font-size: root.metadata-font-size; font-weight: 700; horizontal-alignment: right; }
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
+    Text { x: 14px; y: 8px; width: parent.width - 170px; height: 24px; text: root.item.title; color: UiColors.text; font-size: root.title-font-size; font-weight: 700; overflow: elide; }
+    Text { x: 14px; y: 36px; width: 180px; height: 20px; text: root.item.kind + "  ·  " + root.item.checklist; color: UiColors.muted; font-size: root.metadata-font-size; overflow: elide; }
+    Text { x: parent.width - 226px; y: 8px; width: 116px; height: 20px; text: root.item.status; color: root.item.status == "Done" ? UiColors.muted : root.item.status == "Blocked" ? UiColors.error : UiColors.success; font-size: root.metadata-font-size; font-weight: 700; horizontal-alignment: right; }
     Button { x: parent.width - 102px; y: 5px; width: 92px; height: 28px; text: root.item.status == "In progress" ? "Done" : root.item.status == "Blocked" ? "Resume" : root.item.status == "Done" || root.item.status == "Cancelled" ? "Reopen" : "Start"; clicked => { root.quick-status(root.item.id, root.item.status == "In progress" ? "done" : root.item.status == "Blocked" ? "in_progress" : root.item.status == "Done" || root.item.status == "Cancelled" ? "planned" : "in_progress"); } }
     if root.item.status == "In progress" || root.item.status == "Ready": Button { x: parent.width - 102px; y: 39px; width: 92px; height: 28px; text: "Block"; clicked => { root.quick-status(root.item.id, "blocked"); } }
-    Text { x: parent.width - 330px; y: 50px; width: 218px; height: 20px; text: root.item.priority + " · " + root.item.due-state + (root.item.due-at == "" ? "" : " " + root.item.due-at) + " · " + root.item.scope; color: root.item.due-state == "Overdue" ? #b13d35 : root.item.due-state == "Due today" || root.item.due-state == "Due soon" ? #8a571d : #627269; font-size: root.metadata-font-size; font-weight: root.item.due-state == "Overdue" || root.item.due-state == "Due today" ? 700 : 400; horizontal-alignment: right; overflow: elide; }
+    Text { x: parent.width - 330px; y: 50px; width: 218px; height: 20px; text: root.item.priority + " · " + root.item.due-state + (root.item.due-at == "" ? "" : " " + root.item.due-at) + " · " + root.item.scope; color: root.item.due-state == "Overdue" ? UiColors.error : root.item.due-state == "Due today" || root.item.due-state == "Due soon" ? UiColors.warning : UiColors.muted; font-size: root.metadata-font-size; font-weight: root.item.due-state == "Overdue" || root.item.due-state == "Due today" ? 700 : 400; horizontal-alignment: right; overflow: elide; }
     row-touch := TouchArea { x: 0; y: 0; width: parent.width - 108px; height: parent.height; mouse-cursor: pointer; clicked => { root.selected(root.item.id); } }
     row-focus := FocusScope { width: 0px; key-pressed(event) => { if event.text == Key.Space || event.text == Key.Return { root.selected(root.item.id); return accept; } return reject; } }
 }
 
 export component AppWindow inherits Window {
+    in-out property <bool> server-editor-open: false;
+    in-out property <bool> site-editor-open: false;
+    in-out property <bool> endpoints-open: false;
+    in-out property <int> endpoint-server;
+    in-out property <string> endpoint-title;
+    in-out property <[EndpointRow]> endpoint-rows;
+    in-out property <string> endpoint-error;
+    in-out property <int> endpoint-id;
+    in-out property <string> endpoint-port;
+    in-out property <int> endpoint-transport;
+    in-out property <string> endpoint-protocol;
+    in-out property <string> endpoint-purpose;
+    callback open-endpoints(int);
+    callback open-endpoint(string, string);
+    callback endpoint-save;
+    callback endpoint-delete(int);
+    callback endpoint-new;
+    endpoint-new => { root.endpoint-id = 0; root.endpoint-port = ""; root.endpoint-transport = 0; root.endpoint-protocol = ""; root.endpoint-purpose = ""; }
+    changed endpoints-open => { if root.endpoints-open { ports-popup.show(); } else { ports-popup.close(); servers-tab.focus(); } }
     title: "ITGLA - IT Resource Workspace";
     icon: @image-url("../assets/itgla.png");
-    preferred-width: 1240px; preferred-height: 800px; min-width: 1000px; min-height: 640px; background: root.theme-index == 2 ? #f3eee4 : root.theme-index == 3 ? #ffffff : root.theme-index == 1 ? #e8edf0 : #eef1eb;
+    preferred-width: 1240px; preferred-height: 800px; min-width: 1000px; min-height: 640px; background: UiColors.canvas;
     in property <[ServerRow]> servers;
     in property <[SiteRow]> sites;
     in property <[ProjectRow]> projects;
@@ -408,6 +427,7 @@ export component AppWindow inherits Window {
     in-out property <string> editing-tags;
     in-out property <string> editing-ip-address;
     in-out property <string> editing-ports;
+    in-out property <length> server-editor-scroll-y: 0px;
     in-out property <string> editing-environment: "Production";
     in-out property <string> editing-status: "Active";
     in-out property <string> editing-purpose;
@@ -415,6 +435,28 @@ export component AppWindow inherits Window {
     in-out property <string> status-message;
     in-out property <bool> status-is-error: false;
     in-out property <string> copy-notice;
+    in property <[TopologyNode]> topology-nodes;
+    in property <[TopologyEdge]> topology-edges;
+    in property <[BusinessItem]> business-rows;
+    in property <[string]> topology-choices;
+    in property <[string]> topology-node-choices;
+    in property <[string]> topology-business-choices;
+    in property <float> topology-height: 400;
+    in-out property <bool> inventory-editor-requested: false;
+    in-out property <int> topology-filter: 0;
+    in-out property <bool> business-hidden: false;
+    in-out property <int> business-id: 0;
+    in-out property <string> business-name;
+    in-out property <string> business-tags;
+    in-out property <string> business-notes;
+    in-out property <int> topology-source: 0;
+    in-out property <int> topology-target: 0;
+    in-out property <int> topology-relation: 0;
+    in-out property <int> topology-link: 0;
+    in-out property <string> topology-notes;
+    in-out property <string> topology-status;
+    callback topology-refresh(); callback business-select(int); callback business-save(); callback business-hide();
+    callback topology-open(string,int); callback topology-save-link(); callback topology-select-link(int); callback topology-remove-link();
     in-out property <int> active-tab: 0;
     in-out property <int> selected-work-id: 0;
     in-out property <string> work-title;
@@ -472,12 +514,22 @@ export component AppWindow inherits Window {
     in-out property <bool> importing-sites: false;
     in-out property <int> font-size-step: 2;
     in-out property <int> theme-index: 0;
+    init => { root.sync-appearance(); }
+    changed theme-index => { root.sync-appearance(); }
+    changed font-size-step => { UiColors.font-step = root.font-size-step; }
+    function sync-appearance() {
+        UiColors.theme-index = root.theme-index;
+        UiColors.font-step = root.font-size-step;
+        Palette.color-scheme = root.theme-index == 4 ? ColorScheme.dark : ColorScheme.light;
+    }
+
     in-out property <bool> appearance-dirty: false;
     in-out property <string> appearance-status;
     in-out property <bool> appearance-error: false;
     in-out property <int> table-density: 1;
     in-out property <bool> show-cell-tooltips: true;
     in-out property <bool> fit-columns-on-open: false;
+    in-out property <bool> site-fit-columns-on-open: false;
     in-out property <int> import-duplicate-policy: 0;
     in-out property <int> backup-retention: 7;
     in-out property <bool> demo-mode: false;
@@ -493,20 +545,22 @@ export component AppWindow inherits Window {
     in-out property <int> work-view-reset-counter: 0;
     property <bool> work-view-reset-pending: false;
     in-out property <bool> onboarding-open: false;
+    changed onboarding-open => { if root.onboarding-open { guide-popup.show(); } else { guide-popup.close(); guide-trigger.focus(); } }
     in-out property <int> editing-cell-column: -1;
     in-out property <int> editing-cell-id: 0;
     in-out property <string> editing-cell-value;
     in-out property <bool> editing-cell-is-site: false;
-    property <length> caption-font-size: root.font-size-step == 0 ? 10px : root.font-size-step == 1 ? 11px : 12px;
-    property <length> body-font-size: root.font-size-step == 0 ? 11px : root.font-size-step == 1 ? 12px : 13px;
-    property <length> control-font-size: root.font-size-step == 0 ? 12px : root.font-size-step == 1 ? 13px : 14px;
-    property <length> panel-title-font-size: root.font-size-step == 0 ? 16px : root.font-size-step == 1 ? 17px : 18px;
-    property <length> page-title-font-size: root.font-size-step == 0 ? 22px : root.font-size-step == 1 ? 24px : 28px;
+    property <length> caption-font-size: UiColors.body-size - 1px;
+    property <length> body-font-size: UiColors.body-size;
+    property <length> server-control-height: max(36px, UiColors.body-size + 24px);
+    property <length> control-font-size: UiColors.body-size + 1px;
+    property <length> panel-title-font-size: UiColors.body-size + 5px;
+    property <length> page-title-font-size: root.font-size-step <= 2 ? (22 + root.font-size-step * 3) * 1px : (24 + root.font-size-step * 2) * 1px;
     property <length> tiny-font-size: root.caption-font-size;
     property <length> small-font-size: root.body-font-size;
     property <length> medium-font-size: root.control-font-size;
     property <length> large-font-size: root.page-title-font-size;
-    property <length> hover-font-size: root.font-size-step == 0 ? 14px : root.font-size-step == 1 ? 15px : 18px;
+    property <length> hover-font-size: UiColors.body-size + 4px;
     property <length> table-row-height: root.table-density == 0 ? 34px : root.table-density == 1 ? 42px : 50px;
     default-font-size: root.control-font-size;
     in-out property <length> table-width: 816px;
@@ -542,6 +596,7 @@ export component AppWindow inherits Window {
     callback inventory-relation-remove(int);
     callback inventory-verify();
     callback inventory-export();
+    callback inventory-connect();
     callback open-server-inventory(int);
     Timer { interval: 30s; running: root.inventory-reveal; triggered => { root.inventory-reveal = false; } }
     callback search-changed(string);
@@ -569,6 +624,7 @@ export component AppWindow inherits Window {
     callback auto-map-import;
     callback confirm-import;
     callback tab-selected(int);
+    function request-tab(tab: int) { if !root.onboarding-open && !root.endpoints-open { root.tab-selected(tab); } }
     callback work-selected(int);
     callback save-work(int, string, string, string, string, string, string, string, string);
     callback new-work;
@@ -590,10 +646,23 @@ export component AppWindow inherits Window {
     callback checklist-deleted(int);
     callback checklist-moved(int, int);
     callback font-size-changed(int);
-    callback preferences-changed(int, int, int, bool, bool, int, int);
+    callback preferences-changed(int, int, int, bool, bool, bool, int, int);
     callback save-settings;
+    function request-table-import(sites: bool) {
+        root.import-error = "";
+        root.import-ready = false;
+        root.importing-sites = sites;
+        root.import-default-tags = sites ? "production" : "imported";
+        root.import-default-ip-address = sites ? "Active" : "";
+        root.import-default-ports = sites ? "" : "443";
+        root.import-default-name = "";
+        root.import-default-environment = "Production";
+        root.import-default-status = "Active";
+        root.import-default-purpose = "";
+        root.import-dialog-open = true;
+    }
     save-settings => {
-        root.preferences-changed(root.theme-index, root.font-size-step, root.table-density, root.show-cell-tooltips, root.fit-columns-on-open, root.import-duplicate-policy, root.backup-retention);
+        root.preferences-changed(root.theme-index, root.font-size-step, root.table-density, root.show-cell-tooltips, root.fit-columns-on-open, root.site-fit-columns-on-open, root.import-duplicate-policy, root.backup-retention);
         root.appearance-status = root.status-message;
         root.appearance-error = root.status-is-error;
         if !root.status-is-error { root.appearance-dirty = false; }
@@ -610,6 +679,7 @@ export component AppWindow inherits Window {
     callback save-cell-edit(int, int, string);
     callback column-width-changed(int, length);
     callback auto-fit-columns;
+    callback table-fit-changed(bool, bool);
     callback add-priority(string);
     callback remove-priority(int);
     callback add-media(string);
@@ -620,28 +690,46 @@ export component AppWindow inherits Window {
     reset-work-view => { root.work-page-scroll-y = 0px; root.work-view-reset-counter += 1; root.work-view-reset-pending = true; servers-tab.focus(); }
 
     Rectangle {
-        x: 0; y: 0; width: parent.width; height: 72px; background: root.theme-index == 1 ? #24313a : root.theme-index == 2 ? #51402d : root.theme-index == 3 ? #000000 : #183c32;
-        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: #315b4d; }
-        Text { x: 28px; y: 12px; text: "ITGLA"; color: #d7ee9d; font-size: 20px; font-weight: 800; letter-spacing: 1px; }
-        Text { x: 29px; y: 40px; text: "FIELD ATLAS  /  LOCAL WORKSPACE"; color: #a9c7ad; font-size: root.caption-font-size; font-weight: 700; letter-spacing: 1px; }
-        if root.demo-mode: Text { x: 260px; y: 22px; width: 154px; text: "DEMO WORKSPACE"; color: #fff2bb; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
-        Text { x: parent.width - 590px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "INVENTORY" : "SETTINGS"; color: #c8ddb0; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
-        Button { x: parent.width - 468px; y: 18px; width: 76px; height: 36px; text: "Guide"; clicked => { root.onboarding-open = true; } }
-        Button { x: parent.width - 386px; y: 18px; width: 92px; height: 36px; text: "Fit columns"; enabled: root.active-tab < 2; clicked => { if root.active-tab == 0 { root.auto-fit-columns(); root.server-table-scroll-x = 0px; } else if root.active-tab == 1 { root.auto-fit-site-columns(); root.site-table-scroll-x = 0px; } } }
-        appearance-trigger := Button { x: parent.width - 286px; y: 18px; width: 114px; height: 36px; text: "Appearance"; clicked => { root.appearance-status = ""; root.appearance-error = false; appearance-popup.show(); } }
-        Button { x: parent.width - 164px; y: 18px; width: 136px; height: 36px; text: "＋  Import table"; enabled: root.active-tab < 2; clicked => { root.import-error = ""; root.import-ready = false; root.importing-sites = root.active-tab == 1; root.import-default-tags = root.active-tab == 1 ? "production" : "imported"; root.import-default-ip-address = root.active-tab == 1 ? "Active" : ""; root.import-default-ports = root.active-tab == 1 ? "" : "443"; root.import-default-name = ""; root.import-default-environment = "Production"; root.import-default-status = "Active"; root.import-default-purpose = ""; root.import-dialog-open = true; } }
+        x: 0; y: 0; width: parent.width; height: 56px; background: UiColors.header;
+        Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.success; }
+        Text { x: 28px; y: 12px; text: "ITGLA"; color: #d7ee9d; font-size: UiColors.body-size + 7px; font-weight: 800; letter-spacing: 1px; }
+        if root.demo-mode: Text { x: 240px; y: 22px; width: 210px; text: "DEMO WORKSPACE"; color: #dceee8; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
+        Text { x: parent.width - 370px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "SERVICES" : root.active-tab == 5 ? "DOMAINS" : root.active-tab == 6 ? "BUSINESSES" : root.active-tab == 7 ? "CONNECTIONS" : "SETTINGS"; color: #dceee8; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
+        guide-trigger := Button { x: parent.width - 246px; y: 10px; width: 76px; height: 36px; text: "Guide"; clicked => { root.onboarding-open = true; } }
+        appearance-trigger := Button { x: parent.width - 150px; y: 10px; width: 122px; height: 36px; text: "Appearance"; clicked => { root.appearance-status = ""; root.appearance-error = false; appearance-popup.show(); } }
     }
 
     Rectangle {
-        x: 28px; y: 78px; width: parent.width - 56px; height: 42px; background: #dfe8de; border-radius: 5px;
-        servers-tab := NavigationTab { x: 4px; y: 4px; width: 112px; height: 34px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.tab-selected(0); } }
-        sites-tab := NavigationTab { x: 120px; y: 4px; width: 112px; height: 34px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.tab-selected(1); } }
-        NavigationTab { x: 236px; y: 4px; width: 176px; height: 34px; label: "Services & Domains"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.tab-selected(4); } }
-        settings-tab := NavigationTab { x: 428px; y: 4px; width: 112px; height: 34px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.tab-selected(2); } }
+        x: 28px; y: 64px; width: parent.width - 56px; height: 42px; background: UiColors.raised; border-radius: 5px;
+        servers-tab := NavigationTab { x: 4px; y: 4px; width: 112px; height: 34px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
+        sites-tab := NavigationTab { x: 120px; y: 4px; width: 112px; height: 34px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
+        NavigationTab { x: 236px; y: 4px; width: 112px; height: 34px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
+        NavigationTab { x: 352px; y: 4px; width: 112px; height: 34px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
+        NavigationTab { x: 468px; y: 4px; width: 128px; height: 34px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
+        NavigationTab { x: 600px; y: 4px; width: 136px; height: 34px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
+        settings-tab := NavigationTab { x: 740px; y: 4px; width: 112px; height: 34px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.request-tab(2); } }
     }
 
-    if root.active-tab == 4: InventoryPanel {
+    if root.active-tab == 6 || root.active-tab == 7: TopologyPanel {
+        x: 28px; y: 122px; width: parent.width - 56px; height: parent.height - 146px;
+        business-mode: root.active-tab == 6; businesses: root.business-rows;
+        nodes: root.topology-nodes; node-choices: root.topology-node-choices; edges: root.topology-edges; choices: root.topology-choices;
+        business-choices: root.topology-business-choices; canvas-height: root.topology-height;
+        filter-index <=> root.topology-filter; hidden <=> root.business-hidden;
+        business-id <=> root.business-id; business-name <=> root.business-name; business-tags <=> root.business-tags; business-notes <=> root.business-notes;
+        source-index <=> root.topology-source; target-index <=> root.topology-target; relation-index <=> root.topology-relation;
+        link-notes <=> root.topology-notes; link-id <=> root.topology-link; status: root.topology-status;
+        refresh => { root.topology-refresh(); } select-business(id) => { root.business-select(id); }
+        save-business => { root.business-save(); } hide-business => { root.business-hide(); }
+        open-resource(kind,id) => { root.topology-open(kind,id); }
+        save-link => { root.topology-save-link(); } select-link(id) => { root.topology-select-link(id); } remove-link => { root.topology-remove-link(); }
+        new-resource(tab) => { root.request-tab(tab); }
+    }
+
+    if root.active-tab == 4 || root.active-tab == 5: InventoryPanel {
         x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px;
+        editor-open <=> root.inventory-editor-requested;
+        show-map => { root.request-tab(7); }
         form <=> root.inventory-form; rows: root.inventory-rows; hosts <=> root.inventory-hosts;
         relations: root.inventory-relations; target-labels: root.inventory-target-labels;
         target-index <=> root.inventory-target-index; relation-kind <=> root.inventory-relation-kind;
@@ -665,89 +753,124 @@ export component AppWindow inherits Window {
         remove-relation(id) => { root.inventory-relation-remove(id); }
         verify => { root.inventory-verify(); }
         export => { root.inventory-export(); }
+        connect => { root.inventory-connect(); }
+        open-host(id) => { root.open-server-inventory(id); }
     }
 
     if root.active-tab == 0: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 412px; height: parent.height - 162px; background: transparent;
-        Text { x: 0; y: 0; text: root.show-hidden ? "Hidden servers" : root.active-tag == "" ? "Servers" : "Servers tagged " + root.active-tag; color: #183c32; font-size: root.large-font-size; font-weight: 750; }
-        Text { x: 0; y: 34px; text: "INDEX / INFRASTRUCTURE"; color: #5f7065; font-size: root.tiny-font-size; font-weight: 700; letter-spacing: 1px; }
+        x: 28px; y: 138px; width: parent.width - (root.server-editor-open ? 496px : 56px); height: parent.height - 162px; background: transparent;
+        Text { x: 0; y: 0; text: root.show-hidden ? "Hidden servers" : root.active-tag == "" ? "Servers" : "Servers tagged " + root.active-tag; color: UiColors.text; font-size: root.large-font-size; font-weight: 750; }
+        Button { x: 0; y: 40px; width: 126px; height: 32px; compact: true; primary: true; text: "New server"; clicked => { root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; root.server-editor-open = true; } }
+        Button { x: 134px; y: 40px; width: 160px; height: 32px; compact: true; quiet: true; text: root.active-tag == "" ? "Filter tags" : root.active-tag; clicked => { server-tags-popup.show(); } }
+        server-tags-popup := PopupWindow {
+            x: 134px; y: 76px; width: 240px; height: min(360px, 52px + root.available-tags.length * 40px); close-policy: close-on-click-outside;
+            Rectangle { background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+                ScrollView { VerticalLayout { padding: 8px; spacing: 4px;
+                    Button { text: "All servers"; clicked => { root.tag-selected(""); server-tags-popup.close(); } }
+                    for tag in root.available-tags: Button { text: tag; clicked => { root.tag-selected(tag); server-tags-popup.close(); } }
+                } }
+            }
+        }
         Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: root.show-hidden ? "Back to active" : "Hidden (" + root.hidden-count + ")"; clicked => { root.show-hidden-changed(!root.show-hidden); } }
-        LineEdit { x: 0; y: 56px; width: parent.width; height: 38px; placeholder-text: "⌕  Search every field"; edited(value) => { root.search-changed(value); } }
+        HorizontalLayout {
+            x: 0; y: 82px; width: parent.width; height: 36px; spacing: 8px;
+            Button { compact: true; text: "Import servers"; clicked => { root.request-table-import(false); } }
+            Button { compact: true; quiet: true; text: "Fit columns"; clicked => { root.auto-fit-columns(); root.server-table-scroll-x = 0px; } }
+            CheckBox { text: "Auto-fit on open"; checked <=> root.fit-columns-on-open; toggled => { root.table-fit-changed(root.fit-columns-on-open, root.site-fit-columns-on-open); if self.checked { root.auto-fit-columns(); root.server-table-scroll-x = 0px; } } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        LineEdit { x: 0; y: 126px; width: parent.width; height: 32px; placeholder-text: "Search every field"; edited(value) => { root.search-changed(value); } }
         Rectangle {
-            x: 0; y: 108px; width: parent.width; height: parent.height - 108px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4;
+            x: 0; y: 162px; width: parent.width; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+            // Server headers stay above the scrolling rows.
+            Rectangle {
+                x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
+                TableHeader { x: -root.server-table-scroll-x; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } resize(index, value) => { root.column-width-changed(index, value); } }
+            }
             server-table-scroll := ScrollView {
-                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
                 content-x <=> root.server-table-scroll-x;
                 VerticalLayout {
                     width: root.table-width; spacing: 0px;
-                    TableHeader { custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } resize(index, value) => { root.column-width-changed(index, value); } }
                     for server in root.servers: ServerTableRow {
                         item: server; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; cell-font-size: root.small-font-size; hover-font-size: root.hover-font-size; hidden: root.show-hidden; show-tooltips: root.show-cell-tooltips; row-height: root.table-row-height;
-                        edit => { root.editing-id = server.id; root.editing-name = server.name; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.editing-environment = server.environment; root.editing-status = server.status; root.editing-purpose = server.purpose; root.editing-tags = server.tags; root.status-message = ""; }
+                        edit => { root.server-editor-open = true; root.editing-id = server.id; root.editing-name = server.name; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.editing-environment = server.environment; root.editing-status = server.status; root.editing-purpose = server.purpose; root.editing-tags = server.tags; root.status-message = ""; }
                         hide => { root.hide-target-id = server.id; }
                         restore => { root.restore-server(server.id); }
                         copy(value, label) => { root.copy-value(value, label); }
                         edit-cell(id, column, value) => { root.edit-cell(id, column, value); }
+                        ports => { root.status-message = ""; }
+                        open-endpoint(protocol, address) => { root.open-endpoint(protocol, address); }
                     }
                 }
             }
-            if root.server-count == 0: Text { x: 40px; y: 94px; width: parent.width - 80px; text: root.show-hidden ? "No hidden servers." : !root.has-server-records ? "No servers yet. Add one in the panel on the right, or import an Excel/CSV table." : "No servers match the current filters."; color: #66716c; font-size: root.small-font-size; horizontal-alignment: center; wrap: word-wrap; }
+            if root.server-count == 0: Text { x: 40px; y: 130px; width: parent.width - 80px; text: root.show-hidden ? "No hidden servers." : !root.has-server-records ? "No servers yet. Choose New server or import an Excel/CSV table." : "No servers match the current filters."; color: UiColors.muted; font-size: root.small-font-size; horizontal-alignment: center; wrap: word-wrap; }
         }
     }
 
-    if root.active-tab == 0: Rectangle {
-        x: parent.width - 356px; y: 138px; width: 328px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
-        Rectangle {
-            x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
-            clip: true;
-            Rectangle {
-                width: 326px; height: parent.height;
-                PanelTitle { x: 18px; y: 16px; text: root.editing-id == 0 ? "Add server" : "Edit server"; token-size: root.panel-title-font-size; }
-                if root.editing-id != 0: Button { x: 224px; y: 10px; width: 84px; height: 30px; text: "New"; clicked => { root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; } }
-                FieldLabel { x: 18px; y: 58px; text: "NAME *"; token-size: root.caption-font-size; }
-                LineEdit { x: 18px; y: 76px; width: 292px; height: 34px; placeholder-text: "api-gateway-01"; text <=> root.editing-name; }
-                FieldLabel { x: 18px; y: 120px; text: "IP ADDRESS / PORTS"; token-size: root.caption-font-size; }
-                server-ip-edit := LineEdit { x: 18px; y: 138px; width: 172px; height: 34px; placeholder-text: "203.0.113.10"; text <=> root.editing-ip-address; }
-                server-ports-edit := LineEdit { x: 202px; y: 138px; width: 108px; height: 34px; placeholder-text: "22, 443"; text <=> root.editing-ports; }
-                FieldLabel { x: 18px; y: 182px; text: "ENVIRONMENT / STATUS"; token-size: root.caption-font-size; }
-                ComboBox { x: 18px; y: 200px; width: 140px; height: 34px; model: root.environment-options; current-value <=> root.editing-environment; }
-                ComboBox { x: 170px; y: 200px; width: 140px; height: 34px; model: root.status-options; current-value <=> root.editing-status; }
-                FieldLabel { x: 18px; y: 244px; text: "PURPOSE"; token-size: root.caption-font-size; }
-                LineEdit { x: 18px; y: 262px; width: 292px; height: 34px; placeholder-text: "Public API gateway"; text <=> root.editing-purpose; }
-                FieldLabel { x: 18px; y: 306px; text: "TAGS"; token-size: root.caption-font-size; }
-                server-tags-edit := LineEdit { x: 18px; y: 324px; width: 292px; height: 34px; placeholder-text: "api, customer-facing"; text <=> root.editing-tags; }
-                HelperText { x: 18px; y: 366px; width: 292px; text: "Name, IP, ports, environment, and status are required."; token-size: root.body-font-size; }
-                Button { x: 18px; y: 410px; width: 292px; height: 36px; text: root.editing-id == 0 ? "Add server" : "Save changes"; primary: true; clicked => { root.save-server(root.editing-id, root.editing-name, root.editing-ip-address, root.editing-ports, root.editing-environment, root.editing-status, root.editing-purpose, root.editing-tags); } }
-                if root.status-message != "": Text { x: 18px; y: 454px; width: 292px; text: (root.status-is-error ? "Save failed · " : "Saved · ") + root.status-message; color: root.status-is-error ? #a33a32 : #16715e; font-size: root.body-font-size; font-weight: 650; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
-                if root.editing-id != 0: Button { x: 128px; y: 10px; width: 90px; height: 30px; text: "Services"; clicked => { root.open-server-inventory(root.editing-id); } }
-                Rectangle { x: 18px; y: 494px; width: 292px; height: 1px; background: #e2e7e5; }
-                SectionLabel { x: 18px; y: 512px; text: "FILTER BY TAG"; token-size: root.caption-font-size; }
-                VerticalLayout {
-                    x: 18px; y: 536px; width: 292px; spacing: 3px;
-                    TagChoice { label: "All servers"; label-font-size: root.body-font-size; selected: root.active-tag == ""; chosen => { root.tag-selected(""); } }
-                    for tag in root.available-tags: TagChoice { label: tag; label-font-size: root.body-font-size; selected: root.active-tag == tag; chosen => { root.tag-selected(tag); } }
+    if root.active-tab == 0 && root.server-editor-open: Rectangle {
+        x: parent.width - 452px; y: 138px; width: 424px; height: parent.height - 162px;
+        background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+        ScrollView {
+            x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - root.server-control-height - 28px;
+            content-y <=> root.server-editor-scroll-y;
+            VerticalLayout {
+                padding: 18px; spacing: 10px;
+                HorizontalLayout {
+                    PanelTitle { text: root.editing-id == 0 ? "Add server" : "Edit server"; token-size: root.panel-title-font-size; }
+                    Button { compact: true; quiet: true; text: "Close"; clicked => { root.server-editor-open = false; } }
                 }
+                if root.editing-id != 0: HorizontalLayout {
+                    spacing: 8px;
+                    Button { text: "Services"; clicked => { root.open-server-inventory(root.editing-id); } }
+                    Button { text: "New"; clicked => { root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; } }
+                }
+                FieldLabel { text: "NAME *"; token-size: root.caption-font-size; }
+                LineEdit { accessible-label: "Server name"; min-height: root.server-control-height; placeholder-text: "api-gateway-01"; text <=> root.editing-name; }
+                FieldLabel { text: "IP ADDRESS *"; token-size: root.caption-font-size; }
+                server-ip-edit := LineEdit { accessible-label: "Server IP address"; min-height: root.server-control-height; placeholder-text: "203.0.113.10"; text <=> root.editing-ip-address; }
+                FieldLabel { text: "ENVIRONMENT *"; token-size: root.caption-font-size; }
+                ComboBox { accessible-label: "Server environment"; min-height: root.server-control-height; model: root.environment-options; current-value <=> root.editing-environment; }
+                FieldLabel { text: "STATUS *"; token-size: root.caption-font-size; }
+                ComboBox { accessible-label: "Server status"; min-height: root.server-control-height; model: root.status-options; current-value <=> root.editing-status; }
+                FieldLabel { text: "PURPOSE"; token-size: root.caption-font-size; }
+                LineEdit { accessible-label: "Server purpose"; min-height: root.server-control-height; placeholder-text: "Public API gateway"; text <=> root.editing-purpose; }
+                FieldLabel { text: "TAGS"; token-size: root.caption-font-size; }
+                server-tags-edit := LineEdit { accessible-label: "Server tags"; min-height: root.server-control-height; placeholder-text: "api, customer-facing"; text <=> root.editing-tags; }
+                HelperText { text: root.editing-id == 0 ? "A pending SSH service on port 22 will be created in Services. Review it there before confirming." : "Manage ports, versions and access accounts in Services."; token-size: root.body-font-size; }
+                if root.status-message != "": Text { text: root.status-message; color: root.status-is-error ? UiColors.error : UiColors.success; font-size: root.body-font-size; font-weight: 650; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
             }
         }
+        Button { x: parent.width - self.width - 18px; y: parent.height - root.server-control-height - 14px; width: 160px; height: root.server-control-height; text: root.editing-id == 0 ? "Add server" : "Save changes"; primary: true; clicked => { root.save-server(root.editing-id, root.editing-name, root.editing-ip-address, root.editing-ports, root.editing-environment, root.editing-status, root.editing-purpose, root.editing-tags); } }
     }
 
     if root.active-tab == 1: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 412px; height: parent.height - 162px; background: transparent;
+        x: 28px; y: 138px; width: parent.width - (root.site-editor-open ? 412px : 56px); height: parent.height - 162px; background: transparent;
         PageHeader { x: 0; y: 0; text: root.show-hidden-sites ? "Hidden sites" : "Sites"; token-size: root.page-title-font-size; }
-        SectionLabel { x: 0; y: 34px; text: "WEB PRESENCE / ENVIRONMENT / PURPOSE"; token-size: root.caption-font-size; }
+        Button { x: parent.width - 254px; y: -4px; width: 112px; height: 32px; primary: true; text: "New site"; clicked => { root.editing-site-id = 0; root.editing-site-name = ""; root.editing-site-url = ""; root.editing-site-environment = root.environment-options[0]; root.editing-site-status = root.status-options[0]; root.editing-site-purpose = ""; root.editing-site-tags = ""; root.status-message = ""; root.site-editor-open = true; } }
         Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: root.show-hidden-sites ? "Back to active" : "Hidden (" + root.hidden-site-count + ")"; clicked => { root.show-hidden-sites-changed(!root.show-hidden-sites); } }
-        LineEdit { x: 0; y: 56px; width: parent.width; height: 38px; placeholder-text: "⌕  Search every field"; text <=> root.site-query; edited(value) => { root.site-search-changed(value); } }
+        HorizontalLayout {
+            x: 0; y: 62px; width: parent.width; height: 36px; spacing: 12px;
+            Button { compact: true; text: "Import sites"; clicked => { root.request-table-import(true); } }
+            Button { compact: true; quiet: true; text: "Fit columns"; clicked => { root.auto-fit-site-columns(); root.site-table-scroll-x = 0px; } }
+            CheckBox { text: "Auto-fit on open"; checked <=> root.site-fit-columns-on-open; toggled => { root.table-fit-changed(root.fit-columns-on-open, root.site-fit-columns-on-open); if self.checked { root.auto-fit-site-columns(); root.site-table-scroll-x = 0px; } } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        LineEdit { x: 0; y: 110px; width: parent.width; height: 38px; placeholder-text: "⌕  Search every field"; text <=> root.site-query; edited(value) => { root.site-search-changed(value); } }
         Rectangle {
-            x: 0; y: 108px; width: parent.width; height: parent.height - 108px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4;
+            x: 0; y: 162px; width: parent.width; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+            Rectangle {
+                x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
+                SiteTableHeader { x: -root.site-table-scroll-x; column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } resize(index, value) => { root.site-column-width-changed(index, value); } }
+            }
             ScrollView {
-                x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
+                x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
                 content-x <=> root.site-table-scroll-x;
                 VerticalLayout {
                     width: root.site-table-width; spacing: 0px;
-                    SiteTableHeader { column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } resize(index, value) => { root.site-column-width-changed(index, value); } }
                     for site in root.sites: SiteTableRow {
                         item: site; column-widths: root.site-column-widths; table-width: root.site-table-width; cell-font-size: root.small-font-size; hidden: root.show-hidden-sites; show-tooltips: root.show-cell-tooltips; row-height: root.table-row-height;
-                        edit => { root.editing-site-id = site.id; root.editing-site-name = site.name; root.editing-site-url = site.url; root.editing-site-environment = site.environment; root.editing-site-status = site.status; root.editing-site-purpose = site.purpose; root.editing-site-tags = site.tags; root.status-message = ""; }
+                        edit => { root.site-editor-open = true; root.editing-site-id = site.id; root.editing-site-name = site.name; root.editing-site-url = site.url; root.editing-site-environment = site.environment; root.editing-site-status = site.status; root.editing-site-purpose = site.purpose; root.editing-site-tags = site.tags; root.status-message = ""; }
                         hide => { root.hide-site-target-id = site.id; }
                         restore => { root.restore-site(site.id); }
                         copy(value, label) => { root.copy-value(value, label); }
@@ -755,57 +878,64 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            if root.site-count == 0: Text { x: 40px; y: 94px; width: parent.width - 80px; text: root.show-hidden-sites ? "No hidden sites." : "No sites yet. Add one in the panel on the right, or import an Excel/CSV table."; color: #66716c; font-size: root.small-font-size; horizontal-alignment: center; wrap: word-wrap; }
+            if root.site-count == 0: Text { x: 40px; y: 94px; width: parent.width - 80px; text: root.show-hidden-sites ? "No hidden sites." : "No sites yet. Add one in the panel on the right, or import an Excel/CSV table."; color: UiColors.muted; font-size: root.small-font-size; horizontal-alignment: center; wrap: word-wrap; }
         }
     }
 
-    if root.active-tab == 1: Rectangle {
-        x: parent.width - 356px; y: 138px; width: 328px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
-        PanelTitle { x: 18px; y: 16px; text: root.editing-site-id == 0 ? "Add site" : "Edit site"; token-size: root.panel-title-font-size; }
-        if root.editing-site-id != 0: Button { x: 224px; y: 10px; width: 84px; height: 30px; text: "New"; clicked => { root.editing-site-id = 0; root.editing-site-name = ""; root.editing-site-url = ""; root.editing-site-environment = root.environment-options[0]; root.editing-site-status = root.status-options[0]; root.editing-site-purpose = ""; root.editing-site-tags = ""; root.status-message = ""; } }
-        FieldLabel { x: 18px; y: 58px; text: "NAME *"; token-size: root.caption-font-size; }
-        LineEdit { x: 18px; y: 76px; width: 292px; height: 34px; placeholder-text: "Customer portal"; text <=> root.editing-site-name; }
-        FieldLabel { x: 18px; y: 120px; text: "URL *"; token-size: root.caption-font-size; }
-        LineEdit { x: 18px; y: 138px; width: 292px; height: 34px; placeholder-text: "https://example.com"; text <=> root.editing-site-url; }
-        FieldLabel { x: 18px; y: 182px; text: "ENVIRONMENT / STATUS"; token-size: root.caption-font-size; }
-        ComboBox { x: 18px; y: 200px; width: 140px; height: 34px; model: root.environment-options; current-value <=> root.editing-site-environment; }
-        ComboBox { x: 170px; y: 200px; width: 140px; height: 34px; model: root.status-options; current-value <=> root.editing-site-status; }
-        FieldLabel { x: 18px; y: 244px; text: "PURPOSE"; token-size: root.caption-font-size; }
-        LineEdit { x: 18px; y: 262px; width: 292px; height: 34px; placeholder-text: "What this site is for"; text <=> root.editing-site-purpose; }
-        FieldLabel { x: 18px; y: 306px; text: "TAGS"; token-size: root.caption-font-size; }
-        LineEdit { x: 18px; y: 324px; width: 292px; height: 34px; placeholder-text: "customer-facing, billing"; text <=> root.editing-site-tags; }
-        HelperText { x: 18px; y: 366px; width: 292px; text: "Name and URL are required. Separate tags with commas."; token-size: root.body-font-size; }
-        Button { x: 18px; y: 410px; width: 292px; height: 36px; text: root.editing-site-id == 0 ? "Add site" : "Save changes"; primary: true; clicked => { root.save-site(root.editing-site-id, root.editing-site-name, root.editing-site-url, root.editing-site-environment, root.editing-site-status, root.editing-site-purpose, root.editing-site-tags); } }
-        if root.status-message != "": Text { x: 18px; y: 458px; width: 292px; text: (root.status-is-error ? "Save failed · " : "Saved · ") + root.status-message; color: root.status-is-error ? #a33a32 : #16715e; font-size: root.body-font-size; font-weight: 650; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+    if root.active-tab == 1 && root.site-editor-open: Rectangle {
+        x: parent.width - 356px; y: 138px; width: 328px; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+        ScrollView {
+            x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - root.server-control-height - 28px;
+            VerticalLayout { padding: 18px; spacing: 10px;
+                HorizontalLayout {
+                    PanelTitle { text: root.editing-site-id == 0 ? "Add site" : "Edit site"; token-size: root.panel-title-font-size; }
+                    Button { compact: true; quiet: true; text: "Close"; clicked => { root.site-editor-open = false; } }
+                }
+                FieldLabel { text: "Name *"; token-size: root.caption-font-size; }
+                LineEdit { accessible-label: "Site name"; min-height: root.server-control-height; placeholder-text: "Customer portal"; text <=> root.editing-site-name; }
+                FieldLabel { text: "URL *"; token-size: root.caption-font-size; }
+                LineEdit { accessible-label: "Site URL"; min-height: root.server-control-height; placeholder-text: "https://example.com"; text <=> root.editing-site-url; }
+                FieldLabel { text: "Environment"; token-size: root.caption-font-size; }
+                ComboBox { min-height: root.server-control-height; model: root.environment-options; current-value <=> root.editing-site-environment; }
+                FieldLabel { text: "Status"; token-size: root.caption-font-size; }
+                ComboBox { min-height: root.server-control-height; model: root.status-options; current-value <=> root.editing-site-status; }
+                FieldLabel { text: "Purpose"; token-size: root.caption-font-size; }
+                LineEdit { min-height: root.server-control-height; placeholder-text: "What this site is for"; text <=> root.editing-site-purpose; }
+                FieldLabel { text: "Tags"; token-size: root.caption-font-size; }
+                LineEdit { min-height: root.server-control-height; placeholder-text: "customer-facing, billing"; text <=> root.editing-site-tags; }
+                if root.status-message != "": Text { text: root.status-message; color: root.status-is-error ? UiColors.error : UiColors.success; font-size: root.body-font-size; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+            }
+        }
+        Button { x: parent.width - 178px; y: parent.height - root.server-control-height - 14px; width: 160px; height: root.server-control-height; text: root.editing-site-id == 0 ? "Add site" : "Save changes"; primary: true; clicked => { root.save-site(root.editing-site-id, root.editing-site-name, root.editing-site-url, root.editing-site-environment, root.editing-site-status, root.editing-site-purpose, root.editing-site-tags); } }
     }
 
     if root.active-tab == 2: Rectangle {
         x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: transparent;
         PageHeader { x: 0; y: 0; text: "Settings"; token-size: root.page-title-font-size; }
-        SectionLabel { x: 0; y: 34px; text: "DISPLAY / CUSTOM FIELDS / BACKUPS"; token-size: root.caption-font-size; }
+        SectionLabel { x: 0; y: 40px; text: "DISPLAY / CUSTOM FIELDS / BACKUPS"; token-size: root.caption-font-size; }
         ScrollView {
-            x: 0; y: 64px; width: parent.width; height: parent.height - 134px;
-            content-width: self.width; content-height: 1004px;
+            x: 0; y: 74px; width: parent.width; height: parent.height - 144px;
+            content-width: self.width; content-height: 920px + (UiColors.body-size - 11px) * 10;
             Rectangle {
-                x: 0; y: 0; width: parent.width; height: 1004px; background: transparent;
-                Rectangle { x: 0; y: 0; width: parent.width; height: 480px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+                x: 0; y: 0; width: parent.width; height: 920px + (UiColors.body-size - 11px) * 10; background: transparent;
+                Rectangle { x: 0; y: 0; width: parent.width; height: 396px + (UiColors.body-size - 11px) * 10; background: UiColors.surface;
                     VerticalLayout {
                         padding: 20px; spacing: 12px;
-                        PanelTitle { text: "Appearance"; token-size: root.panel-title-font-size; }
-                        Text { text: "Choose an option and see it here immediately. You can also open Appearance from any tab."; color: UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; }
+                        PanelTitle { height: root.panel-title-font-size + 10px; text: "Appearance"; token-size: root.panel-title-font-size; }
+                        Text { height: UiColors.body-size * 2 + 12px; text: "Choose an option and see it here immediately. You can also open Appearance from any tab."; color: UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; }
                         AppearanceControls {
-                            height: 300px;
+                            height: 220px + (UiColors.body-size - 11px) * 10;
                             theme-index <=> root.theme-index; font-size-step <=> root.font-size-step; table-density <=> root.table-density;
                             edited => { root.appearance-dirty = true; root.appearance-status = ""; root.appearance-error = false; }
                         }
                         HorizontalLayout {
+                            height: 36px;
                             spacing: 24px;
                             CheckBox { height: 32px; text: "Show full cell text on hover"; checked <=> root.show-cell-tooltips; }
-                            CheckBox { height: 32px; text: "Fit columns when opening a table"; checked <=> root.fit-columns-on-open; }
                         }
                     }
                 }
-                Rectangle { x: 0; y: 496px; width: (parent.width - 16px) / 2; height: 224px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+                Rectangle { x: 0; y: 412px + (UiColors.body-size - 11px) * 10; width: (parent.width - 16px) / 2; height: 224px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
                     PanelTitle { x: 20px; y: 16px; text: "Managed choices"; token-size: root.panel-title-font-size; }
                     HelperText { x: 20px; y: 48px; width: parent.width - 40px; text: "Environment and Status stay consistent in editors and imports. Tags remain flexible suggestions."; token-size: root.body-font-size; }
                     LineEdit { x: 20px; y: 86px; width: parent.width - 146px; height: 34px; placeholder-text: "New environment"; accessible-label: "New environment"; text <=> root.settings-option-input; }
@@ -815,47 +945,47 @@ export component AppWindow inherits Window {
                     LineEdit { x: 20px; y: 172px; width: parent.width - 146px; height: 34px; placeholder-text: "Suggested tag"; text <=> root.settings-tag-input; }
                     Button { x: parent.width - 116px; y: 172px; width: 96px; height: 34px; text: "Add tag"; clicked => { root.add-managed-tag(root.settings-tag-input); } }
                 }
-                Rectangle { x: (parent.width - 16px) / 2 + 16px; y: 496px; width: (parent.width - 16px) / 2; height: 224px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+                Rectangle { x: (parent.width - 16px) / 2 + 16px; y: 412px + (UiColors.body-size - 11px) * 10; width: (parent.width - 16px) / 2; height: 224px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
                     PanelTitle { x: 20px; y: 16px; text: "Server fields"; token-size: root.panel-title-font-size; }
                     HelperText { x: 20px; y: 48px; width: parent.width - 40px; text: root.custom-field-labels.length == 0 ? "Add a field only when a fact deserves its own sortable column." : root.custom-field-labels.length + " active custom fields. Existing values stay available when fields are hidden."; token-size: root.body-font-size; }
                     LineEdit { x: 20px; y: 104px; width: parent.width - 210px; height: 34px; placeholder-text: "Provider, Region, Owner…"; text <=> root.settings-field-input; }
                     field-type := ComboBox { x: parent.width - 180px; y: 104px; width: 160px; height: 34px; model: ["Text", "Number", "Date", "URL", "Boolean"]; current-index <=> root.settings-field-type; }
-                    Button { x: 20px; y: 152px; width: parent.width - 40px; height: 36px; text: "Add custom field"; clicked => { root.add-custom-field(root.settings-field-input, root.settings-field-type); } }
+                    Button { x: 20px; y: 152px; width: 184px; height: 36px; text: "Add custom field"; clicked => { root.add-custom-field(root.settings-field-input, root.settings-field-type); } }
                 }
-                Rectangle { x: 0; y: 736px; width: parent.width; height: 206px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+                Rectangle { x: 0; y: 652px + (UiColors.body-size - 11px) * 10; width: parent.width; height: 206px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
                     PanelTitle { x: 20px; y: 16px; text: "Import, backup, and demo"; token-size: root.panel-title-font-size; }
                     FieldLabel { x: 20px; y: 58px; text: "DUPLICATE IMPORTS"; token-size: root.caption-font-size; }
                     duplicate-box := ComboBox { x: 20px; y: 78px; width: 200px; height: 34px; model: ["Create new", "Skip existing", "Update existing"]; current-index <=> root.import-duplicate-policy; }
                     FieldLabel { x: 244px; y: 58px; text: "BACKUPS TO KEEP"; token-size: root.caption-font-size; }
                     retention-box := ComboBox { x: 244px; y: 78px; width: 140px; height: 34px; model: ["1", "3", "7", "14", "30"]; current-index: root.backup-retention == 1 ? 0 : root.backup-retention == 3 ? 1 : root.backup-retention == 7 ? 2 : root.backup-retention == 14 ? 3 : 4; selected(value) => { root.backup-retention = retention-box.current-index == 0 ? 1 : retention-box.current-index == 1 ? 3 : retention-box.current-index == 2 ? 7 : retention-box.current-index == 3 ? 14 : 30; } }
                     Button { x: 408px; y: 78px; width: 174px; height: 34px; text: "Create backup now"; enabled: !root.demo-mode; clicked => { root.create-managed-backup(); } }
-                    Rectangle { x: 20px; y: 132px; width: parent.width - 40px; height: 1px; background: #e2e7e5; }
-                    Text { x: 20px; y: 148px; width: 480px; text: root.demo-mode ? "You are editing fictional local demo data. Your real workspace is untouched." : "Try a complete fictional workspace without changing your records."; color: root.demo-mode ? #8a571d : #52645b; font-size: root.body-font-size; }
+                    Rectangle { x: 20px; y: 132px; width: parent.width - 40px; height: 1px; background: UiColors.raised; }
+                    Text { x: 20px; y: 148px; width: 480px; text: root.demo-mode ? "You are editing fictional local demo data. Your real workspace is untouched." : "Try a complete fictional workspace without changing your records."; color: root.demo-mode ? UiColors.warning : UiColors.muted; font-size: root.body-font-size; }
                     if !root.demo-mode: Button { x: parent.width - 180px; y: 146px; width: 160px; height: 36px; text: "Open demo"; clicked => { root.enter-demo(); } }
                     if root.demo-mode: Button { x: parent.width - 350px; y: 146px; width: 160px; height: 36px; text: "Reset demo"; clicked => { root.reset-demo(); } }
                     if root.demo-mode: Button { x: parent.width - 180px; y: 146px; width: 160px; height: 36px; text: "Exit demo"; clicked => { root.exit-demo(); } }
                 }
             }
         }
-        Rectangle { x: 0; y: parent.height - 64px; width: parent.width; height: 64px; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
-            Text { x: 16px; y: 10px; width: parent.width - 220px; height: 44px; text: root.status-is-error && root.status-message != "" ? root.status-message : root.appearance-dirty ? "Preview only · save settings to keep your choices." : root.status-message != "" ? root.status-message : "Appearance, import and backup preferences are saved together."; color: root.status-is-error ? #a33a32 : #52645b; font-size: root.body-font-size; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+        Rectangle { x: 0; y: parent.height - 64px; width: parent.width; height: 64px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+            Text { x: 16px; y: 10px; width: parent.width - 220px; height: 44px; text: root.status-is-error && root.status-message != "" ? root.status-message : root.appearance-dirty ? "Preview only · save settings to keep your choices." : root.status-message != "" ? root.status-message : "Appearance, import and backup preferences are saved together."; color: root.status-is-error ? UiColors.error : UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
             Button { x: parent.width - 184px; y: 12px; width: 168px; height: 40px; text: "Save settings"; primary: true; clicked => { root.save-settings(); } }
         }
     }
 
     if root.active-tab == 10: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
         PageHeader { x: 24px; y: 22px; text: "Projects"; token-size: root.page-title-font-size; }
         SectionLabel { x: 24px; y: 58px; text: "START@  ·  DESC  ·  PRIORITY  ·  LAUNCH@"; token-size: root.caption-font-size; }
         Rectangle {
-            x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: #e7ede5;
+            x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: UiColors.raised;
             FieldLabel { x: 12px; width: 170px; height: parent.height; text: "PROJECT"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 182px; width: 260px; height: parent.height; text: "DESC"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 442px; width: 120px; height: parent.height; text: "START@"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 562px; width: 120px; height: parent.height; text: "PRIORITY"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 682px; width: 140px; height: parent.height; text: "LAUNCH@"; token-size: root.caption-font-size; vertical-alignment: center; }
         }
-        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for project in root.projects: Rectangle { height: 56px; background: UiColors.surface; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; } Text { x: 12px; width: 170px; height: parent.height; text: project.name; color: #25342d; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 182px; width: 260px; height: parent.height; text: project.description; color: #56685e; font-size: root.body-font-size; vertical-alignment: center; overflow: elide; } Text { x: 442px; width: 120px; height: parent.height; text: project.start-at; color: #25342d; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 562px; width: 120px; height: parent.height; text: project.priority; color: project.priority == "P0" ? #a83636 : project.priority == "P1" ? #9a5d17 : project.priority == "P2" ? #1f5d99 : #126a57; font-size: root.body-font-size; font-weight: 700; vertical-alignment: center; } Text { x: 682px; width: 140px; height: parent.height; text: project.launch-at; color: #25342d; font-size: root.body-font-size; vertical-alignment: center; } } }
+        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for project in root.projects: Rectangle { height: 56px; background: UiColors.surface; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; } Text { x: 12px; width: 170px; height: parent.height; text: project.name; color: UiColors.text; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 182px; width: 260px; height: parent.height; text: project.description; color: UiColors.muted; font-size: root.body-font-size; vertical-alignment: center; overflow: elide; } Text { x: 442px; width: 120px; height: parent.height; text: project.start-at; color: UiColors.text; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 562px; width: 120px; height: parent.height; text: project.priority; color: project.priority == "P0" ? UiColors.error : project.priority == "P1" ? UiColors.warning : project.priority == "P2" ? #1f5d99 : UiColors.success; font-size: root.body-font-size; font-weight: 700; vertical-alignment: center; } Text { x: 682px; width: 140px; height: parent.height; text: project.launch-at; color: UiColors.text; font-size: root.body-font-size; vertical-alignment: center; } } }
         FieldLabel { x: 24px; y: parent.height - 76px; text: "Priority values"; token-size: root.body-font-size; }
         priority-box := ComboBox { x: 120px; y: parent.height - 84px; width: 110px; height: 32px; model: root.priority-options; current-index: root.priority-index; selected(value) => { root.priority-index = priority-box.current-index; } }
         LineEdit { x: 242px; y: parent.height - 84px; width: 180px; height: 32px; placeholder-text: "Add custom priority"; text <=> root.priority-input; }
@@ -865,16 +995,16 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 11: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px;
+        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
         PageHeader { x: 24px; y: 22px; text: "Operations"; token-size: root.page-title-font-size; }
         SectionLabel { x: 24px; y: 58px; text: "PUBLISH@  ·  MEDIA  ·  CHANNEL"; token-size: root.caption-font-size; }
         Rectangle {
-            x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: #e7ede5;
+            x: 24px; y: 88px; width: parent.width - 48px; height: 34px; background: UiColors.raised;
             FieldLabel { x: 12px; width: 250px; height: parent.height; text: "PUBLISH@"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 262px; width: 180px; height: parent.height; text: "MEDIA"; token-size: root.caption-font-size; vertical-alignment: center; }
             FieldLabel { x: 442px; width: 320px; height: parent.height; text: "CHANNEL"; token-size: root.caption-font-size; vertical-alignment: center; }
         }
-        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for operation in root.operations: Rectangle { height: 56px; background: UiColors.surface; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #e1e7df; } Text { x: 12px; width: 250px; height: parent.height; text: operation.publish-at; color: #25342d; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 262px; width: 180px; height: parent.height; text: operation.media; color: #25342d; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 442px; width: 320px; height: parent.height; text: operation.channel; color: #56685e; font-size: root.body-font-size; vertical-alignment: center; } } }
+        VerticalLayout { x: 24px; y: 122px; width: parent.width - 48px; spacing: 0px; for operation in root.operations: Rectangle { height: 56px; background: UiColors.surface; Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; } Text { x: 12px; width: 250px; height: parent.height; text: operation.publish-at; color: UiColors.text; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 262px; width: 180px; height: parent.height; text: operation.media; color: UiColors.text; font-size: root.body-font-size; vertical-alignment: center; } Text { x: 442px; width: 320px; height: parent.height; text: operation.channel; color: UiColors.muted; font-size: root.body-font-size; vertical-alignment: center; } } }
         FieldLabel { x: 24px; y: parent.height - 76px; text: "Media values"; token-size: root.body-font-size; }
         media-box := ComboBox { x: 120px; y: parent.height - 84px; width: 130px; height: 32px; model: root.media-options; current-index: root.media-index; selected(value) => { root.media-index = media-box.current-index; } }
         LineEdit { x: 262px; y: parent.height - 84px; width: 180px; height: 32px; placeholder-text: "Add custom media"; text <=> root.media-input; }
@@ -902,10 +1032,10 @@ export component AppWindow inherits Window {
             running: root.work-view-reset-pending;
             triggered => { servers-tab.focus(); work-page-scroll.content-y = 0px; root.work-page-scroll-y = 0px; root.work-view-reset-pending = false; }
         }
-        Rectangle { x: 0; y: 0; width: parent.width * 0.46; height: parent.height; background: UiColors.surface; border-width: 1px; border-color: #d3ddd4; }
+        Rectangle { x: 0; y: 0; width: parent.width * 0.46; height: parent.height; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; }
         ScrollView { x: 1px; y: 52px; width: parent.width * 0.46 - 2px; height: parent.height - 53px; accessible-role: list; accessible-label: "Work items"; VerticalLayout { width: parent.width; spacing: 0px; for item in root.work-items: WorkListRow { item: item; title-font-size: root.body-font-size; metadata-font-size: root.caption-font-size; selected(id) => { root.work-selected(id); } quick-status(id, status) => { root.work-quick-status(id, status); } } } }
-        if root.work-items.length == 0: Text { x: 28px; y: 86px; width: parent.width * 0.38; text: root.work-list-query == "" && root.work-list-kind-filter == 0 && root.work-list-status-filter == 0 ? "No work yet. Create a change, task, or renewal to keep the next action visible." : "No work matches the current filters."; color: #66716c; font-size: root.small-font-size; wrap: word-wrap; }
-        Rectangle { x: parent.width * 0.46 + 18px; y: 0; width: parent.width * 0.54 - 18px; height: parent.height; background: #f8faf6; border-width: 1px; border-color: #d3ddd4; border-radius: 6px; }
+        if root.work-items.length == 0: Text { x: 28px; y: 86px; width: parent.width * 0.38; text: root.work-list-query == "" && root.work-list-kind-filter == 0 && root.work-list-status-filter == 0 ? "No work yet. Create a change, task, or renewal to keep the next action visible." : "No work matches the current filters."; color: UiColors.muted; font-size: root.small-font-size; wrap: word-wrap; }
+        Rectangle { x: parent.width * 0.46 + 18px; y: 0; width: parent.width * 0.54 - 18px; height: parent.height; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px; }
         PanelTitle { x: parent.width * 0.46 + 42px; y: 22px; text: root.selected-work-id == 0 ? "New work" : "Work details"; token-size: root.panel-title-font-size; }
         Button { x: parent.width - 132px; y: 14px; width: 100px; height: 30px; text: "Archive"; enabled: root.selected-work-id != 0; clicked => { root.archive-work(root.selected-work-id); } }
         Button { x: parent.width - 244px; y: 14px; width: 104px; height: 30px; text: "Checklist"; enabled: root.selected-work-id != 0; clicked => { root.checklist-dialog-open = true; } }
@@ -922,83 +1052,159 @@ export component AppWindow inherits Window {
         FieldLabel { x: parent.width * 0.46 + 42px; y: 262px; text: "NOTES"; token-size: root.caption-font-size; }
         LineEdit { x: parent.width * 0.46 + 42px; y: 280px; width: parent.width * 0.54 - 84px; height: 70px; placeholder-text: "What must be true when this work is done?"; text <=> root.work-notes; }
         Button { x: parent.width * 0.46 + 42px; y: 368px; width: 160px; height: 36px; text: root.selected-work-id == 0 ? "Create work" : "Save work"; clicked => { root.save-work(root.selected-work-id, root.work-title, root.work-kind, root.work-status, root.work-priority, root.work-owner, root.work-start-at, root.work-due-at, root.work-notes); } }
-        Text { x: parent.width * 0.46 + 220px; y: 378px; width: parent.width * 0.54 - 262px; text: "Scope: " + root.work-project-count + " projects · " + root.work-server-count + " servers · " + root.work-asset-count + " resources"; color: #176b59; font-size: root.tiny-font-size; wrap: word-wrap; }
+        Text { x: parent.width * 0.46 + 220px; y: 378px; width: parent.width * 0.54 - 262px; text: "Scope: " + root.work-project-count + " projects · " + root.work-server-count + " servers · " + root.work-asset-count + " resources"; color: UiColors.success; font-size: root.tiny-font-size; wrap: word-wrap; }
         FieldLabel { x: parent.width * 0.46 + 42px; y: 422px; text: "PROJECTS"; token-size: root.caption-font-size; }
         ScrollView { x: parent.width * 0.46 + 42px; y: 440px; width: (parent.width * 0.54 - 100px) / 2; height: 112px; VerticalLayout { spacing: 2px; for project in root.work-projects: ChoiceRow { height: 30px; label: project.name; selected: project.selected; label-font-size: root.caption-font-size; toggled => { root.work-project-toggled(project.id, !project.selected); } } } }
         FieldLabel { x: parent.width * 0.46 + 54px + (parent.width * 0.54 - 100px) / 2; y: 422px; text: "SERVERS"; token-size: root.caption-font-size; }
         ScrollView { x: parent.width * 0.46 + 54px + (parent.width * 0.54 - 100px) / 2; y: 440px; width: (parent.width * 0.54 - 100px) / 2; height: 112px; VerticalLayout { spacing: 2px; for server in root.work-servers: ChoiceRow { height: 30px; label: server.label; selected: server.selected; label-font-size: root.caption-font-size; toggled => { root.work-server-toggled(server.id, !server.selected); } } } }
         FieldLabel { x: parent.width * 0.46 + 42px; y: 562px; text: "RESOURCES"; token-size: root.caption-font-size; }
         ScrollView { x: parent.width * 0.46 + 42px; y: 580px; width: parent.width * 0.54 - 84px; height: 74px; HorizontalLayout { spacing: 4px; for asset in root.work-assets: ChoiceRow { width: 250px; height: 32px; label: (asset.selected ? asset.origin == "manual" ? "[Manual] " : "[Direct] " : "") + asset.label; selected: asset.selected; label-font-size: root.caption-font-size; toggled => { root.work-asset-toggled(asset.id, !asset.selected); } } } }
-        Text { x: parent.width * 0.46 + 42px; y: 612px; width: parent.width * 0.54 - 210px; text: root.work-health-message; color: root.work-health-has-warnings ? #a34f32 : #39705d; font-size: root.caption-font-size; font-weight: 700; overflow: elide; accessible-role: text; accessible-label: self.text; }
+        Text { x: parent.width * 0.46 + 42px; y: 612px; width: parent.width * 0.54 - 210px; text: root.work-health-message; color: root.work-health-has-warnings ? UiColors.error : UiColors.success; font-size: root.caption-font-size; font-weight: 700; overflow: elide; accessible-role: text; accessible-label: self.text; }
         if root.work-health-action > 0: Button { x: parent.width - 168px; y: 604px; width: 126px; height: 26px; text: root.work-health-action-label; clicked => { if root.work-health-action == 3 { owner-edit.focus(); } else if root.work-health-action == 4 { due-edit.focus(); } else { root.work-health-action-requested(root.work-health-action); } } }
-        Text { x: parent.width * 0.46 + 42px; y: 636px; width: parent.width - 560px; text: root.work-impact-total == 0 ? "No inferred neighbors" : root.work-impacts-capped ? "Showing " + root.work-impact-shown + " of " + root.work-impact-total + " potential impacts · " + root.work-impact-domains + " domains · " + root.work-impact-certificates + " certificates · " + root.work-impact-websites + " websites · " + root.work-impact-services + " services · " + root.work-impact-servers + " servers" : "Potential impact: " + root.work-impact-total + " · " + root.work-impact-domains + " domains · " + root.work-impact-certificates + " certificates · " + root.work-impact-websites + " websites · " + root.work-impact-services + " services · " + root.work-impact-servers + " servers"; color: root.work-impact-total == 0 ? #68736e : #80501d; font-size: root.caption-font-size; font-weight: 700; overflow: elide; }
+        Text { x: parent.width * 0.46 + 42px; y: 636px; width: parent.width - 560px; text: root.work-impact-total == 0 ? "No inferred neighbors" : root.work-impacts-capped ? "Showing " + root.work-impact-shown + " of " + root.work-impact-total + " potential impacts · " + root.work-impact-domains + " domains · " + root.work-impact-certificates + " certificates · " + root.work-impact-websites + " websites · " + root.work-impact-services + " services · " + root.work-impact-servers + " servers" : "Potential impact: " + root.work-impact-total + " · " + root.work-impact-domains + " domains · " + root.work-impact-certificates + " certificates · " + root.work-impact-websites + " websites · " + root.work-impact-services + " services · " + root.work-impact-servers + " servers"; color: root.work-impact-total == 0 ? UiColors.muted : UiColors.warning; font-size: root.caption-font-size; font-weight: 700; overflow: elide; }
         if root.work-impact-ignored > 0: Button { x: parent.width - 154px; y: 632px; width: 112px; height: 24px; text: "Reset ignored " + root.work-impact-ignored; clicked => { root.work-impact-exclusions-reset(); } }
-        SectionLabel { x: parent.width * 0.46 + 42px; y: 666px; text: root.work-impacts.length == 0 ? "No inferred neighbors" : root.work-impacts-capped ? "POTENTIAL IMPACT · SHOWING UP TO 50 · REVIEW BEFORE READY" : "POTENTIAL IMPACT · REVIEW BEFORE READY"; color: root.work-impacts.length == 0 ? #68736e : #80501d; token-size: root.caption-font-size; }
-        Button { x: parent.width - 286px; y: 660px; width: 112px; height: 26px; text: root.work-impact-depth == 1 ? "Depth 1" : "Depth 2"; clicked => { root.work-impact-depth = root.work-impact-depth == 1 ? 2 : 1; root.work-impact-depth-changed(root.work-impact-depth); } }
+        SectionLabel { x: parent.width * 0.46 + 42px; y: 666px; text: root.work-impacts.length == 0 ? "No inferred neighbors" : root.work-impacts-capped ? "POTENTIAL IMPACT · SHOWING UP TO 50 · REVIEW BEFORE READY" : "POTENTIAL IMPACT · REVIEW BEFORE READY"; color: root.work-impacts.length == 0 ? UiColors.muted : UiColors.warning; token-size: root.caption-font-size; }
+        Button { x: parent.width - 150px; y: 660px; width: 112px; height: 26px; text: root.work-impact-depth == 1 ? "Depth 1" : "Depth 2"; clicked => { root.work-impact-depth = root.work-impact-depth == 1 ? 2 : 1; root.work-impact-depth-changed(root.work-impact-depth); } }
         Button { x: parent.width - 410px; y: 660px; width: 112px; height: 26px; text: root.work-impact-filter-index == 0 ? "All types" : root.work-impact-filter-index == 1 ? "Domains" : root.work-impact-filter-index == 2 ? "Certificates" : root.work-impact-filter-index == 3 ? "Websites" : root.work-impact-filter-index == 4 ? "Services" : "Servers"; clicked => { root.work-impact-filter-index = root.work-impact-filter-index == 5 ? 0 : root.work-impact-filter-index + 1; root.work-impact-filter-changed(root.work-impact-filter-index); } }
         if root.work-impacts.length > 0: Button { x: parent.width - 154px; y: 660px; width: 112px; height: 26px; text: root.work-impacts-capped ? "Add shown" : "Add all"; clicked => { root.work-all-impacts-promoted(root.work-impact-depth, root.work-impact-filter-index); } }
-        ScrollView { x: parent.width * 0.46 + 42px; y: 684px; width: parent.width * 0.54 - 84px; height: 48px; HorizontalLayout { spacing: 2px; for impact in root.work-impacts: Rectangle { visible: root.work-impact-filter-index == 0 || (root.work-impact-filter-index == 1 && impact.category == "Domain") || (root.work-impact-filter-index == 2 && impact.category == "Certificate") || (root.work-impact-filter-index == 3 && impact.category == "Website") || (root.work-impact-filter-index == 4 && impact.category == "Service") || (root.work-impact-filter-index == 5 && impact.category == "Server"); width: 390px; height: 40px; background: #fff6e7; border-width: 1px; border-color: #e8c98e; Text { x: 8px; y: 2px; width: 72px; height: 18px; text: impact.category; color: #76501d; font-size: root.caption-font-size; font-weight: 700; overflow: elide; } Text { x: 82px; y: 2px; width: parent.width - 212px; height: 18px; text: impact.label; color: #6a4d22; font-size: root.caption-font-size; overflow: elide; } Text { x: 82px; y: 20px; width: parent.width - 212px; height: 16px; text: impact.reason; color: #78551f; font-size: root.caption-font-size; overflow: elide; } Button { x: parent.width - 122px; y: 6px; width: 54px; height: 28px; text: "Ignore"; clicked => { root.work-impact-excluded(impact.id); } } Button { x: parent.width - 62px; y: 6px; width: 54px; height: 28px; text: "Add"; clicked => { root.work-impact-promoted(impact.id); } } } } }
+        ScrollView { x: parent.width * 0.46 + 42px; y: 684px; width: parent.width * 0.54 - 84px; height: 48px; HorizontalLayout { spacing: 2px; for impact in root.work-impacts: Rectangle { visible: root.work-impact-filter-index == 0 || (root.work-impact-filter-index == 1 && impact.category == "Domain") || (root.work-impact-filter-index == 2 && impact.category == "Certificate") || (root.work-impact-filter-index == 3 && impact.category == "Website") || (root.work-impact-filter-index == 4 && impact.category == "Service") || (root.work-impact-filter-index == 5 && impact.category == "Server"); width: 390px; height: 40px; background: UiColors.warning-surface; border-width: 1px; border-color: UiColors.warning-surface; Text { x: 8px; y: 2px; width: 72px; height: 18px; text: impact.category; color: UiColors.warning; font-size: root.caption-font-size; font-weight: 700; overflow: elide; } Text { x: 82px; y: 2px; width: parent.width - 212px; height: 18px; text: impact.label; color: UiColors.warning; font-size: root.caption-font-size; overflow: elide; } Text { x: 82px; y: 20px; width: parent.width - 212px; height: 16px; text: impact.reason; color: UiColors.warning; font-size: root.caption-font-size; overflow: elide; } Button { x: parent.width - 122px; y: 6px; width: 54px; height: 28px; text: "Ignore"; clicked => { root.work-impact-excluded(impact.id); } } Button { x: parent.width - 62px; y: 6px; width: 54px; height: 28px; text: "Add"; clicked => { root.work-impact-promoted(impact.id); } } } } }
         }
+        }
+    }
+
+    ports-popup := PopupWindow {
+        forward-focus: ports-close;
+        x: 0; y: 0; width: root.width; height: root.height; close-policy: no-auto-close;
+        FocusScope {
+            key-pressed(event) => { if event.text == Key.Escape { root.endpoints-open = false; return accept; } return reject; }
+            Rectangle { background: #00000066;
+                TouchArea {}
+                Rectangle {
+                    x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                    width: min(860px, parent.width - 48px); height: min(650px, parent.height - 48px);
+                    background: UiColors.surface; border-radius: 8px;
+                    VerticalLayout { padding: 24px; spacing: 12px;
+                        HorizontalLayout { spacing: 12px;
+                            Text { text: root.endpoint-title; color: UiColors.text; font-size: UiColors.body-size + 6px; font-weight: 700; overflow: elide; }
+                            ports-close := Button { width: 90px; horizontal-stretch: 0; height: 38px; text: "Close"; accessible-label: "Close ports"; clicked => { root.endpoints-open = false; } }
+                        }
+                        Text { text: "One row per access point. Copy an address or describe its protocol and purpose."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                        ScrollView { vertical-stretch: 1; min-height: 110px;
+                            VerticalLayout { spacing: 10px;
+                                for entry in root.endpoint-rows: Rectangle {
+                                    height: 100px + (UiColors.body-size - 11px) * 3;
+                                    background: UiColors.raised; border-radius: 5px;
+                                    VerticalLayout { padding: 12px; spacing: 8px;
+                                        HorizontalLayout { spacing: 10px;
+                                            Text { text: entry.port + " / " + entry.transport + (entry.protocol == "" ? " · protocol unspecified" : " · " + entry.protocol); color: UiColors.text; font-size: UiColors.body-size + 1px; font-weight: 700; overflow: elide; }
+                                            Button { width: 126px; horizontal-stretch: 0; text: "Copy address"; accessible-label: "Copy address: " + entry.port + " " + entry.transport; clicked => { root.copy-value(entry.address, "Address"); } }
+                                            if entry.protocol == "HTTP" || entry.protocol == "HTTPS": Button { width: 86px; horizontal-stretch: 0; text: "Browser"; accessible-label: "Open in browser: " + entry.protocol + " " + entry.port; clicked => { root.open-endpoint(entry.protocol, entry.address); } }
+                                            if entry.protocol == "SSH": Button { width: 94px; horizontal-stretch: 0; text: "Copy SSH"; accessible-label: "Copy SSH command: " + entry.port; clicked => { root.copy-value(entry.connect-command, "SSH command"); } }
+                                            if entry.protocol != "HTTP" && entry.protocol != "HTTPS" && entry.protocol != "SSH": Button { width: 106px; horizontal-stretch: 0; text: "Copy address"; accessible-label: "Copy address: " + entry.port; clicked => { root.copy-value(entry.address, "Port address"); } }
+                                            Button { width: 68px; horizontal-stretch: 0; text: "Edit"; accessible-label: "Edit port: " + entry.port + " " + entry.transport; clicked => { root.endpoint-id = entry.id; root.endpoint-port = entry.port; root.endpoint-transport = entry.transport == "TCP" ? 1 : entry.transport == "UDP" ? 2 : 0; root.endpoint-protocol = entry.protocol; root.endpoint-purpose = entry.purpose; } }
+                                            Button { width: 86px; horizontal-stretch: 0; text: "Remove"; accessible-label: "Remove port: " + entry.port + " " + entry.transport; clicked => { root.endpoint-delete(entry.id); } }
+                                        }
+                                        Text { text: entry.purpose == "" ? "Purpose not recorded" : entry.purpose; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                        Text { text: entry.address; color: UiColors.muted; font-size: UiColors.body-size; }
+                                    }
+                                }
+                            }
+                        }
+                        Text { text: root.endpoint-id == 0 ? "Add port" : "Edit port"; color: UiColors.text; font-size: UiColors.body-size + 2px; font-weight: 700; }
+                        HorizontalLayout { spacing: 12px;
+                            VerticalLayout { spacing: 6px; width: 108px; horizontal-stretch: 0;
+                                Text { text: "Port *"; color: UiColors.muted; font-size: UiColors.body-size; }
+                                LineEdit { height: 36px; text <=> root.endpoint-port; accessible-label: "Port number"; placeholder-text: "1–65535"; }
+                            }
+                            VerticalLayout { spacing: 6px; width: 170px; horizontal-stretch: 0;
+                                Text { text: "Transport"; color: UiColors.muted; font-size: UiColors.body-size; }
+                                ComboBox { height: 36px; model: ["Unspecified", "TCP", "UDP"]; current-index <=> root.endpoint-transport; accessible-label: "Port transport"; }
+                            }
+                            VerticalLayout { spacing: 6px;
+                                Text { text: "Protocol / application"; color: UiColors.muted; font-size: UiColors.body-size; }
+                                LineEdit { height: 36px; text <=> root.endpoint-protocol; accessible-label: "Port protocol"; placeholder-text: "e.g. SSH, HTTPS, PostgreSQL"; }
+                            }
+                        }
+                        LineEdit { height: 36px; text <=> root.endpoint-purpose; accessible-label: "Port purpose"; placeholder-text: "Purpose, e.g. administrator login or read replica"; }
+                        Text { min-height: 36px; text: root.endpoint-error == "" ? "Changes save immediately. Unknown legacy protocols are left unspecified." : root.endpoint-error; color: root.endpoint-error == "" ? UiColors.muted : UiColors.error; font-size: UiColors.body-size; wrap: word-wrap; }
+                        HorizontalLayout { spacing: 12px;
+                            Button { height: 40px; primary: true; text: root.endpoint-id == 0 ? "Add port" : "Save port"; clicked => { root.endpoint-save(); } }
+                            Button { height: 40px; text: "Clear form"; clicked => { root.endpoint-new(); root.endpoint-error = ""; } }
+                        }
+                    }
+                }
+            }
         }
     }
 
     appearance-popup := PopupWindow {
-        x: root.width - 540px; y: 64px; width: 512px; height: min(560px, root.height - 84px);
+        x: root.width - 648px; y: 64px; width: 620px; height: min(720px, root.height - 84px);
         close-policy: close-on-click-outside;
         Rectangle {
             background: UiColors.surface; border-width: 1px; border-color: UiColors.action-border; border-radius: 8px;
-            PanelTitle { x: 20px; y: 18px; text: "Appearance"; token-size: 20px; }
+            PanelTitle { x: 20px; y: 18px; text: "Appearance"; token-size: UiColors.body-size + 7px; }
             Button { x: parent.width - 88px; y: 12px; width: 72px; height: 36px; text: "Close"; accessible-label: "Close appearance"; clicked => { appearance-popup.close(); appearance-trigger.focus(); } }
-            Text { x: 20px; y: 58px; width: parent.width - 40px; height: 34px; text: "Preview right here. Your current workspace changes too."; color: UiColors.muted; font-size: 13px; wrap: word-wrap; }
+            Text { x: 20px; y: 58px; width: parent.width - 40px; height: 34px; text: "Preview right here. Your current workspace changes too."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
             ScrollView {
                 x: 20px; y: 100px; width: parent.width - 40px; height: parent.height - 200px;
-                content-width: self.width; content-height: 300px;
+                content-width: self.width; content-height: 440px + (UiColors.body-size - 11px) * 10;
                 AppearanceControls {
-                    x: 0; y: 0; width: parent.width; height: 300px;
+                    x: 0; y: 0; width: parent.width; height: 440px + (UiColors.body-size - 11px) * 10;
                     theme-index <=> root.theme-index; font-size-step <=> root.font-size-step; table-density <=> root.table-density;
                     edited => { root.appearance-dirty = true; root.appearance-status = ""; root.appearance-error = false; }
                 }
             }
-            Text { x: 20px; y: parent.height - 92px; width: parent.width - 40px; height: 32px; text: root.appearance-error && root.appearance-status != "" ? root.appearance-status : root.appearance-dirty ? "Preview only · not saved yet." : root.appearance-status != "" ? root.appearance-status : "Save settings to keep these choices after restarting."; color: root.appearance-error ? #a33a32 : UiColors.muted; font-size: 12px; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
-            Button { x: 20px; y: parent.height - 52px; width: parent.width - 40px; height: 36px; primary: true; text: "Save settings"; clicked => { root.save-settings(); } }
+            Text { x: 20px; y: parent.height - 92px; width: parent.width - 40px; height: 32px; text: root.appearance-error && root.appearance-status != "" ? root.appearance-status : root.appearance-dirty ? "Preview only · not saved yet." : root.appearance-status != "" ? root.appearance-status : "Save settings to keep these choices after restarting."; color: root.appearance-error ? UiColors.error : UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+            Button { x: parent.width - 188px; y: parent.height - 52px; width: 168px; height: 36px; primary: true; text: "Save settings"; clicked => { root.save-settings(); } }
         }
     }
 
-    if root.onboarding-open: Rectangle {
-        x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
-        Rectangle {
-            x: (parent.width - 660px) / 2; y: (parent.height - 500px) / 2; width: 660px; height: 500px; background: #f8faf6; border-radius: 8px;
-            Text { x: 28px; y: 24px; text: "Start with one server"; color: #183c32; font-size: 22px; font-weight: 750; }
-            Text { x: 28px; y: 58px; width: 520px; text: "ITGLA keeps the facts you need before a change, without turning your workspace into a CMDB."; color: #65776a; font-size: 11px; wrap: word-wrap; }
-            Button { x: parent.width - 94px; y: 20px; width: 66px; height: 32px; text: "Close"; clicked => { root.onboarding-open = false; } }
-
-            Rectangle { x: 28px; y: 112px; width: 604px; height: 92px; background: UiColors.surface; border-width: 1px; border-color: #d8e2d9; border-radius: 5px;
-                Text { x: 16px; y: 14px; text: "1  Record what the machine is for"; color: #183c32; font-size: 13px; font-weight: 700; }
-                Text { x: 16px; y: 42px; width: parent.width - 32px; text: "Add its IP address, ports, and useful tags. For an existing list, import Excel or CSV and map each source column."; color: #65776a; font-size: 10px; wrap: word-wrap; }
+    guide-popup := PopupWindow {
+        forward-focus: guide-close;
+        x: 0; y: 0; width: root.width; height: root.height;
+        close-policy: no-auto-close;
+        FocusScope {
+            key-pressed(event) => { if event.text == Key.Escape { root.onboarding-open = false; return accept; } return reject; }
+            Rectangle { width: parent.width; height: parent.height; background: #00000066;
+                TouchArea { }
+                Rectangle {
+                    x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                    width: min(760px, parent.width - 48px); height: min(600px, parent.height - 48px);
+                    background: UiColors.surface; border-radius: 8px;
+                    VerticalLayout { padding: 24px; spacing: 16px;
+                        HorizontalLayout { spacing: 16px;
+                            Text { text: "Start with one server"; color: UiColors.text; font-size: UiColors.body-size + 9px; font-weight: 750; }
+                            guide-close := Button { width: 90px; horizontal-stretch: 0; height: 38px; text: "Close"; accessible-label: "Close guide"; clicked => { root.onboarding-open = false; } }
+                        }
+                        ScrollView { horizontal-stretch: 1; vertical-stretch: 1;
+                            VerticalLayout { spacing: 18px;
+                                Text { text: "Keep the facts you need before a change. Add detail when it helps."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                for step[index] in ["Record the machine", "Describe its services", "Connect domains and sites"]: VerticalLayout { spacing: 8px;
+                                    Text { text: (index + 1) + "  " + step; color: UiColors.text; font-size: UiColors.body-size + 2px; font-weight: 700; }
+                                    Text { text: ["Add an IP address, then manage each port separately with its transport, protocol and purpose. Use tags to find similar servers.", "Services records software, versions, access details and hosting servers. Add dependencies or primary / standby relationships when needed.", "Domains records hostnames, registrar, expiry, CDN and origin servers. Sites is your list of URLs to visit."][index]; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                }
+                            }
+                        }
+                        HorizontalLayout { spacing: 12px;
+                            Button { text: "Add first server"; primary: true; height: 40px; clicked => { root.active-tab = 0; root.server-editor-open = true; root.onboarding-open = false; } }
+                            Button { text: "Import a table"; height: 40px; clicked => { root.active-tab = 0; root.importing-sites = false; root.onboarding-open = false; root.import-error = ""; root.import-dialog-open = true; } }
+                        }
+                    }
+                }
             }
-            Rectangle { x: 28px; y: 216px; width: 604px; height: 92px; background: UiColors.surface; border-width: 1px; border-color: #d8e2d9; border-radius: 5px;
-                Text { x: 16px; y: 14px; text: "2  Add structure only when it helps"; color: #183c32; font-size: 13px; font-weight: 700; }
-                Text { x: 16px; y: 42px; width: parent.width - 32px; text: "Use tags for quick grouping. Add columns such as Project, Cloud Provider, OS, Environment, or Owner when you need consistent facts."; color: #65776a; font-size: 10px; wrap: word-wrap; }
-            }
-            Rectangle { x: 28px; y: 320px; width: 604px; height: 92px; background: UiColors.surface; border-width: 1px; border-color: #d8e2d9; border-radius: 5px;
-                Text { x: 16px; y: 14px; text: "3  Keep sites beside infrastructure"; color: #183c32; font-size: 13px; font-weight: 700; }
-                Text { x: 16px; y: 42px; width: parent.width - 32px; text: "Use Sites for URLs, environments, status, purpose, and tags. Search or copy any field when you need it."; color: #65776a; font-size: 10px; wrap: word-wrap; }
-            }
-            Button { x: 28px; y: 436px; width: 164px; height: 38px; text: "Add first server"; clicked => { root.active-tab = 0; root.onboarding-open = false; } }
-            Button { x: 204px; y: 436px; width: 164px; height: 38px; text: "Import a table"; clicked => { root.active-tab = 0; root.importing-sites = false; root.onboarding-open = false; root.import-error = ""; root.import-dialog-open = true; } }
-            Text { x: 388px; y: 446px; width: 244px; text: "You can reopen this from Guide."; color: #68736e; font-size: root.caption-font-size; horizontal-alignment: right; }
         }
     }
 
     if root.checklist-dialog-open: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
+        TouchArea {}
         Rectangle {
-            x: (parent.width - 560px) / 2; y: (parent.height - 500px) / 2; width: 560px; height: 500px; background: #f8faf6; border-radius: 8px;
-            Text { x: 24px; y: 20px; text: "Work checklist"; color: #183c32; font-size: 20px; font-weight: 750; }
+            x: (parent.width - 560px) / 2; y: (parent.height - 500px) / 2; width: 560px; height: 500px; background: UiColors.surface; border-radius: 8px;
+            Text { x: 24px; y: 20px; text: "Work checklist"; color: UiColors.text; font-size: UiColors.body-size + 7px; font-weight: 750; }
             Button { x: parent.width - 94px; y: 16px; width: 70px; height: 30px; text: "Close"; clicked => { root.checklist-dialog-open = false; } }
-            Text { x: 24px; y: 54px; width: parent.width - 48px; text: "Keep the execution steps visible and mark each one complete."; color: #5f7063; font-size: 10px; }
-            ScrollView { x: 24px; y: 84px; width: parent.width - 48px; height: 322px; VerticalLayout { spacing: 4px; for item in root.checklist-items: Rectangle { height: 42px; background: UiColors.surface; border-width: 1px; border-color: #dce2dc; border-radius: 4px; Button { x: 6px; y: 6px; width: 34px; height: 30px; text: item.completed ? "✓" : "○"; clicked => { root.checklist-toggled(item.id, !item.completed); } } Text { x: 48px; y: 0; width: parent.width - 210px; height: parent.height; text: item.title; color: item.completed ? #7b8981 : #25342d; font-size: root.small-font-size; vertical-alignment: center; overflow: elide; } Button { x: parent.width - 154px; y: 6px; width: 34px; height: 30px; text: "↑"; clicked => { root.checklist-moved(item.id, -1); } } Button { x: parent.width - 116px; y: 6px; width: 34px; height: 30px; text: "↓"; clicked => { root.checklist-moved(item.id, 1); } } Button { x: parent.width - 78px; y: 6px; width: 70px; height: 30px; text: "Delete"; clicked => { root.checklist-deleted(item.id); } } } } }
-            if root.checklist-items.length == 0: Text { x: 40px; y: 130px; width: parent.width - 80px; text: "No checklist items. Add the first execution step below."; color: #7b8981; font-size: root.small-font-size; horizontal-alignment: center; }
+            Text { x: 24px; y: 54px; width: parent.width - 48px; text: "Keep the execution steps visible and mark each one complete."; color: UiColors.muted; font-size: UiColors.body-size - 3px; }
+            ScrollView { x: 24px; y: 84px; width: parent.width - 48px; height: 322px; VerticalLayout { spacing: 4px; for item in root.checklist-items: Rectangle { height: 42px; background: UiColors.surface; border-width: 1px; border-color: UiColors.raised; border-radius: 4px; Button { x: 6px; y: 6px; width: 34px; height: 30px; text: item.completed ? "✓" : "○"; clicked => { root.checklist-toggled(item.id, !item.completed); } } Text { x: 48px; y: 0; width: parent.width - 210px; height: parent.height; text: item.title; color: item.completed ? UiColors.border : UiColors.text; font-size: root.small-font-size; vertical-alignment: center; overflow: elide; } Button { x: parent.width - 154px; y: 6px; width: 34px; height: 30px; text: "↑"; clicked => { root.checklist-moved(item.id, -1); } } Button { x: parent.width - 116px; y: 6px; width: 34px; height: 30px; text: "↓"; clicked => { root.checklist-moved(item.id, 1); } } Button { x: parent.width - 78px; y: 6px; width: 70px; height: 30px; text: "Delete"; clicked => { root.checklist-deleted(item.id); } } } } }
+            if root.checklist-items.length == 0: Text { x: 40px; y: 130px; width: parent.width - 80px; text: "No checklist items. Add the first execution step below."; color: UiColors.border; font-size: root.small-font-size; horizontal-alignment: center; }
             LineEdit { x: 24px; y: 426px; width: parent.width - 142px; height: 38px; placeholder-text: "Add a verification or execution step"; text <=> root.checklist-input; }
             Button { x: parent.width - 108px; y: 426px; width: 84px; height: 38px; text: "Add"; clicked => { root.checklist-added(root.selected-work-id, root.checklist-input); } }
         }
@@ -1006,11 +1212,12 @@ export component AppWindow inherits Window {
 
     if root.hide-target-id != 0: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
+        TouchArea {}
         Rectangle {
-            x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: UiColors.surface; border-radius: 8px; border-width: 1px; border-color: #b6c8bb;
+            x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: UiColors.surface; border-radius: 8px; border-width: 1px; border-color: UiColors.border;
             drop-shadow-blur: 24px; drop-shadow-color: #102b3340; drop-shadow-offset-y: 8px;
-            Text { x: 24px; y: 24px; text: "Hide this server?"; color: #17201d; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 64px; width: 332px; text: "Move this server out of your active list. You can restore it from Hidden servers at any time."; color: #46534e; font-size: root.small-font-size; wrap: word-wrap; }
+            Text { x: 24px; y: 24px; text: "Hide this server?"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
+            Text { x: 24px; y: 64px; width: 332px; text: "Move this server out of your active list. You can restore it from Hidden servers at any time."; color: UiColors.muted; font-size: root.small-font-size; wrap: word-wrap; }
             Button { x: 172px; y: 146px; width: 84px; height: 36px; text: "Cancel"; clicked => { root.hide-target-id = 0; } }
             Button { x: 268px; y: 146px; width: 88px; height: 36px; text: "Hide"; primary: true; clicked => { root.hide-server(root.hide-target-id); } }
         }
@@ -1018,26 +1225,28 @@ export component AppWindow inherits Window {
 
     if root.hide-site-target-id != 0: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
+        TouchArea {}
         Rectangle {
-            x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: UiColors.surface; border-radius: 8px; border-width: 1px; border-color: #b6c8bb;
+            x: (parent.width - 380px) / 2; y: (parent.height - 210px) / 2; width: 380px; height: 210px; background: UiColors.surface; border-radius: 8px; border-width: 1px; border-color: UiColors.border;
             drop-shadow-blur: 24px; drop-shadow-color: #102b3340; drop-shadow-offset-y: 8px;
-            Text { x: 24px; y: 24px; text: "Hide this site?"; color: #17201d; font-size: 18px; font-weight: 700; }
-            Text { x: 24px; y: 64px; width: 332px; text: "Move this site out of your active list. You can restore it from Hidden sites at any time."; color: #46534e; font-size: root.small-font-size; wrap: word-wrap; }
+            Text { x: 24px; y: 24px; text: "Hide this site?"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
+            Text { x: 24px; y: 64px; width: 332px; text: "Move this site out of your active list. You can restore it from Hidden sites at any time."; color: UiColors.muted; font-size: root.small-font-size; wrap: word-wrap; }
             Button { x: 172px; y: 146px; width: 84px; height: 36px; text: "Cancel"; clicked => { root.hide-site-target-id = 0; } }
             Button { x: 268px; y: 146px; width: 88px; height: 36px; text: "Hide"; primary: true; clicked => { root.hide-site(root.hide-site-target-id); } }
         }
     }
 
     if root.copy-notice != "": Rectangle {
-        x: (parent.width - 112px) / 2; y: parent.height - 54px; width: 112px; height: 34px; background: #173f37; border-radius: 4px;
-        Text { width: parent.width; height: parent.height; text: root.copy-notice; color: #ffffff; font-size: 11px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; }
+        x: (parent.width - 112px) / 2; y: parent.height - 54px; width: 112px; height: 34px; background: UiColors.header; border-radius: 4px;
+        Text { width: parent.width; height: parent.height; text: root.copy-notice; color: #ffffff; font-size: UiColors.body-size - 2px; font-weight: 600; vertical-alignment: center; horizontal-alignment: center; }
     }
 
     if root.import-dialog-open: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
+        TouchArea {}
         Rectangle {
             x: (parent.width - 760px) / 2; y: (parent.height - 590px) / 2; width: 760px; height: 590px; background: UiColors.surface; border-radius: 6px;
-            Text { x: 24px; y: 20px; text: root.importing-sites ? "Import sites" : "Import servers"; color: #17201d; font-size: 19px; font-weight: 700; }
+            Text { x: 24px; y: 20px; text: root.importing-sites ? "Import sites" : "Import servers"; color: UiColors.text; font-size: UiColors.body-size + 6px; font-weight: 700; }
             HelperText { x: 24px; y: 49px; width: 540px; height: 28px; text: root.importing-sites ? "Name and URL are required. Map source columns automatically or choose each destination." : "IP Address and Ports are required. Optional data can become tags or custom columns."; token-size: root.caption-font-size; }
             Button { x: 578px; y: 18px; width: 158px; height: 32px; text: "Save CSV template"; clicked => { root.save-import-template(); } }
             LineEdit { x: 24px; y: 78px; width: 474px; height: 36px; placeholder-text: "Choose a table or enter its full path"; text <=> root.import-file-path; }
@@ -1054,10 +1263,10 @@ export component AppWindow inherits Window {
             if !root.importing-sites: LineEdit { x: 244px; y: 182px; width: 210px; height: 32px; placeholder-text: "Default status"; text <=> root.import-default-status; }
             if !root.importing-sites: LineEdit { x: 464px; y: 182px; width: 140px; height: 32px; placeholder-text: "Default tags"; text <=> root.import-default-tags; }
             Button { x: 614px; y: 142px; width: 122px; height: 32px; text: "Auto match"; enabled: root.import-ready; clicked => { root.auto-map-import(); } }
-            Text { x: 24px; y: 224px; width: 712px; text: root.importing-sites ? "Site fields: Name, URL, Environment, Status, Purpose, and Tags. Empty environment/status values use the defaults above." : "Server fields: Name, IP Address, Ports, Environment, Status, Purpose, and Tags. Missing names use the IP address."; color: #68736e; font-size: root.tiny-font-size; wrap: word-wrap; }
-            Text { x: 24px; y: 252px; text: root.import-ready ? root.import-row-count + " rows ready · auto-matched where possible" : "Load a file to configure column mapping"; color: #46534e; font-size: root.small-font-size; font-weight: 600; }
+            Text { x: 24px; y: 224px; width: 712px; text: root.importing-sites ? "Site fields: Name, URL, Environment, Status, Purpose, and Tags. Empty environment/status values use the defaults above." : "Server fields: Name, IP Address, Ports, Environment, Status, Purpose, and Tags. Missing names use the IP address."; color: UiColors.muted; font-size: root.tiny-font-size; wrap: word-wrap; }
+            Text { x: 24px; y: 252px; text: root.import-ready ? root.import-row-count + " rows ready · auto-matched where possible" : "Load a file to configure column mapping"; color: UiColors.muted; font-size: root.small-font-size; font-weight: 600; }
             if root.import-ready: Rectangle {
-                x: 24px; y: 276px; width: 712px; height: 208px; background: UiColors.surface; border-width: 1px; border-color: #dce3e0;
+                x: 24px; y: 276px; width: 712px; height: 208px; background: UiColors.surface; border-width: 1px; border-color: UiColors.raised;
                 ScrollView {
                     x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - 2px;
                     VerticalLayout {
@@ -1066,7 +1275,7 @@ export component AppWindow inherits Window {
                     }
                 }
             }
-            if root.import-error != "": Text { x: 24px; y: 498px; width: 530px; text: root.import-error; color: #a33a32; font-size: 10px; wrap: word-wrap; }
+            if root.import-error != "": Text { x: 24px; y: 498px; width: 530px; text: root.import-error; color: UiColors.error; font-size: UiColors.body-size - 3px; wrap: word-wrap; }
             Button { x: 532px; y: 532px; width: 94px; height: 36px; text: "Cancel"; clicked => { root.import-dialog-open = false; } }
             Button { x: 638px; y: 532px; width: 98px; height: 36px; text: "Import"; enabled: root.import-ready; clicked => { root.confirm-import(); } }
         }
@@ -1074,9 +1283,10 @@ export component AppWindow inherits Window {
 
     if root.editing-cell-column >= 0: Rectangle {
         x: 0; y: 0; width: parent.width; height: parent.height; background: #00000066;
+        TouchArea {}
         Rectangle {
             x: (parent.width - 480px) / 2; y: (parent.height - 190px) / 2; width: 480px; height: 190px; background: UiColors.surface; border-radius: 6px;
-            Text { x: 24px; y: 22px; text: "Edit cell"; color: #17201d; font-size: 18px; font-weight: 700; }
+            Text { x: 24px; y: 22px; text: "Edit cell"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
             LineEdit { x: 24px; y: 64px; width: 432px; height: 40px; text <=> root.editing-cell-value; }
             Button { x: 250px; y: 128px; width: 96px; height: 36px; text: "Cancel"; clicked => { root.editing-cell-column = -1; } }
             Button { x: 360px; y: 128px; width: 96px; height: 36px; text: "Save"; primary: true; clicked => { if root.editing-cell-is-site { root.save-site-cell-edit(root.editing-cell-id, root.editing-cell-column, root.editing-cell-value); } else { root.save-cell-edit(root.editing-cell-id, root.editing-cell-column, root.editing-cell-value); } } }

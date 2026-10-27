@@ -1,0 +1,98 @@
+{
+  "version": "2.0",
+  "task_id": "connection-map-interaction-20261026",
+  "target_revision": "49796d8769e401cb84e2d65bdf24349e1beec4c2 + pending local tree",
+  "gates": {
+    "format": {
+      "status": "pass",
+      "exit_code": 0,
+      "command": "cargo +1.92.0 fmt -- --check",
+      "evidence": [
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-graph-final-check-0.log"
+      ]
+    },
+    "clippy": {
+      "status": "pass",
+      "exit_code": 0,
+      "command": "cargo +1.92.0 clippy --locked --all-targets -- -D warnings",
+      "evidence": [
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-graph-final-check-3.log"
+      ]
+    },
+    "check": {
+      "status": "pass",
+      "exit_code": 0,
+      "command": "cargo +1.92.0 check --locked --all-targets",
+      "evidence": [
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-graph-final-check-4.log"
+      ]
+    },
+    "tests": {
+      "status": "pass",
+      "exit_code": 0,
+      "command": "cargo +1.92.0 test --locked --bin itgla -- --test-threads=1",
+      "evidence": [
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-graph-final-check-5.log",
+        "85 passed, 0 failed; native build passed; UI audit: 22 contracts, 5 modal bounds, 6 contrast pairs.",
+        "Demo geometry: edge segments avoid node interiors, attachment points distinct. UI selection remains on Connections; Edit record opens selected service.",
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-graph-drag-20261026.json",
+        "Normal and dark largest font screenshots inspected; small window 1250x850 physical at 125% scale."
+      ]
+    }
+  },
+  "diff": {
+    "paths": [
+      "Cargo.lock",
+      "Cargo.toml",
+      "docs/adr/0004-inventory-relationships-and-history.md",
+      "docs/connection-map-evidence.json",
+      "docs/connection-map-interaction-evidence.json",
+      "docs/connection-map-interaction-performance.json",
+      "docs/connection-map-interaction-plan.md",
+      "docs/connection-map-interaction-review.md",
+      "docs/connection-map-interaction-task.json",
+      "docs/connection-map-preview.md",
+      "docs/connection-map-task.json",
+      "docs/desktop-appearance-and-actions.md",
+      "docs/roadmap-p0-p2.md",
+      "docs/ui-optimization-evidence.json",
+      "docs/ui-optimization-preview.md",
+      "docs/ui-optimization-task.json",
+      "migrations/018_server_endpoints.sql",
+      "migrations/020_inventory_relationship_graph.sql",
+      "scripts/audit-ui.py",
+      "scripts/capture-appearance-preview.ps1",
+      "scripts/measure-graph-preview.ps1",
+      "scripts/review-cookies.cjs",
+      "scripts/review-homepage.cjs",
+      "src/endpoints.rs",
+      "src/main.rs",
+      "src/operational.rs",
+      "src/relationships.rs",
+      "src/storage.rs",
+      "src/topology.rs",
+      "ui/app.slint",
+      "ui/appearance.slint",
+      "ui/controls.slint",
+      "ui/inventory.slint",
+      "ui/topology.slint",
+      "website/assets/itgla-v0.5.0-servers-20261026.webp",
+      "website/assets/itgla-v0.5.0-services-20261026.webp",
+      "website/homepage.css",
+      "website/index.html",
+      "website/marketing.css"
+    ],
+    "files_changed": 39,
+    "lines_added": 4339,
+    "lines_deleted": 483,
+    "new_files": 25,
+    "dependencies_added": [
+      "webbrowser 1.2.4 (preexisting working-tree change)"
+    ],
+    "public_api_changed": false
+  },
+  "notes": [
+    "This refinement added no dependency or migration. Full tree accounting includes pending work from earlier requests.",
+    "No commit, push or release was performed."
+  ]
+}

@@ -80,3 +80,13 @@
   .marketing-site .auth-card { padding: 24px; }
   .marketing-site .auth-card h1 { font-size: 32px; }
 }
+
+/* Policy headings, prose and tables share one reading column. */
+.marketing-site .legal-document { max-width: 820px; }
+.marketing-site .legal-document > .page-heading,
+.marketing-site .legal-document > .page-heading > p:last-child,
+.marketing-site .legal-document > section,
+.marketing-site .legal-document section p { width: 100%; max-width: none; }
+.marketing-site .legal-document .policy-table { width: 100%; overflow-x: auto; }
+.marketing-site .legal-document table { width: 100%; table-layout: fixed; }
+.marketing-site .legal-document td, .marketing-site .legal-document th { overflow-wrap: anywhere; text-align: left; vertical-align: top; }

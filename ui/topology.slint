@@ -1,0 +1,180 @@
+import { Button, UiColors } from "controls.slint";
+import { ScrollView, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
+export struct TopologyNode { id: int, kind: string, label: string, detail: string, px: float, py: float }
+export struct TopologyEdge { id: int, label: string, sx: float, sy: float, tx: float, ty: float, structural: bool, source-key: string, target-key: string, caption: string, mx: float, mx2: float, route-y: float, reverse: bool, editable: bool }
+export struct BusinessItem { id: int, name: string, tags: string, notes: string }
+// Axis-aligned segments avoid tessellating a full-canvas Path for each edge.
+component ConnectionLine inherits Rectangle {
+    in property <TopologyEdge> edge;
+    in property <float> scale;
+    in property <bool> emphasized;
+    private property <length> left: min(edge.sx, min(edge.mx, min(edge.mx2, edge.tx))) * scale * 1px;
+    private property <length> top: min(edge.route-y, min(edge.sy, edge.ty)) * 1px;
+    private property <color> ink: emphasized ? UiColors.primary : UiColors.muted;
+    private property <length> weight: emphasized ? 2px : 1px;
+    x: left - 1px; y: top - 6px;
+    width: max(edge.sx, max(edge.mx, max(edge.mx2, edge.tx))) * scale * 1px - left + 2px;
+    height: max(edge.route-y, max(edge.sy, edge.ty)) * 1px - top + 12px;
+    background: transparent;
+    Rectangle { x: min(edge.sx, edge.mx) * scale * 1px - root.left + 1px; y: edge.sy * 1px - root.top + 6px; width: max(1px, abs(edge.mx - edge.sx) * scale * 1px); height: root.weight; background: root.ink; }
+    Rectangle { x: edge.mx * scale * 1px - root.left + 1px; y: min(edge.sy, edge.route-y) * 1px - root.top + 6px; width: root.weight; height: max(1px, abs(edge.route-y - edge.sy) * 1px); background: root.ink; }
+    Rectangle { x: min(edge.mx, edge.mx2) * scale * 1px - root.left + 1px; y: edge.route-y * 1px - root.top + 6px; width: max(1px, abs(edge.mx2 - edge.mx) * scale * 1px); height: root.weight; background: root.ink; }
+    Rectangle { x: edge.mx2 * scale * 1px - root.left + 1px; y: min(edge.ty, edge.route-y) * 1px - root.top + 6px; width: root.weight; height: max(1px, abs(edge.route-y - edge.ty) * 1px); background: root.ink; }
+    Rectangle { x: min(edge.mx2, edge.tx) * scale * 1px - root.left + 1px; y: edge.ty * 1px - root.top + 6px; width: max(1px, abs(edge.tx - edge.mx2) * scale * 1px); height: root.weight; background: root.ink; }
+    Path { x: edge.tx * scale * 1px - root.left - 5px; y: edge.ty * 1px - root.top; width: 12px; height: 12px; fit: preserve; stroke: root.ink; stroke-width: root.weight; fill: transparent;
+        MoveTo { x: root.edge.reverse ? 11 : 1; y: 1; } LineTo { x: 6; y: 6; } LineTo { x: root.edge.reverse ? 11 : 1; y: 11; }
+    }
+
+}
+export component TopologyPanel inherits Rectangle {
+    in property <bool> business-mode;
+    in property <[BusinessItem]> businesses;
+    in property <[TopologyNode]> nodes;
+    in property <[TopologyEdge]> edges;
+    in property <[string]> choices;
+    in property <[string]> node-choices;
+    in property <[string]> business-choices;
+    in property <float> canvas-height;
+    in-out property <int> filter-index;
+    in-out property <bool> hidden;
+    in-out property <int> business-id;
+    in-out property <string> business-name;
+    in-out property <string> business-tags;
+    in-out property <string> business-notes;
+    in-out property <int> source-index;
+    in-out property <int> target-index;
+    in-out property <int> relation-index;
+    in-out property <string> link-notes;
+    in-out property <int> link-id;
+    in property <string> status;
+    callback refresh(); callback select-business(int); callback save-business(); callback hide-business();
+    callback open-resource(string,int); callback save-link(); callback select-link(int); callback remove-link(); callback new-resource(int);
+    private property <bool> editing: root.business-id != 0;
+    changed business-id => { if root.business-id != 0 { root.editing = true; } }
+    private property <bool> links-open: false;
+    private property <bool> all-links: false;
+    private property <string> selected-key;
+    private property <string> selected-label;
+    private property <string> selected-detail;
+    private property <string> selected-kind;
+    private property <int> selected-id;
+    private property <bool> link-editing: false;
+    private property <int> find-index: -1;
+    private property <length> scroll-y: 0px;
+    private property <length> scroll-x: 0px;
+    private property <length> view-height;
+    private property <length> view-width;
+    private property <length> map-height: max(root.view-height, root.canvas-height * 1px);
+    changed nodes => { root.selected-key = ""; root.find-index = -1; root.scroll-y = 0px; }
+    public function select-node(node: TopologyNode) {
+        root.selected-key = node.kind + ":" + node.id;
+        root.selected-label = node.label; root.selected-detail = node.detail;
+        root.selected-kind = node.kind; root.selected-id = node.id;
+    }
+    public function page-map(delta: float) {
+        root.scroll-y = max(min(0px, root.view-height - root.map-height), min(0px, root.scroll-y + delta * root.view-height * 0.8));
+    }
+    background: transparent;
+    VerticalLayout { spacing: 10px;
+        HorizontalLayout { height: 40px; spacing: 8px;
+            Text { text: root.business-mode ? "Businesses" : "Connections"; font-size: UiColors.body-size + 10px; color: UiColors.text; font-weight: 750; }
+            if root.business-mode: Button { compact: true; primary: true; text: "New business"; clicked => { root.hidden = false; root.refresh(); root.select-business(0); root.editing = true; } }
+            if !root.business-mode: ComboBox { accessible-label: "Business filter"; width: 220px; model: root.business-choices; current-index <=> root.filter-index; selected => { root.refresh(); } }
+            if !root.business-mode: Button { compact: true; text: "New service"; clicked => { root.new-resource(4); } }
+            if !root.business-mode: Button { compact: true; text: "New domain"; clicked => { root.new-resource(5); } }
+            Button { compact: true; quiet: true; text: "Refresh"; clicked => { root.refresh(); } }
+        }
+        if root.business-mode: CheckBox { text: "Show hidden businesses"; checked <=> root.hidden; toggled => { root.select-business(0); root.editing = false; root.refresh(); } }
+        if root.business-mode: HorizontalLayout { spacing: 16px;
+            ScrollView { horizontal-stretch: 1; VerticalLayout { spacing: 4px;
+                for business in root.businesses: Rectangle { height: 84px; background: root.business-id == business.id ? UiColors.selected : UiColors.surface; border-width: 1px; border-color: UiColors.border;
+                    HorizontalLayout { padding: 12px; spacing: 10px;
+                        VerticalLayout { min-width: 0px; horizontal-stretch: 1; Text { text: business.name; color: UiColors.text; font-size: UiColors.body-size; font-weight: 700; overflow: elide; } Text { text: business.tags + "  " + business.notes; color: UiColors.muted; overflow: elide; } }
+                        Button { compact: true; min-width: 72px; max-width: 72px; height: 36px; text: "Edit"; clicked => { root.select-business(business.id); root.editing = true; } }
+                    }
+                }
+                if root.businesses.length == 0: Text { text: "No businesses yet. Create one, then assign domains and services to it."; color: UiColors.muted; wrap: word-wrap; }
+            } }
+            if root.editing: Rectangle { width: 340px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+                VerticalLayout { padding: 16px; spacing: 10px;
+                    HorizontalLayout { Text { text: "Business details"; color: UiColors.text; font-weight: 700; } Button { compact: true; quiet: true; text: "Close"; clicked => { root.editing = false; } } }
+                    Text { text: "Name"; color: UiColors.text; } LineEdit { accessible-label: "Business name"; text <=> root.business-name; }
+                    Text { text: "Tags"; color: UiColors.text; } LineEdit { accessible-label: "Business tags"; text <=> root.business-tags; }
+                    Text { text: "Notes"; color: UiColors.text; } LineEdit { accessible-label: "Business notes"; text <=> root.business-notes; }
+                    Button { compact: true; primary: true; text: "Save business"; enabled: !root.hidden; clicked => { root.save-business(); } }
+                    if root.business-id != 0: Button { compact: true; text: root.hidden ? "Restore business" : "Hide business"; clicked => { root.hide-business(); root.editing = false; } }
+                    Rectangle { vertical-stretch: 1; background: transparent; }
+                }
+            }
+        }
+        if !root.business-mode: HorizontalLayout { height: 36px; spacing: 8px;
+            Text { text: "Locate resource"; color: UiColors.text; vertical-alignment: center; }
+            locate-box := ComboBox { accessible-label: "Locate resource"; horizontal-stretch: 1; model: root.node-choices; current-index <=> root.find-index;
+                selected => { root.select-node(root.nodes[locate-box.current-index]); root.scroll-y = max(min(0px, root.view-height - root.map-height), min(0px, 28px - root.nodes[locate-box.current-index].py * 1px)); }
+            }
+            CheckBox { text: "All links"; checked <=> root.all-links; }
+            Button { compact: true; text: "Top"; clicked => { root.scroll-y = 0px; } }
+            Button { compact: true; text: "Page up"; clicked => { root.page-map(1); } }
+            Button { compact: true; text: "Page down"; clicked => { root.page-map(-1); } }
+            Button { compact: true; text: "Add link"; clicked => { root.link-id = 0; root.link-notes = ""; root.link-editing = true; } }
+        }
+        if !root.business-mode: Rectangle { height: 28px; background: UiColors.raised;
+            for lane[index] in ["Business", "Domain / Subdomain", "Server", "Service"]: Text { x: (20 + index * 300) * (max(960px, root.view-width) / 1220px) * 1px + root.scroll-x; y: 4px; width: 220px; text: lane; color: UiColors.muted; font-weight: 700; }
+        }
+        if !root.business-mode: graph := ScrollView { vertical-stretch: 1; mouse-drag-pan-enabled: true;
+            content-y <=> root.scroll-y; content-x <=> root.scroll-x;
+            changed visible-height => { root.view-height = self.visible-height; } changed visible-width => { root.view-width = self.visible-width; }
+            content-width: max(960px, self.visible-width); content-height: max(self.visible-height, root.canvas-height * 1px);
+            canvas := Rectangle { width: graph.content-width; height: root.map-height; background: UiColors.surface;
+                private property <float> zoom: self.width / 1220px;
+                // Keep graph state stable during pointer movement. Selection traces links explicitly.
+                for edge in root.edges: ConnectionLine {
+                    visible: (root.all-links || edge.structural || edge.source-key == root.selected-key || edge.target-key == root.selected-key || root.link-id == edge.id)
+                        && max(edge.route-y, max(edge.sy, edge.ty)) * 1px + root.scroll-y >= -12px && min(edge.route-y, min(edge.sy, edge.ty)) * 1px + root.scroll-y <= root.view-height + 12px;
+                    edge: edge; scale: canvas.zoom;
+                    emphasized: root.link-id == edge.id || (root.selected-key != "" && (root.selected-key == edge.source-key || root.selected-key == edge.target-key));
+                }
+                for node in root.nodes: Rectangle {
+                    visible: node.py * 1px + root.scroll-y + 66px >= 0px && node.py * 1px + root.scroll-y <= root.view-height;
+                    x: node.px * canvas.zoom * 1px; y: node.py * 1px; width: 220 * canvas.zoom * 1px; height: 66px;
+                    private property <bool> selected: root.selected-key == node.kind + ":" + node.id;
+                    background: self.selected ? UiColors.selected : UiColors.surface; border-width: self.selected ? 2px : 1px; border-color: self.selected ? UiColors.primary : UiColors.border; border-radius: 5px;
+                    VerticalLayout { padding: 10px; spacing: 3px;
+                        Text { text: node.label; color: UiColors.text; font-size: UiColors.body-size; font-weight: 700; overflow: elide; }
+                        Text { text: node.detail; color: UiColors.muted; font-size: UiColors.body-size - 1px; overflow: elide; }
+                    }
+                    forward-focus: node-focus;
+                    accessible-role: button; accessible-label: "Select " + node.kind + ": " + node.label; accessible-action-default => { root.select-node(node); }
+                    TouchArea { mouse-cursor: pointer; clicked => { root.select-node(node); } }
+                    node-focus := FocusScope { width: 0px; key-pressed(event) => { if event.text == Key.Return || event.text == Key.Space { root.select-node(node); return accept; } return reject; } }
+                    if node-focus.has-focus: Rectangle { border-width: 2px; border-color: UiColors.focus; background: transparent; }
+                }
+                if root.nodes.length == 0: Text { x: 20px; y: 20px; text: "No connected resources. Add a business, domain, server or service to begin."; color: UiColors.muted; }
+            }
+        }
+        if !root.business-mode: HorizontalLayout { height: 40px; spacing: 8px;
+            Text { horizontal-stretch: 1; text: root.selected-key == "" ? "Drag empty space to pan. Select a resource to trace its connections." : root.selected-kind + ": " + root.selected-label + "  /  " + root.selected-detail; color: UiColors.text; overflow: elide; }
+            Button { compact: true; primary: true; text: "Edit record"; enabled: root.selected-key != ""; clicked => { root.open-resource(root.selected-kind,root.selected-id); } }
+            Button { compact: true; quiet: true; text: "Clear selection"; enabled: root.selected-key != ""; clicked => { root.selected-key = ""; } }
+            Button { compact: true; text: "Relationships"; checkable: true; checked <=> root.links-open; }
+        }
+        if !root.business-mode && root.link-editing: HorizontalLayout { spacing: 8px;
+            VerticalLayout { Text { text: "From"; color: UiColors.text; } ComboBox { accessible-label: "Relationship source"; horizontal-stretch: 1; model: root.choices; current-index <=> root.source-index; } }
+            VerticalLayout { Text { text: "Relationship"; color: UiColors.text; } ComboBox { accessible-label: "Relationship type"; width: 170px; model: ["Owns", "Contains", "Resolves to", "Hosted on", "Origin on", "Depends on", "Replicates to", "Fails over to", "Balances to", "Related to"]; current-index <=> root.relation-index; } }
+            VerticalLayout { Text { text: "To"; color: UiColors.text; } ComboBox { accessible-label: "Relationship target"; horizontal-stretch: 1; model: root.choices; current-index <=> root.target-index; } }
+            Button { compact: true; primary: true; text: root.link-id == 0 ? "Create link" : "Save link"; clicked => { root.save-link(); } }
+        }
+        if !root.business-mode && root.link-editing: HorizontalLayout { height: 36px; spacing: 8px;
+            LineEdit { accessible-label: "Relationship notes"; placeholder-text: "Relationship notes (optional)"; text <=> root.link-notes; }
+            Button { compact: true; quiet: true; text: "Close editor"; clicked => { root.link-editing = false; root.link-id = 0; } }
+            Button { compact: true; text: "Remove link"; enabled: root.link-id > 0; clicked => { root.remove-link(); } }
+        }
+        if !root.business-mode && root.links-open: ScrollView { height: 94px; VerticalLayout { spacing: 2px;
+            for edge in root.edges: Button { visible: root.selected-key == "" || root.selected-key == edge.source-key || root.selected-key == edge.target-key; height: 34px; quiet: true; text: edge.label; accessible-label: "Edit relationship " + edge.label; clicked => { root.select-link(edge.id); root.link-editing = true; } }
+        } }
+        if root.status != "": Text { text: root.status; color: UiColors.text; wrap: word-wrap; }
+    }
+}
+
+
+

@@ -1,0 +1,14 @@
+{
+  "version": "1.0",
+  "id": "appearance-20261026",
+  "task_class": "application_page",
+  "objective": "Expand inventory workspace, disclose editors on demand, simplify appearance controls, and align website evidence.",
+  "scope": {"include": ["Slint workspace layout", "appearance settings", "homepage screenshots and copy"], "exclude": ["production release", "storage schema", "new resource graph behavior"]},
+  "current_stage": "IMPLEMENT",
+  "stop_stage": "PREVIEW",
+  "target_environment": "local",
+  "risk_flags": [],
+  "requested_actions": [],
+  "authority": {"allowed_actions": []},
+  "metadata": {"palette": "Existing green, neutral surfaces, distinct primary actions", "typography": "Existing system font with five steps", "layout": "Full-width tables with on-demand side editors; controls beside preview on wide settings"}
+}

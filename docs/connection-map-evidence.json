@@ -1,0 +1,87 @@
+{
+  "version": "2.0",
+  "task_id": "connection-map-20261026",
+  "target_revision": "49796d8769e401cb84e2d65bdf24349e1beec4c2 + local working tree 2026-10-26",
+  "gates": {
+    "format": {
+      "status": "pass",
+      "command": "cargo +1.92.0 fmt -- --check",
+      "exit_code": 0,
+      "evidence": [
+        "Exit 0 on final source tree."
+      ]
+    },
+    "check": {
+      "status": "pass",
+      "command": "cargo +1.92.0 check --locked --all-targets",
+      "exit_code": 0,
+      "evidence": [
+        "Exit 0; final Windows debug build also passed."
+      ]
+    },
+    "clippy": {
+      "status": "pass",
+      "command": "cargo +1.92.0 clippy --locked --all-targets -- -D warnings",
+      "exit_code": 0,
+      "evidence": [
+        "Exit 0 on final source tree."
+      ]
+    },
+    "tests": {
+      "status": "pass",
+      "command": "cargo +1.92.0 test --locked --bin itgla -- --test-threads=1",
+      "exit_code": 0,
+      "evidence": [
+        "85 passed; 0 failed. Includes demo reset, graph/table synchronization, invalid-edit rollback, cycle prevention, rename propagation and UI bridge lifecycle.",
+        "python scripts/audit-ui.py: PASS, 22 UI contracts, 5 modal bounds, 6 contrast pairs and desktop target sizes.",
+        "scripts/review-cookies.cjs: exit 0, actual local page at 1440/768/390 px; matching content left edges/widths and no page overflow. %TEMP%/itgla-cookies-20261026/results.json.",
+        "Native normal and largest-font dark screenshots reviewed; business editor checked at minimum supported logical width. See docs/connection-map-preview.md."
+      ]
+    }
+  },
+  "diff": {
+    "paths": [
+      "Cargo.lock",
+      "Cargo.toml",
+      "docs/adr/0004-inventory-relationships-and-history.md",
+      "docs/connection-map-evidence.json",
+      "docs/connection-map-preview.md",
+      "docs/connection-map-task.json",
+      "docs/desktop-appearance-and-actions.md",
+      "docs/roadmap-p0-p2.md",
+      "docs/ui-optimization-evidence.json",
+      "docs/ui-optimization-preview.md",
+      "docs/ui-optimization-task.json",
+      "migrations/018_server_endpoints.sql",
+      "migrations/020_inventory_relationship_graph.sql",
+      "scripts/audit-ui.py",
+      "scripts/capture-appearance-preview.ps1",
+      "scripts/review-cookies.cjs",
+      "scripts/review-homepage.cjs",
+      "src/endpoints.rs",
+      "src/main.rs",
+      "src/operational.rs",
+      "src/relationships.rs",
+      "src/storage.rs",
+      "src/topology.rs",
+      "ui/app.slint",
+      "ui/appearance.slint",
+      "ui/controls.slint",
+      "ui/inventory.slint",
+      "ui/topology.slint",
+      "website/assets/itgla-v0.5.0-servers-20261026.webp",
+      "website/assets/itgla-v0.5.0-services-20261026.webp",
+      "website/homepage.css",
+      "website/index.html",
+      "website/marketing.css"
+    ],
+    "files_changed": 33,
+    "lines_added": 3956,
+    "lines_deleted": 483,
+    "new_files": 19,
+    "dependencies_added": [
+      "webbrowser 1.2.4 (preexisting working-tree change)"
+    ],
+    "public_api_changed": false
+  }
+}

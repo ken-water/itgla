@@ -21,7 +21,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 17;
+const SCHEMA_VERSION: i64 = 20;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -170,6 +170,7 @@ pub struct WorkspacePreferences {
     pub table_density: i64,
     pub show_cell_tooltips: bool,
     pub fit_columns_on_open: bool,
+    pub site_fit_columns_on_open: bool,
     pub server_default_sort: i64,
     pub site_default_sort: i64,
     pub server_visible_columns: Vec<bool>,
@@ -462,7 +463,49 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction
                 .execute_batch(include_str!("../migrations/017_inventory_verification.sql"))?;
-            transaction.pragma_update(None, "user_version", SCHEMA_VERSION)?;
+            transaction.pragma_update(None, "user_version", 17)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 17 {
+            self.automatic_backup("pre-schema-18.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/018_server_endpoints.sql"))?;
+            transaction.pragma_update(None, "user_version", 18)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 18 {
+            self.automatic_backup("pre-schema-19.db")?;
+            let transaction = self.connection.transaction()?;
+            let ids = {
+                let mut statement =
+                    transaction.prepare("SELECT id FROM server_records ORDER BY id")?;
+                statement
+                    .query_map([], |row| row.get::<_, i64>(0))?
+                    .collect::<Result<Vec<_>, _>>()?
+            };
+            for id in ids {
+                crate::operational::seed_server_services(&transaction, id, false)?;
+            }
+            transaction.pragma_update(None, "user_version", 19)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 19 {
+            self.automatic_backup("pre-schema-20.db")?;
+            let transaction = self.connection.transaction()?;
+            let has_inventory_metadata: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM pragma_table_info('operational_inventory') WHERE name='created_at')",
+                [],
+                |row| row.get(0),
+            )?;
+            // A test/backup can legitimately carry schema-20 objects while its
+            // user_version is reset to 19. The migration is transactional, so
+            // recognizing that complete shape is safe and avoids duplicate ALTERs.
+            if !has_inventory_metadata {
+                transaction.execute_batch(include_str!(
+                    "../migrations/020_inventory_relationship_graph.sql"
+                ))?;
+            }
+            transaction.pragma_update(None, "user_version", 20)?;
             transaction.commit()?;
         }
         Ok(())
@@ -474,11 +517,11 @@ impl Repository {
             [],
             |row| row.get::<_, String>(0),
         )?;
-        Ok(value.parse::<i64>().unwrap_or(2).clamp(0, 2))
+        Ok(value.parse::<i64>().unwrap_or(2).clamp(0, 4))
     }
 
     pub fn set_font_size_step(&self, step: i64) -> Result<(), StorageError> {
-        self.set_setting("font_size_step", &step.clamp(0, 2).to_string())
+        self.set_setting("font_size_step", &step.clamp(0, 4).to_string())
     }
 
     fn setting(&self, key: &str) -> Option<String> {
@@ -512,11 +555,15 @@ impl Repository {
             .filter(|values| values.len() == 7)
             .unwrap_or_else(|| vec![true; 7]);
         WorkspacePreferences {
-            theme_index: number("theme_index", 0).clamp(0, 3),
-            font_size_step: number("font_size_step", 2).clamp(0, 2),
+            theme_index: number("theme_index", 0).clamp(0, 4),
+            font_size_step: number("font_size_step", 2).clamp(0, 4),
             table_density: number("table_density", 1).clamp(0, 2),
             show_cell_tooltips: number("show_cell_tooltips", 1) != 0,
             fit_columns_on_open: number("fit_columns_on_open", 0) != 0,
+            site_fit_columns_on_open: number(
+                "site_fit_columns_on_open",
+                number("fit_columns_on_open", 0),
+            ) != 0,
             server_default_sort: number("server_default_sort", 0).max(0),
             site_default_sort: number("site_default_sort", 0).clamp(0, 11),
             server_visible_columns: visible,
@@ -546,11 +593,11 @@ impl Repository {
         let entries = [
             (
                 "theme_index",
-                preferences.theme_index.clamp(0, 3).to_string(),
+                preferences.theme_index.clamp(0, 4).to_string(),
             ),
             (
                 "font_size_step",
-                preferences.font_size_step.clamp(0, 2).to_string(),
+                preferences.font_size_step.clamp(0, 4).to_string(),
             ),
             (
                 "table_density",
@@ -563,6 +610,10 @@ impl Repository {
             (
                 "fit_columns_on_open",
                 i64::from(preferences.fit_columns_on_open).to_string(),
+            ),
+            (
+                "site_fit_columns_on_open",
+                i64::from(preferences.site_fit_columns_on_open).to_string(),
             ),
             (
                 "server_default_sort",
@@ -2321,6 +2372,7 @@ impl Repository {
                     )?;
                     let id = transaction.last_insert_rowid();
                     insert_server_column_defaults(&transaction, id)?;
+                    crate::operational::seed_server_services(&transaction, id, true)?;
                     id
                 }
             } else {
@@ -2331,6 +2383,7 @@ impl Repository {
                 )?;
                 let id = transaction.last_insert_rowid();
                 insert_server_column_defaults(&transaction, id)?;
+                crate::operational::seed_server_services(&transaction, id, true)?;
                 id
             };
             for (column_id, value) in custom_values {
@@ -2348,6 +2401,7 @@ impl Repository {
                     )?;
                 }
             }
+            transaction.execute("INSERT INTO resource_history(resource_type,resource_id,action,summary) VALUES('server',?1,'updated','Server imported from a table')", [server_id])?;
             changed += 1;
         }
         transaction.commit()?;
@@ -2361,23 +2415,26 @@ impl Repository {
     ) -> Result<i64, StorageError> {
         let draft = validate_server(draft).map_err(ValidationError::from)?;
         let tags = draft.tags.join(", ");
+        let transaction = self.connection.transaction()?;
         let result = if let Some(id) = id {
-            self.connection.execute(
+            transaction.execute(
                 "UPDATE server_records SET name=?1,purpose=?2,tags=?3,ip_address=?4,ports=?5,environment=?6,status=?7,updated_at=CURRENT_TIMESTAMP
                  WHERE id=?8 AND archived_at IS NULL",
                 params![draft.name, draft.purpose, tags, draft.ip_address, draft.ports, draft.environment, draft.status, id],
             )?;
             id
         } else {
-            self.connection.execute(
+            transaction.execute(
                 "INSERT INTO server_records (name,purpose,tags,ip_address,ports,environment,status,position)
                  VALUES (?1,?2,?3,?4,?5,?6,?7,(SELECT COALESCE(MAX(position),-1)+1 FROM server_records))",
                 params![draft.name, draft.purpose, tags, draft.ip_address, draft.ports, draft.environment, draft.status],
             )?;
-            let id = self.connection.last_insert_rowid();
-            insert_server_column_defaults(&self.connection, id)?;
+            let id = transaction.last_insert_rowid();
+            insert_server_column_defaults(&transaction, id)?;
+            crate::operational::seed_server_services(&transaction, id, true)?;
             id
         };
+        transaction.commit()?;
         Ok(result)
     }
 
@@ -3783,11 +3840,184 @@ mod tests {
     }
 
     #[test]
+    fn server_services_are_pending_linked_and_created_atomically() -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let draft = ServerDraft {
+            name: "test-host".into(),
+            ip_address: "203.0.113.10".into(),
+            ports: "22".into(),
+            environment: "production".into(),
+            status: "active".into(),
+            purpose: "API".into(),
+            tags: vec!["production".into()],
+        };
+        let id = repo.save_server(None, &draft)?;
+        let entries = repo.inventory_entries()?;
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].hosts, vec![id]);
+        assert_eq!(entries[0].details.ports, "22");
+        assert_eq!(entries[0].details.protocol, "SSH");
+        assert_eq!(entries[0].details.notes, "ssh");
+        assert!(entries[0].details.pending_confirmation);
+        repo.save_server(Some(id), &draft)?;
+        assert_eq!(repo.inventory_entries()?.len(), 1);
+        repo.mark_inventory_verified(entries[0].id)?;
+        assert!(!repo.inventory_entries()?[0].details.pending_confirmation);
+        let mut details = crate::operational::Details {
+            name: "Database".into(),
+            ports: "5432".into(),
+            protocol: "PostgreSQL".into(),
+            ..Default::default()
+        };
+        let service = repo.save_inventory(0, 0, details.clone(), &[id], None)?;
+        details.ports = "3890".into();
+        repo.save_inventory(0, 0, details.clone(), &[id], None)?;
+        details.ports = "3060".into();
+        repo.save_inventory(0, 0, details, &[id], None)?;
+        assert_eq!(repo.inventory_entries()?.len(), 4);
+        assert!(
+            repo.inventory_entries()?
+                .iter()
+                .all(|entry| entry.hosts == [id])
+        );
+        assert!(
+            repo.inventory_entries()?
+                .iter()
+                .any(|entry| entry.id == service && entry.details.protocol == "POSTGRESQL")
+        );
+        repo.connection.execute_batch("WITH RECURSIVE n(x) AS (SELECT 1 UNION ALL SELECT x+1 FROM n WHERE x<4996) INSERT INTO operational_inventory(kind,data) SELECT 0,(SELECT data FROM operational_inventory LIMIT 1) FROM n;")?;
+        let before = repo.server_records()?.len();
+        assert!(repo.save_server(None, &draft).is_err());
+        assert_eq!(
+            repo.server_records()?.len(),
+            before,
+            "failed service creation must roll back the server"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn services_migration_preserves_metadata_and_is_idempotent() -> Result<(), StorageError> {
+        let directory = temporary_path("services-migration", "data");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("source.db");
+        let mut repo = Repository::open(path.clone())?;
+        repo.reset_demo_fixture()?;
+        let server = repo.server_records()?[0].id;
+        repo.save_endpoint(server, 0, "3890", "TCP", "LDAP", "Directory access")?;
+        let details = crate::operational::Details {
+            name: "Existing LDAP".into(),
+            ports: "3890".into(),
+            protocol: "LDAP".into(),
+            transport: "TCP".into(),
+            notes: "keep this note".into(),
+            ..Default::default()
+        };
+        let existing = repo.save_inventory(0, 0, details, &[server], None)?;
+        repo.connection.pragma_update(None, "user_version", 18)?;
+        drop(repo);
+        let repo = Repository::open(path.clone())?;
+        assert!(directory.join("backups/pre-schema-19.db").exists());
+        let entries = repo.inventory_entries()?;
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|e| e.hosts.contains(&server) && e.details.ports == "3890")
+                .count(),
+            1
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .find(|e| e.id == existing)
+                .unwrap()
+                .details
+                .notes,
+            "keep this note"
+        );
+        assert!(
+            entries
+                .iter()
+                .any(|e| e.details.pending_confirmation && e.details.ports == "22")
+        );
+        let count = entries.len();
+        drop(repo);
+        let repo = Repository::open(path)?;
+        assert_eq!(repo.inventory_entries()?.len(), count);
+        assert_eq!(repo.schema_version()?, SCHEMA_VERSION);
+        repo.connection.execute("INSERT INTO server_endpoints(server_id,port,transport,protocol,purpose) VALUES(?1,6543,'TCP','PostgreSQL','pooler')", [server])?;
+        repo.connection.execute_batch("CREATE TRIGGER reject_migration_service BEFORE INSERT ON operational_inventory BEGIN SELECT RAISE(ABORT,'test migration failure'); END; PRAGMA user_version=18;")?;
+        drop(repo);
+        let failed = Repository::open(directory.join("source.db"));
+        assert!(failed.is_err());
+        let connection = Connection::open(directory.join("source.db"))?;
+        assert_eq!(
+            connection.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
+            18
+        );
+        assert_eq!(
+            connection.query_row("SELECT count(*) FROM operational_inventory", [], |r| r
+                .get::<_, usize>(0))?,
+            count
+        );
+        drop(connection);
+        fs::remove_dir_all(directory).unwrap();
+        Ok(())
+    }
+
+    #[test]
+    fn endpoints_migrate_with_backup_and_roll_back_on_failure() -> Result<(), StorageError> {
+        let directory = temporary_path("endpoint-migration", "data");
+        fs::create_dir_all(&directory).unwrap();
+        let path = directory.join("source.db");
+        let mut repo = Repository::open(path.clone())?;
+        repo.reset_demo_fixture()?;
+        let count = repo.server_records()?.len();
+        repo.connection.execute_batch("DROP TRIGGER server_endpoint_insert; DROP TRIGGER server_endpoint_sync; DROP TABLE server_endpoints; PRAGMA user_version=17;")?;
+        drop(repo);
+        let mut repo = Repository::open(path)?;
+        assert_eq!(repo.schema_version()?, SCHEMA_VERSION);
+        assert!(directory.join("backups/pre-schema-18.db").exists());
+        assert_eq!(repo.server_records()?.len(), count);
+        for server in repo.server_records()? {
+            assert_eq!(
+                repo.endpoints(server.id)?.len(),
+                server.ports.split(',').count()
+            );
+        }
+        repo.connection.execute_batch("DROP TRIGGER server_endpoint_insert; DROP TRIGGER server_endpoint_sync; DROP TABLE server_endpoints; CREATE TABLE server_endpoints(collision INTEGER); PRAGMA user_version=17;")?;
+        assert!(repo.migrate_remaining().is_err());
+        assert_eq!(repo.schema_version()?, 17);
+        assert_eq!(repo.server_records()?.len(), count);
+        assert_eq!(
+            repo.connection
+                .query_row("PRAGMA integrity_check", [], |r| r.get::<_, String>(0))?,
+            "ok"
+        );
+        drop(repo);
+        let _ = fs::remove_dir_all(directory);
+        Ok(())
+    }
+
+    #[test]
     fn font_defaults_to_large_and_preserves_explicit_selection() -> Result<(), StorageError> {
         let repository = Repository::in_memory()?;
         assert_eq!(repository.font_size_step()?, 2);
         repository.set_font_size_step(1)?;
         assert_eq!(repository.font_size_step()?, 1);
+        for step in 0..=4 {
+            repository.set_font_size_step(step)?;
+            assert_eq!(repository.font_size_step()?, step);
+            assert_eq!(repository.workspace_preferences().font_size_step, step);
+        }
+        repository.set_font_size_step(99)?;
+        assert_eq!(repository.font_size_step()?, 4);
+        let mut preferences = repository.workspace_preferences();
+        preferences.theme_index = 4;
+        preferences.font_size_step = 4;
+        repository.set_workspace_preferences(&preferences)?;
+        assert_eq!(repository.workspace_preferences().theme_index, 4);
+        assert_eq!(repository.workspace_preferences().font_size_step, 4);
         repository.connection.execute(
             "UPDATE app_settings SET value='invalid' WHERE key='font_size_step'",
             [],
@@ -4976,6 +5206,25 @@ mod tests {
     }
 
     #[test]
+    fn table_fit_preferences_are_independent_and_preserve_legacy_choices()
+    -> Result<(), StorageError> {
+        let repository = Repository::in_memory()?;
+        repository.connection.execute(
+            "INSERT OR REPLACE INTO app_settings(key,value) VALUES ('fit_columns_on_open','1')",
+            [],
+        )?;
+        let mut preferences = repository.workspace_preferences();
+        assert!(preferences.fit_columns_on_open);
+        assert!(preferences.site_fit_columns_on_open);
+        preferences.site_fit_columns_on_open = false;
+        repository.set_workspace_preferences(&preferences)?;
+        let saved = repository.workspace_preferences();
+        assert!(saved.fit_columns_on_open);
+        assert!(!saved.site_fit_columns_on_open);
+        Ok(())
+    }
+
+    #[test]
     fn schema_fifteen_preferences_options_and_demo_are_isolated() -> Result<(), StorageError> {
         let mut repository = Repository::in_memory()?;
         assert_eq!(repository.schema_version()?, SCHEMA_VERSION);
@@ -5102,12 +5351,13 @@ mod tests {
         repository.reset_demo_fixture()?;
         let servers = repository.server_records()?;
         // Model an existing v15 database, including its real server identifiers.
-        repository.connection.execute_batch("DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; PRAGMA user_version=15;")?;
+        repository.connection.execute_batch("DROP TRIGGER server_endpoint_insert; DROP TRIGGER server_endpoint_sync; DROP TABLE server_endpoints; DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; PRAGMA user_version=15;")?;
         drop(repository);
         let mut repository = Repository::open(path.clone())?;
         assert_eq!(repository.schema_version()?, SCHEMA_VERSION);
         assert_eq!(repository.server_records()?.len(), servers.len());
-        assert!(repository.inventory_entries()?.is_empty());
+        let migrated_count = repository.inventory_entries()?.len();
+        assert!(migrated_count > 0);
         let before = Connection::open(directory.join("backups/pre-schema-16.db"))?;
         assert_eq!(
             before.pragma_query_value(None, "user_version", |r| r.get::<_, i64>(0))?,
@@ -5135,8 +5385,13 @@ mod tests {
         drop(repository);
         let repository = Repository::open(path)?;
         let entries = repository.inventory_entries()?;
-        assert_eq!(entries.len(), 3);
-        assert!(entries.iter().all(|e| !e.hidden));
+        assert_eq!(entries.len(), migrated_count + 3);
+        assert!(
+            entries
+                .iter()
+                .filter(|e| !e.details.pending_confirmation)
+                .all(|e| !e.hidden)
+        );
         assert_eq!(entries.iter().find(|e| e.kind == 1).unwrap().hosts.len(), 2);
         assert_eq!(
             repository.connection.query_row(
@@ -5176,16 +5431,20 @@ mod tests {
             None,
         )?;
         repository.connection.execute_batch(
-            "ALTER TABLE operational_inventory DROP COLUMN verified_at; PRAGMA user_version=16;",
+            "DROP TRIGGER server_endpoint_insert; DROP TRIGGER server_endpoint_sync; DROP TABLE server_endpoints; ALTER TABLE operational_inventory DROP COLUMN verified_at; PRAGMA user_version=16;",
         )?;
         drop(repository);
         let repository = Repository::open(path)?;
         let entries = repository.inventory_entries()?;
-        assert_eq!(entries.len(), 1);
-        assert_eq!(entries[0].id, id);
-        assert_eq!(entries[0].hosts, vec![host]);
-        assert!(entries[0].verified_at.is_none());
-        assert!(entries[0].verification_due);
+        let preserved = entries.iter().find(|entry| entry.id == id).unwrap();
+        assert_eq!(preserved.hosts, vec![host]);
+        assert!(preserved.verified_at.is_none());
+        assert!(preserved.verification_due);
+        assert!(
+            entries
+                .iter()
+                .any(|entry| entry.details.pending_confirmation)
+        );
         assert!(directory.join("backups/pre-schema-17.db").exists());
         drop(repository);
         let _ = fs::remove_dir_all(directory);
@@ -5198,7 +5457,7 @@ mod tests {
         let mut repository = Repository::in_memory()?;
         repository.reset_demo_fixture()?;
         let count = repository.server_records()?.len();
-        repository.connection.execute_batch("DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; CREATE TABLE operational_hosts(collision INTEGER); PRAGMA user_version=15;")?;
+        repository.connection.execute_batch("DROP TRIGGER server_endpoint_insert; DROP TRIGGER server_endpoint_sync; DROP TABLE server_endpoints; DROP TABLE operational_relations; DROP TABLE operational_hosts; DROP TABLE operational_inventory; CREATE TABLE operational_hosts(collision INTEGER); PRAGMA user_version=15;")?;
         assert!(repository.migrate_remaining().is_err());
         assert_eq!(repository.schema_version()?, 15);
         assert_eq!(repository.server_records()?.len(), count);

@@ -2,11 +2,14 @@
 
 #[allow(dead_code)]
 mod domain;
+mod endpoints;
 mod import_data;
 mod operational;
+mod relationships;
 mod secrets;
 #[allow(dead_code)]
 mod storage;
+mod topology;
 
 use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
 
@@ -93,6 +96,11 @@ fn to_row(server: &ServerRecord) -> ServerRow {
         tags: server.tags.join(", ").into(),
         ip_address: server.ip_address.as_str().into(),
         ports: server.ports.as_str().into(),
+        port_count: server
+            .ports
+            .split(',')
+            .filter(|p| !p.trim().is_empty())
+            .count() as i32,
         environment: server.environment.as_str().into(),
         status: server.status.as_str().into(),
         purpose: server.purpose.as_str().into(),
@@ -103,6 +111,7 @@ fn to_row(server: &ServerRecord) -> ServerRow {
                 .map(SharedString::from)
                 .collect::<Vec<_>>(),
         )),
+        endpoints: ModelRc::new(VecModel::default()),
     }
 }
 
@@ -672,6 +681,7 @@ fn apply_preferences(window: &AppWindow, preferences: &WorkspacePreferences) {
     window.set_table_density(preferences.table_density as i32);
     window.set_show_cell_tooltips(preferences.show_cell_tooltips);
     window.set_fit_columns_on_open(preferences.fit_columns_on_open);
+    window.set_site_fit_columns_on_open(preferences.site_fit_columns_on_open);
     window.set_import_duplicate_policy(preferences.import_duplicate_policy.index() as i32);
     window.set_backup_retention(preferences.backup_retention as i32);
 }
@@ -747,8 +757,12 @@ fn ensure_column_widths(window: &AppWindow, custom_count: usize) {
         widths.push(standard_defaults[widths.len()]);
     }
     widths.resize(7 + custom_count, 160.0);
-    for width in &mut widths {
-        *width = width.clamp(96.0, 420.0);
+    for (index, width) in widths.iter_mut().enumerate() {
+        *width = if index == 2 {
+            0.0
+        } else {
+            width.clamp(96.0, 420.0)
+        };
     }
     widths.truncate(7 + custom_count);
     window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
@@ -806,9 +820,9 @@ fn auto_fit_column_widths(window: &AppWindow) -> Vec<f32> {
 fn fitted_column_widths(custom_headers: &[String], rows: &[Vec<String>]) -> Vec<f32> {
     let mut widths = custom_headers
         .iter()
-        .map(|header| (header.chars().count() as f32 * 8.0 + 36.0).clamp(96.0, 420.0))
+        .map(|header| (header.chars().count() as f32 * 7.2 + 28.0).clamp(96.0, 360.0))
         .collect::<Vec<_>>();
-    for (index, width) in [160.0, 140.0, 110.0, 130.0, 110.0, 220.0, 170.0]
+    for (index, width) in [128.0, 128.0, 112.0, 128.0, 112.0, 160.0, 144.0]
         .into_iter()
         .enumerate()
     {
@@ -817,9 +831,13 @@ fn fitted_column_widths(custom_headers: &[String], rows: &[Vec<String>]) -> Vec<
     for (index, width) in widths.iter_mut().enumerate() {
         for row in rows {
             let value = row.get(index).map_or("", String::as_str);
-            *width = (*width).max(value.chars().count() as f32 * 8.0 + 36.0);
+            *width = (*width).max(value.chars().count() as f32 * 7.2 + 28.0);
         }
-        *width = (*width).clamp(96.0, 420.0);
+        *width = if index == 2 {
+            0.0
+        } else {
+            (*width).clamp(96.0, 360.0)
+        };
     }
     widths
 }
@@ -1047,6 +1065,13 @@ fn clear_editor(window: &AppWindow) {
 
 #[cfg(debug_assertions)]
 fn apply_desktop_audit_fixture(window: &AppWindow) {
+    if std::env::var_os("ITGLA_AUDIT_DEMO").is_some() {
+        window.invoke_enter_demo();
+    }
+    if std::env::var_os("ITGLA_AUDIT_LARGE_DARK").is_some() {
+        window.set_theme_index(4);
+        window.set_font_size_step(4);
+    }
     if let Ok(size) = std::env::var("ITGLA_AUDIT_WINDOW_SIZE")
         && let Some((width, height)) = size.split_once('x').and_then(|(width, height)| {
             Some((width.parse::<u32>().ok()?, height.parse::<u32>().ok()?))
@@ -1056,6 +1081,17 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
     }
 
     match std::env::var("ITGLA_AUDIT_VIEW").as_deref() {
+        Ok("connections") | Ok("businesses") => {
+            window.set_active_tab(
+                if std::env::var("ITGLA_AUDIT_VIEW").as_deref() == Ok("connections") {
+                    7
+                } else {
+                    6
+                },
+            );
+            window.set_onboarding_open(false);
+            window.invoke_topology_refresh();
+        }
         Ok("servers") => {
             window.set_active_tab(0);
             window.set_onboarding_open(false);
@@ -1074,7 +1110,7 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             window.set_import_dialog_open(true);
         }
         Ok(view @ ("inventory" | "domains")) => {
-            window.set_active_tab(4);
+            window.set_active_tab(if view == "domains" { 5 } else { 4 });
             window.set_onboarding_open(false);
             window.invoke_inventory_new(if view == "domains" { 1 } else { 0 });
             if let Some(row) = window.get_inventory_rows().row_data(0) {
@@ -1109,6 +1145,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let work_list_state = Rc::new(RefCell::new(WorkListState::default()));
     let window = AppWindow::new()?;
     operational::setup(&window, repository.clone());
+    topology::setup(&window, repository.clone());
+    endpoints::bind(&window, repository.clone(), table_state.clone());
     let preferences = repository.borrow().workspace_preferences();
     apply_preferences(&window, &preferences);
     window.set_column_widths(ModelRc::new(VecModel::from(
@@ -1177,18 +1215,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let widths = auto_fit_column_widths(&window);
         window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
         update_table_geometry(&window, &widths);
-        window.invoke_auto_fit_site_columns();
     }
     window.set_onboarding_open(!window.get_has_server_records());
-    apply_desktop_audit_fixture(&window);
 
     let weak = window.as_weak();
     window.on_tab_selected(move |tab| {
         if let Some(window) = weak.upgrade() {
             operational::clear_credentials(&window);
             window.set_active_tab(tab);
-            if tab == 4 {
-                window.invoke_inventory_new(window.get_inventory_form().kind);
+            if tab == 0 && window.get_fit_columns_on_open() {
+                window.invoke_auto_fit_columns();
+            } else if tab == 1 && window.get_site_fit_columns_on_open() {
+                window.invoke_auto_fit_site_columns();
+            }
+            if tab == 6 || tab == 7 {
+                window.invoke_topology_refresh();
+            }
+            if tab == 4 || tab == 5 {
+                window.set_inventory_query("".into());
+                window.set_inventory_server_filter(0);
+                window.invoke_inventory_new(if tab == 5 { 1 } else { 0 });
             }
             window.set_status_message(SharedString::new());
         }
@@ -1701,7 +1747,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let callback_repository = Rc::clone(&repository);
     let weak = window.as_weak();
     window.on_font_size_changed(move |step| {
-        let step = step.clamp(0, 2);
+        let step = step.clamp(0, 4);
         if callback_repository
             .borrow()
             .set_font_size_step(i64::from(step))
@@ -1716,15 +1762,35 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let callback_repository = Rc::clone(&repository);
     let weak = window.as_weak();
+    window.on_table_fit_changed(move |servers, sites| {
+        let Some(window) = weak.upgrade() else { return };
+        let mut preferences = callback_repository.borrow().workspace_preferences();
+        let previous_servers = preferences.fit_columns_on_open;
+        let previous_sites = preferences.site_fit_columns_on_open;
+        preferences.fit_columns_on_open = servers;
+        preferences.site_fit_columns_on_open = sites;
+        if let Err(error) = callback_repository
+            .borrow()
+            .set_workspace_preferences(&preferences)
+        {
+            window.set_fit_columns_on_open(previous_servers);
+            window.set_site_fit_columns_on_open(previous_sites);
+            show_error(&window, &error);
+        }
+    });
+
+    let callback_repository = Rc::clone(&repository);
+    let weak = window.as_weak();
     window.on_preferences_changed(
-        move |theme, font, density, tooltips, fit, duplicate, retention| {
+        move |theme, font, density, tooltips, fit, site_fit, duplicate, retention| {
             let Some(window) = weak.upgrade() else { return };
             let mut preferences = callback_repository.borrow().workspace_preferences();
-            preferences.theme_index = i64::from(theme.clamp(0, 3));
-            preferences.font_size_step = i64::from(font.clamp(0, 2));
+            preferences.theme_index = i64::from(theme.clamp(0, 4));
+            preferences.font_size_step = i64::from(font.clamp(0, 4));
             preferences.table_density = i64::from(density.clamp(0, 2));
             preferences.show_cell_tooltips = tooltips;
             preferences.fit_columns_on_open = fit;
+            preferences.site_fit_columns_on_open = site_fit;
             preferences.import_duplicate_policy =
                 ImportDuplicatePolicy::from_index(i64::from(duplicate));
             preferences.backup_retention = retention.clamp(1, 30) as usize;
@@ -1847,7 +1913,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return;
         }
         let demo = Repository::in_memory().and_then(|mut repository| {
-            repository.reset_demo_fixture()?;
+            topology::reset_demo(&mut repository)?;
             Ok(repository)
         });
         match demo {
@@ -1857,6 +1923,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 operational::clear_credentials(&window);
                 window.set_inventory_server_filter(0);
                 window.set_demo_mode(true);
+                topology::clear_selection(&window);
+                window.invoke_topology_refresh();
                 let _ = refresh(
                     &window,
                     &callback_repository.borrow(),
@@ -1884,7 +1952,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         if !window.get_demo_mode() {
             return;
         }
-        let reset_result = callback_repository.borrow_mut().reset_demo_fixture();
+        let reset_result = topology::reset_demo(&mut callback_repository.borrow_mut());
         match reset_result {
             Ok(()) => {
                 let _ = refresh(
@@ -1897,6 +1965,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &callback_repository.borrow(),
                     &callback_site_state.borrow(),
                 );
+                topology::clear_selection(&window);
+                window.invoke_topology_refresh();
+                window.invoke_inventory_refresh();
                 show_status(&window, "Demo reset");
             }
             Err(error) => show_error(&window, &error),
@@ -1917,6 +1988,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         operational::clear_credentials(&window);
         window.set_inventory_server_filter(0);
         window.set_demo_mode(false);
+        topology::clear_selection(&window);
+        window.invoke_topology_refresh();
         let preferences = callback_repository.borrow().workspace_preferences();
         apply_preferences(&window, &preferences);
         let _ = refresh(
@@ -2228,7 +2301,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 name: name.to_string(),
                 tags: server_tags_from_input(tags.as_str()),
                 ip_address: ip_address.to_string(),
-                ports: ports.to_string(),
+                // Keep the legacy export projection on edits; Services owns ports.
+                ports: if id > 0 {
+                    ports.to_string()
+                } else {
+                    "22".into()
+                },
                 environment: environment.to_string(),
                 status: status.to_string(),
                 purpose: purpose.to_string(),
@@ -2247,7 +2325,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                     window.set_editing_id(i32::try_from(saved_id).unwrap_or(i32::MAX));
                     window.set_onboarding_open(false);
-                    show_status(&window, "Server saved");
+                    show_status(
+                        &window,
+                        if id.is_none() {
+                            "Server added. Review the pending SSH service in Services."
+                        } else {
+                            "Server saved"
+                        },
+                    );
                 }
                 Err(error) => show_error(&window, &error),
             }
@@ -2678,6 +2763,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    apply_desktop_audit_fixture(&window);
     window.run()?;
     Ok(())
 }
@@ -2690,6 +2776,45 @@ mod tests {
         LogicalPosition,
         platform::{Key, PointerEventButton, WindowEvent},
     };
+
+    #[test]
+    fn guide_blocks_background_navigation_and_escape_restores_it() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.window().set_size(PhysicalSize::new(1240, 800));
+        let weak = window.as_weak();
+        window.on_tab_selected(move |tab| weak.upgrade().expect("live window").set_active_tab(tab));
+        window.show().expect("show window");
+        window.set_onboarding_open(true);
+        let sites = ElementHandle::find_by_accessible_label(&window, "Sites")
+            .next()
+            .expect("sites");
+        sites.invoke_accessible_default_action();
+        assert_eq!(window.get_active_tab(), 0);
+        // The popup owns the input surface, including the visible tab behind it.
+        for event in [
+            WindowEvent::PointerPressed {
+                position: LogicalPosition::new(180., 95.),
+                button: PointerEventButton::Left,
+            },
+            WindowEvent::PointerReleased {
+                position: LogicalPosition::new(180., 95.),
+                button: PointerEventButton::Left,
+            },
+        ] {
+            window.window().dispatch_event(event);
+        }
+        assert_eq!(window.get_active_tab(), 0);
+        window.window().dispatch_event(WindowEvent::KeyPressed {
+            text: Key::Escape.into(),
+        });
+        window.window().dispatch_event(WindowEvent::KeyReleased {
+            text: Key::Escape.into(),
+        });
+        assert!(!window.get_onboarding_open());
+        sites.invoke_accessible_default_action();
+        assert_eq!(window.get_active_tab(), 1);
+    }
 
     fn server(tags: &[&str], ip_address: &str, ports: &str, custom: &[&str]) -> ServerRecord {
         ServerRecord {
@@ -2801,8 +2926,12 @@ mod tests {
             );
         });
         window.show().expect("show test window");
+        let header = ElementHandle::find_by_accessible_label(&window, "NAME, sorted ascending")
+            .next()
+            .expect("name column header");
+        let header_y = header.absolute_position().y + header.size().height / 2.0;
         for expected in [2, 3, 2] {
-            let position = LogicalPosition::new(250.0, 263.0);
+            let position = LogicalPosition::new(250.0, header_y);
             window
                 .window()
                 .dispatch_event(WindowEvent::PointerMoved { position });
@@ -2818,7 +2947,7 @@ mod tests {
                 });
             assert_eq!(window.get_sort_mode_index(), expected);
         }
-        let start = LogicalPosition::new(187.0, 263.0);
+        let start = LogicalPosition::new(187.0, header_y);
         window
             .window()
             .dispatch_event(WindowEvent::PointerMoved { position: start });
@@ -2829,10 +2958,10 @@ mod tests {
         });
         for x in [197.0, 207.0, 217.0] {
             window.window().dispatch_event(WindowEvent::PointerMoved {
-                position: LogicalPosition::new(x, 263.0),
+                position: LogicalPosition::new(x, header_y),
             });
         }
-        let end = LogicalPosition::new(217.0, 263.0);
+        let end = LogicalPosition::new(217.0, header_y);
         window
             .window()
             .dispatch_event(WindowEvent::PointerReleased {
@@ -2841,7 +2970,7 @@ mod tests {
             });
         assert_eq!(window.get_column_widths().row_data(0), Some(190.0));
         window.window().dispatch_event(WindowEvent::PointerMoved {
-            position: LogicalPosition::new(211.0, 263.0),
+            position: LogicalPosition::new(211.0, header_y),
         });
         assert_eq!(window.get_column_widths().row_data(0), Some(190.0));
         assert_eq!(window.get_sort_mode_index(), 2, "resizing must not sort");
@@ -2923,7 +3052,15 @@ mod tests {
             .collect::<Vec<_>>();
         assert_eq!(
             labels,
-            ["Servers", "Sites", "Services & Domains", "Settings"]
+            [
+                "Servers",
+                "Sites",
+                "Services",
+                "Domains",
+                "Businesses",
+                "Connections",
+                "Settings"
+            ]
         );
 
         let sites_tab = ElementHandle::find_by_accessible_label(&window, "Sites")
@@ -2955,28 +3092,27 @@ mod tests {
         let saved = Rc::new(RefCell::new(None));
         let observed = Rc::clone(&saved);
         window.on_preferences_changed(
-            move |theme, font, density, hover, fit, duplicate, retention| {
-                *observed.borrow_mut() =
-                    Some((theme, font, density, hover, fit, duplicate, retention));
+            move |theme, font, density, hover, fit, site_fit, duplicate, retention| {
+                *observed.borrow_mut() = Some((
+                    theme, font, density, hover, fit, site_fit, duplicate, retention,
+                ));
             },
         );
         window.show().expect("show settings");
-        for label in [
-            "Color: Field Atlas",
-            "Text size: Large",
-            "Row spacing: Comfy",
-        ] {
+        // Row spacing and the sample are reachable by scrolling at minimum height.
+        for label in ["Color: Field Atlas", "Text size"] {
             assert!(
                 ElementHandle::find_by_accessible_label(&window, label)
                     .next()
-                    .is_some()
+                    .is_some(),
+                "missing accessibility label: {label}"
             );
         }
         let save = ElementHandle::find_by_accessible_label(&window, "Save settings")
             .next()
             .expect("persistent save action");
         save.invoke_accessible_default_action();
-        assert_eq!(*saved.borrow(), Some((1, 2, 0, false, true, 2, 14)));
+        assert_eq!(*saved.borrow(), Some((1, 2, 0, false, true, false, 2, 14)));
     }
 
     #[test]
@@ -2989,10 +3125,20 @@ mod tests {
         window.show().expect("show settings");
         let saved = Rc::new(RefCell::new(None));
         let observed = Rc::clone(&saved);
-        window.on_preferences_changed(move |theme, font, density, _, _, _, _| {
+        window.on_preferences_changed(move |theme, font, density, _, _, _, _, _| {
             *observed.borrow_mut() = Some((theme, font, density));
         });
-        for label in ["Color: Sand", "Text size: Small", "Row spacing: Roomy"] {
+        let slider = ElementHandle::find_by_accessible_label(&window, "Text size control")
+            .next()
+            .expect("text size slider");
+        assert_eq!(slider.accessible_value_minimum(), Some(0.0));
+        assert_eq!(slider.accessible_value_maximum(), Some(4.0));
+        for step in 0..=4 {
+            slider.set_accessible_value(step.to_string());
+            assert_eq!(window.get_font_size_step(), step);
+        }
+        slider.set_accessible_value("0");
+        for label in ["Color: Sand", "Row spacing: Roomy"] {
             let choice = ElementHandle::find_by_accessible_label(&window, label)
                 .next()
                 .expect("visible appearance choice");
@@ -3026,7 +3172,7 @@ mod tests {
         window.window().set_size(PhysicalSize::new(1_000, 800));
         window.show().expect("show settings");
         let weak = window.as_weak();
-        window.on_preferences_changed(move |_, _, _, _, _, _, _| {
+        window.on_preferences_changed(move |_, _, _, _, _, _, _, _| {
             let window = weak.upgrade().expect("live window");
             window.set_status_is_error(true);
             window.set_status_message("Preferences could not be saved".into());
@@ -3051,21 +3197,48 @@ mod tests {
     }
 
     #[test]
-    fn disabled_action_rejects_accessibility_activation() {
+    fn table_actions_only_appear_in_the_owning_tab() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
         window.set_onboarding_open(false);
-        window.set_active_tab(2);
         let calls = Rc::new(RefCell::new(0));
         let observed = Rc::clone(&calls);
         window.on_auto_fit_columns(move || *observed.borrow_mut() += 1);
         window.show().expect("show window");
-        let action = ElementHandle::find_by_accessible_label(&window, "Fit columns")
+        for tab in [2, 4, 5] {
+            window.set_active_tab(tab);
+            assert!(
+                ElementHandle::find_by_accessible_label(&window, "Fit columns")
+                    .next()
+                    .is_none()
+            );
+            assert!(
+                ElementHandle::find_by_accessible_label(&window, "Import servers")
+                    .next()
+                    .is_none()
+            );
+            assert!(
+                ElementHandle::find_by_accessible_label(&window, "Import sites")
+                    .next()
+                    .is_none()
+            );
+        }
+        for (tab, label, sites) in [(0, "Import servers", false), (1, "Import sites", true)] {
+            window.set_active_tab(tab);
+            ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .expect("local import")
+                .invoke_accessible_default_action();
+            assert_eq!(window.get_importing_sites(), sites);
+            assert!(window.get_import_dialog_open());
+            window.set_import_dialog_open(false);
+        }
+        window.set_active_tab(0);
+        ElementHandle::find_by_accessible_label(&window, "Fit columns")
             .next()
-            .expect("disabled header action");
-        assert_eq!(action.accessible_enabled(), Some(false));
-        action.invoke_accessible_default_action();
-        assert_eq!(*calls.borrow(), 0);
+            .expect("local fit")
+            .invoke_accessible_default_action();
+        assert_eq!(*calls.borrow(), 1);
     }
 
     #[test]
@@ -3079,10 +3252,12 @@ mod tests {
             tags: "production".into(),
             ip_address: "203.0.113.7".into(),
             ports: "22, 443".into(),
+            port_count: 2,
             environment: "production".into(),
             status: "active".into(),
             purpose: "Public API".into(),
             custom_values: ModelRc::new(VecModel::from(Vec::<SharedString>::new())),
+            endpoints: ModelRc::new(VecModel::default()),
         }])));
         window.set_available_tags(ModelRc::new(VecModel::from(vec!["production".into()])));
         window.show().expect("show test window");
@@ -3099,8 +3274,12 @@ mod tests {
                 .is_some(),
             "sortable table headers need their direction in the name"
         );
+        ElementHandle::find_by_accessible_label(&window, "Filter tags")
+            .next()
+            .expect("tag filter menu")
+            .invoke_accessible_default_action();
         assert!(
-            ElementHandle::find_by_accessible_label(&window, "Filter by production")
+            ElementHandle::find_by_accessible_label(&window, "production")
                 .next()
                 .is_some(),
             "tag filters need a screen-reader name"
@@ -3188,7 +3367,16 @@ mod tests {
             let rows = vec![row];
             let widths = fitted_column_widths(&headers, &rows);
             assert_eq!(widths.len(), 7 + custom_count);
-            assert!(widths.iter().all(|width| (96.0..=420.0).contains(width)));
+            assert_eq!(
+                widths[2], 0.0,
+                "the legacy port column must not consume space"
+            );
+            assert!(
+                widths
+                    .iter()
+                    .enumerate()
+                    .all(|(index, width)| index == 2 || (96.0..=420.0).contains(width))
+            );
             assert!(table_width_for(&widths) >= 816.0);
             assert_eq!(
                 table_width_for(&widths),
@@ -3199,6 +3387,78 @@ mod tests {
     }
 
     #[test]
+    fn inventory_editors_open_on_request_and_close_without_clearing_fields() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.show().expect("show window");
+        assert!(!window.get_server_editor_open());
+        assert!(
+            ElementHandle::find_by_accessible_label(&window, "Server name")
+                .next()
+                .is_none()
+        );
+        ElementHandle::find_by_accessible_label(&window, "New server")
+            .next()
+            .expect("new action")
+            .invoke_accessible_default_action();
+        assert!(window.get_server_editor_open());
+        window.set_editing_name("Unsaved draft".into());
+        ElementHandle::find_by_accessible_label(&window, "Close")
+            .next()
+            .expect("close editor")
+            .invoke_accessible_default_action();
+        assert!(!window.get_server_editor_open());
+        assert_eq!(window.get_editing_name(), "Unsaved draft");
+        window.set_active_tab(1);
+        assert!(!window.get_site_editor_open());
+        ElementHandle::find_by_accessible_label(&window, "New site")
+            .next()
+            .expect("new site")
+            .invoke_accessible_default_action();
+        assert!(window.get_site_editor_open());
+        assert!(
+            ElementHandle::find_by_accessible_label(&window, "Site URL")
+                .next()
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn largest_font_server_form_keeps_fields_separate_and_save_visible() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.window().set_size(PhysicalSize::new(1000, 640));
+        window.set_onboarding_open(false);
+        window.set_font_size_step(4);
+        window.set_server_editor_open(true);
+        window.show().expect("show window");
+        slint::platform::update_timers_and_animations();
+        let field = |label: &str| {
+            ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .expect(label)
+        };
+        let name = field("Server name");
+        let ip = field("Server IP address");
+        assert!(ip.absolute_position().y >= name.absolute_position().y + name.size().height);
+        let save = ElementHandle::find_by_accessible_label(&window, "Add server")
+            .find(|element| element.accessible_role() == Some(AccessibleRole::Button))
+            .expect("save button");
+        assert!(save.absolute_position().y + save.size().height <= 640.0);
+        assert!(save.size().height >= 40.0);
+        assert!(
+            ElementHandle::find_by_accessible_label(&window, "PORTS")
+                .next()
+                .is_none()
+        );
+        window.set_server_editor_scroll_y(-260.0);
+        let tags = field("Server tags");
+        assert!(tags.absolute_position().y > 138.0);
+        assert!(tags.absolute_position().y + tags.size().height < save.absolute_position().y);
+    }
+
+    #[test]
     fn server_fields_accept_pointer_positioned_edits() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
@@ -3206,9 +3466,14 @@ mod tests {
         window.set_active_tab(0);
         window.set_onboarding_open(false);
         window.set_editing_ip_address("203.0.113.10".into());
+        window.set_server_editor_open(true);
         window.show().expect("show test window");
 
-        let position = LogicalPosition::new(710.0, 293.0);
+        let field = ElementHandle::find_by_accessible_label(&window, "Server IP address")
+            .next()
+            .expect("server IP field");
+        let bounds = field.absolute_position();
+        let position = LogicalPosition::new(bounds.x + 70.0, bounds.y + 16.0);
         window
             .window()
             .dispatch_event(WindowEvent::PointerMoved { position });

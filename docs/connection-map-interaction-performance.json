@@ -1,0 +1,33 @@
+{
+  "scope": "Windows debug software renderer; same 16-resource demo and 1400x950 physical window; 160 synchronous wheel messages. Single runs, not FPS or frame latency. Selection affects rendered link count.",
+  "baseline": {
+    "label": "baseline",
+    "pid": 31836,
+    "events": 160,
+    "wall_ms": 37480.9,
+    "cpu_ms": 34656.2,
+    "dispatch_p95_ms": 979.71,
+    "working_set_mb": 58.5,
+    "scope": "Native demo, 1400x950 physical, software renderer, wheel round trips. Not frame latency or FPS."
+  },
+  "optimized_selected_resource": {
+    "label": "optimized-final",
+    "pid": 28940,
+    "events": 160,
+    "wall_ms": 5156.3,
+    "cpu_ms": 4890.6,
+    "dispatch_p95_ms": 21.89,
+    "working_set_mb": 51.3,
+    "scope": "Native demo, 1400x950 physical, software renderer, wheel round trips. Not frame latency or FPS."
+  },
+  "final_default_links_no_selection": {
+    "label": "final-contrast",
+    "pid": 23244,
+    "events": 160,
+    "wall_ms": 8819.4,
+    "cpu_ms": 8421.9,
+    "dispatch_p95_ms": 56.53,
+    "working_set_mb": 48.8,
+    "scope": "Native demo, 1400x950 physical, software renderer, wheel round trips. Not frame latency or FPS."
+  }
+}

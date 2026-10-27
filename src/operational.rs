@@ -1,12 +1,15 @@
 //! Operational metadata uses the visible server inventory, not legacy planning assets.
 use std::{cell::RefCell, fs, path::Path, rc::Rc, time::Duration};
 
-use rusqlite::params;
+use rusqlite::{OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::storage::{Repository, StorageError};
-use crate::{AppWindow, InventoryChoice, InventoryForm, InventoryRow, domain::parse_tags, secrets};
+use crate::{
+    AppWindow, InventoryChoice, InventoryForm, InventoryHost, InventoryRow, domain::parse_tags,
+    secrets,
+};
 
 #[derive(Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -20,8 +23,16 @@ pub struct Details {
     pub registered: String,
     pub expires: String,
     pub cdn: String,
+    #[serde(default)]
+    pub business: String,
     pub tags: String,
     pub notes: String,
+    #[serde(default)]
+    pub protocol: String,
+    #[serde(default)]
+    pub transport: String,
+    #[serde(default)]
+    pub pending_confirmation: bool,
 }
 
 pub struct Entry {
@@ -33,10 +44,139 @@ pub struct Entry {
     pub hidden: bool,
     pub verified_at: Option<String>,
     pub verification_due: bool,
+    pub updated_at: String,
 }
 
 fn invalid(message: &str) -> StorageError {
     StorageError::InvalidImport(message.into())
+}
+
+fn connection_target(details: &Details) -> Result<(bool, String), StorageError> {
+    if details.pending_confirmation {
+        return Err(invalid("Review and confirm this service before connecting"));
+    }
+    let port = details
+        .ports
+        .parse::<u16>()
+        .ok()
+        .filter(|p| *p > 0)
+        .ok_or_else(|| invalid("Choose one port from 1 to 65535 for this service"))?;
+    let host = details
+        .address
+        .trim()
+        .trim_start_matches('[')
+        .trim_end_matches(']');
+    if host.is_empty()
+        || host.starts_with('-')
+        || !host
+            .bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b".-:_".contains(&b))
+    {
+        return Err(invalid(
+            "Use a server IP address or hostname without a URL, username or password",
+        ));
+    }
+    let address = if host.contains(':') {
+        format!("[{host}]:{port}")
+    } else {
+        format!("{host}:{port}")
+    };
+    match details.protocol.trim().to_ascii_uppercase().as_str() {
+        "HTTP" => Ok((true, format!("http://{address}"))),
+        "HTTPS" => Ok((true, format!("https://{address}"))),
+        "SSH" => Ok((false, format!("ssh -p {port} {host}"))),
+        _ => Ok((false, address)),
+    }
+}
+
+/// Move legacy access points into linked services inside the caller's transaction.
+/// Existing services with the same host and port are kept, including their credentials.
+pub(crate) fn seed_server_services(
+    connection: &rusqlite::Connection,
+    server_id: i64,
+    include_default_ssh: bool,
+) -> Result<(), StorageError> {
+    let (name, address, tags, hidden): (String, String, String, bool) = connection.query_row(
+        "SELECT name,ip_address,tags,archived_at IS NOT NULL FROM server_records WHERE id=?1",
+        [server_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    let mut statement = connection.prepare(
+        "SELECT port,transport,protocol,purpose FROM server_endpoints WHERE server_id=?1 ORDER BY id",
+    )?;
+    let mut endpoints = statement
+        .query_map([server_id], |row| {
+            Ok((
+                row.get::<_, u16>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+            ))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if include_default_ssh && !endpoints.iter().any(|e| e.0 == 22) {
+        endpoints.push((22, "TCP".into(), "SSH".into(), "ssh".into()));
+    }
+    for (port, transport, protocol, notes) in endpoints {
+        let protocol = if protocol.trim().is_empty() && port == 22 {
+            "SSH".to_owned()
+        } else {
+            protocol.trim().to_ascii_uppercase()
+        };
+        let exists: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM operational_inventory i JOIN operational_hosts h ON h.inventory_id=i.id WHERE h.server_id=?1 AND i.kind=0 AND (',' || replace(json_extract(i.data,'$.ports'),' ','') || ',') LIKE ?2 AND (coalesce(json_extract(i.data,'$.transport'),'') IN ('','Unspecified') OR json_extract(i.data,'$.transport')=?3))",
+            params![server_id, format!("%,{port},%"), transport], |r| r.get(0),
+        )?;
+        if exists {
+            continue;
+        }
+        let count: i64 =
+            connection.query_row("SELECT count(*) FROM operational_inventory", [], |r| {
+                r.get(0)
+            })?;
+        if count >= 5000 {
+            return Err(invalid(
+                "Inventory is limited to 5000 records; no server or port changes were saved",
+            ));
+        }
+        let details = Details {
+            name: format!(
+                "{} - {}",
+                name.chars().take(110).collect::<String>(),
+                if protocol.is_empty() {
+                    format!("Port {port}")
+                } else {
+                    protocol.clone()
+                }
+            ),
+            address: address.clone(),
+            ports: port.to_string(),
+            tags: tags.clone(),
+            notes: if notes.is_empty() && port == 22 {
+                "ssh".into()
+            } else {
+                notes
+            },
+            protocol,
+            transport: if transport == "Unspecified" && port == 22 {
+                "TCP".into()
+            } else {
+                transport
+            },
+            pending_confirmation: true,
+            ..Default::default()
+        };
+        connection.execute(
+            "INSERT INTO operational_inventory(kind,data,hidden) VALUES(0,?1,?2)",
+            params![serde_json::to_string(&details)?, hidden],
+        )?;
+        let id = connection.last_insert_rowid();
+        connection.execute(
+            "INSERT INTO operational_hosts(inventory_id,server_id) VALUES(?1,?2)",
+            params![id, server_id],
+        )?;
+    }
+    Ok(())
 }
 
 fn valid_date(value: &str) -> bool {
@@ -94,8 +234,11 @@ impl Details {
             &mut self.registered,
             &mut self.expires,
             &mut self.cdn,
+            &mut self.business,
             &mut self.tags,
             &mut self.notes,
+            &mut self.protocol,
+            &mut self.transport,
         ] {
             *value = value.trim().to_owned();
             if value.chars().count() > 2048 {
@@ -108,6 +251,17 @@ impl Details {
             ));
         }
         self.tags = parse_tags(&self.tags)?.join(", ");
+        if self.business.chars().count() > 160 {
+            return Err(invalid("Business name must be 160 characters or fewer"));
+        }
+        self.protocol = self.protocol.to_ascii_uppercase();
+        if self.protocol.chars().count() > 40
+            || !["", "Unspecified", "TCP", "UDP"].contains(&self.transport.as_str())
+        {
+            return Err(invalid(
+                "Use a protocol of at most 40 characters and TCP, UDP or Unspecified transport",
+            ));
+        }
         if kind == 0 {
             for port in self
                 .ports
@@ -150,7 +304,7 @@ impl Details {
 
 impl Repository {
     pub fn inventory_entries(&self) -> Result<Vec<Entry>, StorageError> {
-        let mut statement=self.connection.prepare("SELECT id,kind,data,credentials IS NOT NULL,hidden,verified_at,verified_at IS NULL OR date(verified_at)<date('now','-90 days') FROM operational_inventory ORDER BY id DESC LIMIT 5001")?;
+        let mut statement=self.connection.prepare("SELECT id,kind,data,credentials IS NOT NULL,hidden,verified_at,verified_at IS NULL OR date(verified_at)<date('now','-90 days'),updated_at FROM operational_inventory ORDER BY id DESC LIMIT 5001")?;
         let values = statement
             .query_map([], |row| {
                 Ok((
@@ -161,6 +315,7 @@ impl Repository {
                     row.get::<_, bool>(4)?,
                     row.get::<_, Option<String>>(5)?,
                     row.get::<_, bool>(6)?,
+                    row.get::<_, String>(7)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -173,7 +328,16 @@ impl Repository {
         values
             .into_iter()
             .map(
-                |(id, kind, json, has_credentials, hidden, verified_at, verification_due)| {
+                |(
+                    id,
+                    kind,
+                    json,
+                    has_credentials,
+                    hidden,
+                    verified_at,
+                    verification_due,
+                    updated_at,
+                )| {
                     Ok(Entry {
                         id,
                         kind,
@@ -182,6 +346,7 @@ impl Repository {
                         hidden,
                         verified_at,
                         verification_due,
+                        updated_at,
                         hosts: hosts
                             .query_map([id], |row| row.get(0))?
                             .collect::<Result<Vec<_>, _>>()?,
@@ -204,11 +369,59 @@ impl Repository {
         if hosts.len() > 100 {
             return Err(invalid("Choose at most 100 hosting servers"));
         }
+        let transaction = self.connection.transaction()?;
+        let business_id = if details.business.trim().is_empty() {
+            None
+        } else {
+            transaction.execute(
+                "INSERT INTO businesses(name) VALUES(?1) ON CONFLICT DO NOTHING",
+                [details.business.trim()],
+            )?;
+            Some(transaction.query_row(
+                "SELECT id FROM businesses WHERE lower(trim(name))=lower(trim(?1)) AND archived_at IS NULL",
+                [details.business.trim()],
+                |row| row.get::<_, i64>(0),
+            )?)
+        };
+        let parent_domain_id = if kind == 1 && !details.parent.trim().is_empty() {
+            transaction
+                .query_row(
+                    "SELECT id FROM operational_inventory WHERE kind=1 AND hidden=0 AND lower(json_extract(data,'$.name'))=lower(?1) AND id<>?2 ORDER BY id LIMIT 1",
+                    params![details.parent.trim(), id],
+                    |row| row.get::<_, i64>(0),
+                )
+                .optional()?
+        } else {
+            None
+        };
+        if let Some(business) = business_id {
+            details.business = transaction.query_row(
+                "SELECT name FROM businesses WHERE id=?1",
+                [business],
+                |r| r.get(0),
+            )?;
+        }
+        if let Some(parent) = parent_domain_id {
+            let cycle: bool = transaction.query_row("WITH RECURSIVE parents(id) AS (SELECT ?1 UNION SELECT parent_domain_id FROM operational_inventory JOIN parents ON operational_inventory.id=parents.id WHERE parent_domain_id IS NOT NULL) SELECT EXISTS(SELECT 1 FROM parents WHERE id=?2)", params![parent,id], |r| r.get(0))?;
+            if cycle {
+                return Err(invalid("A domain cannot contain its own ancestor"));
+            }
+            details.parent = transaction.query_row(
+                "SELECT json_extract(data,'$.name') FROM operational_inventory WHERE id=?1",
+                [parent],
+                |r| r.get(0),
+            )?;
+        }
+        if kind == 1
+            && !details.parent.is_empty()
+            && details.parent.eq_ignore_ascii_case(&details.name)
+        {
+            return Err(invalid("A domain cannot be its own parent"));
+        }
         let json = serde_json::to_string(&details)?;
         if json.len() > 32768 {
             return Err(invalid("Combined metadata is too large"));
         }
-        let transaction = self.connection.transaction()?;
         for host in hosts {
             let exists:bool=transaction.query_row("SELECT EXISTS(SELECT 1 FROM server_records WHERE id=?1 AND (archived_at IS NULL OR EXISTS(SELECT 1 FROM operational_hosts WHERE inventory_id=?2 AND server_id=?1)))",params![host,id],|r|r.get(0))?;
             if !exists {
@@ -224,8 +437,8 @@ impl Repository {
                 return Err(invalid("Inventory is limited to 5000 records"));
             }
             transaction.execute(
-                "INSERT INTO operational_inventory(kind,data) VALUES(?1,?2)",
-                params![kind, json],
+                "INSERT INTO operational_inventory(kind,data,business_id,parent_domain_id) VALUES(?1,?2,?3,?4)",
+                params![kind, json, business_id, parent_domain_id],
             )?;
             transaction.last_insert_rowid()
         } else {
@@ -248,8 +461,8 @@ impl Repository {
             new_hosts.dedup();
             let changed = old_data != json || old_hosts != new_hosts;
             if transaction.execute(
-                "UPDATE operational_inventory SET verified_at=CASE WHEN ?1 THEN NULL ELSE verified_at END,data=?2 WHERE id=?3 AND kind=?4 AND hidden=0",
-                params![changed, json, id, kind],
+                "UPDATE operational_inventory SET verified_at=CASE WHEN ?1 THEN NULL ELSE verified_at END,data=?2,business_id=?3,parent_domain_id=?4 WHERE id=?5 AND kind=?6 AND hidden=0",
+                params![changed, json, business_id, parent_domain_id, id, kind],
             )? != 1
             {
                 return Err(invalid(
@@ -286,6 +499,16 @@ impl Repository {
                 params![saved, host],
             )?;
         }
+        transaction.execute("DELETE FROM resource_links WHERE target_type=?1 AND target_id=?2 AND (relation_type='owns' AND source_type='business' OR relation_type='contains' AND source_type='domain')",params![if kind==0 {"service"}else{"domain"},saved])?;
+        if let Some(business) = business_id {
+            transaction.execute("INSERT OR IGNORE INTO resource_links(source_type,source_id,target_type,target_id,relation_type) VALUES('business',?1,?2,?3,'owns')",params![business,if kind==0 {"service"}else{"domain"},saved])?;
+        }
+        if let Some(parent) = parent_domain_id {
+            transaction.execute("INSERT OR IGNORE INTO resource_links(source_type,source_id,target_type,target_id,relation_type) VALUES('domain',?1,'domain',?2,'contains')",params![parent,saved])?;
+        }
+        if kind == 1 {
+            transaction.execute("UPDATE operational_inventory SET data=json_set(data,'$.parent',?1) WHERE parent_domain_id=?2 AND json_extract(data,'$.parent') IS NOT ?1", params![details.name,saved])?;
+        }
         transaction.commit()?;
         Ok(saved)
     }
@@ -318,7 +541,7 @@ impl Repository {
 
     pub fn mark_inventory_verified(&self, id: i64) -> Result<(), StorageError> {
         if self.connection.execute(
-            "UPDATE operational_inventory SET verified_at=date('now') WHERE id=?1 AND hidden=0",
+            "UPDATE operational_inventory SET verified_at=date('now'),data=json_set(data,'$.pending_confirmation',json('false')) WHERE id=?1 AND hidden=0",
             [id],
         )? != 1
         {
@@ -339,7 +562,7 @@ impl Repository {
         let servers = self.server_records()?;
         let query = query.trim().to_lowercase();
         let mut output = String::from(
-            "Type,Name,Address,Version,Ports,Parent,Registrar,Registered,Expires,CDN,Servers,Tags,Notes,Last verified\r\n",
+            "Type,Name,Address,Version,Ports,Parent,Registrar,Registered,Expires,CDN,Servers,Tags,Notes,Last verified,Protocol,Transport,Confirmation\r\n",
         );
         let mut count = 0;
         for entry in entries.iter().filter(|entry| {
@@ -374,6 +597,13 @@ impl Repository {
                 &entry.details.tags,
                 &entry.details.notes,
                 entry.verified_at.as_deref().unwrap_or(""),
+                &entry.details.protocol,
+                &entry.details.transport,
+                if entry.details.pending_confirmation {
+                    "Pending"
+                } else {
+                    "Confirmed"
+                },
             ];
             for (index, value) in values.iter().enumerate() {
                 if index != 0 {
@@ -426,6 +656,10 @@ impl Repository {
             return Err(invalid("Relations are limited to 20000 records"));
         }
         self.connection.execute("INSERT INTO operational_relations(source_id,target_id,kind,notes) VALUES(?1,?2,?3,?4) ON CONFLICT(source_id,target_id,kind) DO UPDATE SET notes=excluded.notes",params![source,target,kind,notes.trim()])?;
+        self.connection.execute(
+            "INSERT INTO resource_links(source_type,source_id,target_type,target_id,relation_type,notes) VALUES('service',?1,'service',?2,?3,?4) ON CONFLICT(source_type,source_id,target_type,target_id,relation_type) DO UPDATE SET notes=excluded.notes,updated_at=CURRENT_TIMESTAMP",
+            params![source, target, ["depends_on", "replicates_to", "fails_over_to", "balances_to"][kind as usize], notes.trim()],
+        )?;
         Ok(())
     }
 }
@@ -458,10 +692,14 @@ fn form(entry: &Entry) -> InventoryForm {
         registered: d.registered.clone().into(),
         expires: d.expires.clone().into(),
         cdn: d.cdn.clone().into(),
+        business: d.business.clone().into(),
         tags: d.tags.clone().into(),
         notes: d.notes.clone().into(),
         has_credentials: entry.has_credentials,
         verified_at: entry.verified_at.clone().unwrap_or_default().into(),
+        protocol: d.protocol.clone().into(),
+        transport: d.transport.clone().into(),
+        pending_confirmation: d.pending_confirmation,
     }
 }
 
@@ -506,15 +744,40 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
                 id: entry.id as i32,
                 name: d.name.clone().into(),
                 summary: if kind == 0 {
-                    format!("{}  ·  {}  ·  {}", d.version, d.ports, d.address)
+                    format!(
+                        "Port {}  |  {}  |  {}  |  {}",
+                        d.ports, d.protocol, d.version, d.address
+                    )
                 } else {
                     format!("{}  ·  {}  ·  {}", d.parent, d.registrar, d.expires)
                 }
                 .into(),
-                hosts: host_names.into(),
+                hosts: ModelRc::new(VecModel::from(
+                    entry
+                        .hosts
+                        .iter()
+                        .map(|id| InventoryHost {
+                            id: *id as i32,
+                            label: servers
+                                .iter()
+                                .find(|s| s.id == *id)
+                                .map(|s| format!("{} · {}", s.name, s.ip_address))
+                                .or_else(|| {
+                                    hidden_servers
+                                        .iter()
+                                        .find(|s| s.id == *id)
+                                        .map(|s| format!("{} [hidden]", s.name))
+                                })
+                                .unwrap_or_else(|| "Missing server".into())
+                                .into(),
+                        })
+                        .collect::<Vec<_>>(),
+                )),
                 tags: d.tags.clone().into(),
                 notes: d.notes.clone().into(),
-                verification: if entry.verification_due {
+                verification: if entry.details.pending_confirmation {
+                    "Pending confirmation - review service settings".to_owned()
+                } else if entry.verification_due {
                     entry.verified_at.as_deref().map_or_else(
                         || "Not verified · due".to_owned(),
                         |date| format!("Last checked {date} · due"),
@@ -527,6 +790,8 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
                 }
                 .into(),
                 verified: !entry.verification_due,
+                pending_confirmation: d.pending_confirmation,
+                updated_at: entry.updated_at.clone().into(),
             });
         }
     }
@@ -636,6 +901,39 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
 
 pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
     window.set_inventory_credentials_available(secrets::AVAILABLE);
+    let weak = window.as_weak();
+    let repo = repository.clone();
+    window.on_inventory_connect(move || {
+        let Some(w) = weak.upgrade() else { return };
+        let result = (|| {
+            let entries = repo.borrow().inventory_entries()?;
+            let entry = entries
+                .iter()
+                .find(|entry| {
+                    entry.id == i64::from(w.get_inventory_form().id)
+                        && entry.kind == 0
+                        && !entry.hidden
+                })
+                .ok_or_else(|| invalid("Save and select a service first"))?;
+            let mut details = entry.details.clone();
+            if details.address.is_empty() && entry.hosts.len() == 1 {
+                details.address = repo.borrow().connection.query_row(
+                    "SELECT ip_address FROM server_records WHERE id=?1",
+                    [entry.hosts[0]],
+                    |r| r.get(0),
+                )?;
+            }
+            let (browser, target) = connection_target(&details)?;
+            if browser {
+                webbrowser::open(&target)
+                    .map_err(|_| invalid("Could not open the service in your browser"))?;
+            } else {
+                w.invoke_copy_value(target.into(), "Service connection".into());
+            }
+            Ok(())
+        })();
+        message(&w, result);
+    });
     let timer = Rc::new(slint::Timer::default());
     let weak = window.as_weak();
     let repo = repository.clone();
@@ -715,8 +1013,13 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
                 registered: f.registered.to_string(),
                 expires: f.expires.to_string(),
                 cdn: f.cdn.to_string(),
+                business: f.business.to_string(),
                 tags: f.tags.to_string(),
                 notes: f.notes.to_string(),
+                protocol: f.protocol.to_string(),
+                transport: f.transport.to_string(),
+                // The explicit Confirm service action saves the reviewed settings.
+                pending_confirmation: false,
             };
             let hosts = w
                 .get_inventory_hosts()
@@ -875,6 +1178,48 @@ mod tests {
         Details {
             name: name.into(),
             ..Details::default()
+        }
+    }
+
+    #[test]
+    fn connection_actions_respect_protocol_pending_state_and_safe_hosts() {
+        let mut details = Details {
+            address: "203.0.113.10".into(),
+            ports: "22".into(),
+            protocol: "SSH".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            connection_target(&details).unwrap(),
+            (false, "ssh -p 22 203.0.113.10".into())
+        );
+        details.protocol = "MySQL".into();
+        details.ports = "3060".into();
+        assert_eq!(
+            connection_target(&details).unwrap(),
+            (false, "203.0.113.10:3060".into())
+        );
+        details.protocol = "https".into();
+        details.ports = "443".into();
+        assert_eq!(
+            connection_target(&details).unwrap(),
+            (true, "https://203.0.113.10:443".into())
+        );
+        details.address = "2001:db8::1".into();
+        assert_eq!(
+            connection_target(&details).unwrap().1,
+            "https://[2001:db8::1]:443"
+        );
+        details.pending_confirmation = true;
+        assert!(connection_target(&details).is_err());
+        details.pending_confirmation = false;
+        for host in [
+            "-oProxyCommand=bad",
+            "example.com;bad",
+            "user:password@example.com",
+        ] {
+            details.address = host.into();
+            assert!(connection_target(&details).is_err());
         }
     }
 

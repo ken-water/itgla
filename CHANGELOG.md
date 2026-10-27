@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.6.0 - 2026-10-27
+
+- Add businesses and a connection map for domains, servers, services and their relationships.
+- Improve service tables, per-port records, server details and appearance controls.
+- Update the website with current product screenshots and a clearer homepage.
+
 ## 0.5.0 - 2026-10-24
 
 - Improved desktop action clarity with distinct primary and secondary buttons, visible focus states, and safer disabled actions.

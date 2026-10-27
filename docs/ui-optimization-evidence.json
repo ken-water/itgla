@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "task_id": "appearance-20261026",
+  "target_version": "0.5.0-local-appearance-20261026",
+  "gates": {
+    "lint": {
+      "status": "pass",
+      "evidence": [
+        "cargo +1.92.0 fmt -- --check; python scripts/audit-ui.py passed"
+      ]
+    },
+    "typecheck": {
+      "status": "pass",
+      "evidence": [
+        "Slint and Rust compiled by cargo +1.92.0 build --locked"
+      ]
+    },
+    "build": {
+      "status": "pass",
+      "evidence": [
+        "cargo +1.92.0 build --locked passed"
+      ]
+    },
+    "focused_tests": {
+      "status": "pass",
+      "evidence": [
+        "83 tests passed after editor/button fixes"
+      ]
+    },
+    "responsive": {
+      "status": "pass",
+      "evidence": [
+        "Playwright 1440/768/390: no overflow, loaded images, no page errors; native largest-font dark editor reviewed"
+      ]
+    },
+    "accessibility": {
+      "status": "pass",
+      "evidence": [
+        "UI audit: six contrast pairs and target sizes; keyboard, screen-reader tree and modal-navigation regression tests passed. Scoped checks only."
+      ]
+    },
+    "visual_review": {
+      "status": "pass",
+      "evidence": [
+        "Native Servers, Services, Settings and dark largest-font editor screenshots reviewed; homepage screenshots reviewed; see docs/ui-optimization-preview.md"
+      ]
+    }
+  }
+}

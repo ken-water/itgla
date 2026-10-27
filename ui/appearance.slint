@@ -1,4 +1,22 @@
+import { Slider } from "std-widgets.slint";
 import { Button, UiColors } from "controls.slint";
+
+component AppearancePreview inherits Rectangle {
+    in property <length> row-height: 42px;
+    height: 36px + root.row-height * 2;
+    background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 4px;
+    VerticalLayout {
+        spacing: 0px;
+        Rectangle { height: 36px; background: UiColors.raised;
+            Text { x: 12px; width: parent.width - 24px; height: parent.height; text: "Server / Environment / Status"; color: UiColors.muted; font-size: UiColors.body-size; vertical-alignment: center; }
+        }
+        for name in ["app-01", "db-01"]: Rectangle {
+            height: root.row-height;
+            Text { x: 12px; width: parent.width - 24px; height: parent.height; text: name + "     Production     Active"; color: UiColors.text; font-size: UiColors.body-size; vertical-alignment: center; }
+            Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.border; }
+        }
+    }
+}
 
 export component AppearanceControls inherits Rectangle {
     in-out property <int> theme-index;
@@ -7,63 +25,54 @@ export component AppearanceControls inherits Rectangle {
     out property <length> preview-row-height: root.table-density == 0 ? 34px : root.table-density == 1 ? 42px : 50px;
     callback edited;
     background: transparent;
-    VerticalLayout {
-        spacing: 10px;
-        Text { text: "Color style · click a swatch"; color: UiColors.text; font-size: 12px; font-weight: 650; }
+    HorizontalLayout {
+      spacing: 28px;
+      VerticalLayout {
+        width: root.width > 750px ? root.width * 0.55 : root.width; spacing: 8px;
+        Text { text: "Color theme"; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; }
         HorizontalLayout {
             height: 52px; spacing: 8px;
-            for theme[index] in ["Field Atlas", "Slate", "Sand", "Contrast"]: Button {
-                horizontal-stretch: 1; height: 52px; label-size: 12px;
-                text: theme; accessible-label: "Color: " + theme;
-                swatch: index == 0 ? #183c32 : index == 1 ? #24313a : index == 2 ? #51402d : #000000;
+            for theme[index] in ["Field Atlas", "Slate", "Sand", "Contrast", "Dark"]: Button {
+                horizontal-stretch: 1; height: 52px; label-size: UiColors.body-size;
+                text: index == 0 ? "Atlas" : theme; accessible-label: "Color: " + (index == 0 ? "Field Atlas" : theme);
+                swatch: index == 0 ? #183c32 : index == 1 ? #285a98 : index == 2 ? #b99357 : index == 3 ? #000000 : #34485c;
                 accessible-checkable: true; checked: root.theme-index == index;
                 clicked => { root.theme-index = index; root.edited(); }
             }
         }
-        HorizontalLayout {
-            spacing: 16px;
-            VerticalLayout {
-                spacing: 6px;
-                Text { text: "Text size"; color: UiColors.text; font-size: 12px; font-weight: 650; }
-                HorizontalLayout {
-                    height: 36px; spacing: 4px;
-                    for size[index] in ["Small", "Medium", "Large"]: Button {
-                        horizontal-stretch: 1; height: 36px; label-size: 12px;
-                        text: size; accessible-label: "Text size: " + size;
-                        accessible-checkable: true; checked: root.font-size-step == index;
-                        clicked => { root.font-size-step = index; root.edited(); }
-                    }
-                }
-            }
-            VerticalLayout {
-                spacing: 6px;
-                Text { text: "Row spacing"; color: UiColors.text; font-size: 12px; font-weight: 650; }
-                HorizontalLayout {
-                    height: 36px; spacing: 4px;
-                    for density[index] in ["Compact", "Comfy", "Roomy"]: Button {
-                        horizontal-stretch: 1; height: 36px; label-size: 12px;
-                        text: density; accessible-label: "Row spacing: " + density;
-                        accessible-checkable: true; checked: root.table-density == index;
-                        clicked => { root.table-density = index; root.edited(); }
-                    }
-                }
-            }
+        Text { text: "Text size: " + ["Small", "Medium", "Large", "Extra large", "Largest"][root.font-size-step] + " · " + (root.font-size-step + 1) + " of 5"; accessible-label: "Text size"; accessible-role: text; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; }
+        Slider {
+            height: 32px; minimum: 0; maximum: 4; step: 1;
+            value: root.font-size-step;
+            accessible-label: "Text size control";
+            changed(value) => { root.font-size-step = round(value); root.edited(); }
         }
-        Text { text: "LIVE PREVIEW · text and row spacing"; color: UiColors.muted; font-size: 11px; }
         Rectangle {
-            height: 24px + root.preview-row-height * 2;
-            background: UiColors.surface; border-width: 1px; border-color: #bac8bc; border-radius: 4px;
-            VerticalLayout {
-                spacing: 0px;
-                Rectangle { height: 24px; background: #e7ede5;
-                    Text { x: 12px; width: parent.width - 24px; height: parent.height; text: "SERVER                         ENVIRONMENT / PORTS"; color: UiColors.muted; font-size: 10px; vertical-alignment: center; }
-                }
-                for name in ["app-01", "db-01"]: Rectangle {
-                    height: root.preview-row-height;
-                    Text { x: 12px; width: parent.width - 24px; height: parent.height; text: name + "     Production     " + (name == "app-01" ? "443, 8080" : "5432"); color: UiColors.text; font-size: root.font-size-step == 0 ? 11px : root.font-size-step == 1 ? 12px : 13px; vertical-alignment: center; }
-                    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: #dce4d9; }
-                }
+            height: 32px; background: transparent;
+            for size[index] in ["1", "2", "3", "4", "5"]: Text {
+                x: 2px + (parent.width - 24px) * index / 4; width: 20px; height: 32px;
+                text: size; horizontal-alignment: center;
+                color: root.font-size-step == index ? UiColors.text : UiColors.muted; font-size: [11px, 12px, 13px, 15px, 17px][index]; vertical-alignment: center;
             }
         }
+        HorizontalLayout {
+            height: 36px; spacing: 6px;
+            Text { text: "Row spacing"; color: UiColors.text; font-size: UiColors.body-size; vertical-alignment: center; }
+            for density[index] in ["Compact", "Comfy", "Roomy"]: Button {
+                horizontal-stretch: 1; height: 36px; label-size: UiColors.body-size;
+                text: density; accessible-label: "Row spacing: " + density;
+                accessible-checkable: true; checked: root.table-density == index;
+                clicked => { root.table-density = index; root.edited(); }
+            }
+        }
+        if root.width <= 750px: Text { text: "Preview"; color: UiColors.muted; font-size: UiColors.body-size; }
+        if root.width <= 750px: AppearancePreview { row-height: root.preview-row-height; }
+      }
+      if root.width > 750px: VerticalLayout {
+        width: root.width * 0.42; spacing: 12px;
+        Text { text: "Preview"; color: UiColors.muted; font-size: UiColors.body-size; }
+        AppearancePreview { row-height: root.preview-row-height; }
+        Rectangle { vertical-stretch: 1; background: transparent; }
+      }
     }
 }

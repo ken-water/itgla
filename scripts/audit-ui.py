@@ -31,6 +31,7 @@ def contrast(foreground: str, background: str) -> float:
 
 def main() -> int:
     source = UI.read_text(encoding="utf-8")
+    controls = (ROOT / "ui" / "controls.slint").read_text(encoding="utf-8")
     rust_source = MAIN.read_text(encoding="utf-8")
     failures: list[str] = []
 
@@ -53,7 +54,7 @@ def main() -> int:
         "keyboard choice primitive": "component ChoiceRow inherits Rectangle",
         "visible custom focus": "border-width: tab-focus.has-focus ? 2px",
         "accessible custom action": "accessible-action-default =>",
-        "explicit save result": '"Save failed · " : "Saved · "',
+        "explicit save result": 'text: root.status-message; color: root.status-is-error ? UiColors.error : UiColors.success',
         "guarded column drag": "if self.pressed { root.resize",
         "non-overlapping sort target": "width: parent.width - 14px; enabled: root.ascending-mode",
         "truncated-only tooltip": "measurement.preferred-width > root.width - 38px: Tooltip",
@@ -73,9 +74,11 @@ def main() -> int:
             "functional 8px/9px text has returned; use semantic caption/body tokens"
         )
 
+    # Drags, modal shields and tooltip hover areas intentionally have no focus target.
     pointer_only_controls = len(re.findall(r"TouchArea\s*\{", source))
+    non_action_areas = len(re.findall(r"TouchArea\s*\{\s*\}", source)) + len(re.findall(r"TouchArea\s*\{[^{}]*?(?:moved\s*=>|mouse-cursor:\s*ew-resize|enabled:\s*root.show-tooltips)", source))
     focus_scopes = len(re.findall(r"FocusScope\s*\{", source))
-    if focus_scopes < pointer_only_controls - 1:  # one resize grip has a Fit columns equivalent
+    if focus_scopes < pointer_only_controls - non_action_areas - 2:  # resize grips have Fit columns equivalents
         failures.append(
             f"custom interaction coverage is incomplete: {pointer_only_controls} TouchAreas, "
             f"only {focus_scopes} FocusScopes"
@@ -109,18 +112,15 @@ def main() -> int:
     # Explicit text/background pairs used by small body and metadata text. Decorative
     # borders are intentionally excluded. Small text must reach WCAG's 4.5:1 ratio.
     contrast_pairs = [
-        ("#65776a", "#ffffff", "secondary text on white"),
-        ("#5f7063", "#f8faf6", "metadata on panel"),
-        ("#5f7065", "#eef1eb", "metadata on workspace"),
+        ("#52645b", "#fbfcf9", "secondary text"),
+        ("#52645b", "#eef1eb", "metadata on workspace"),
         ("#d7ee9d", "#183c32", "brand on header"),
-        ("#a9c7ad", "#183c32", "header subtitle"),
-        ("#66716c", "#ffffff", "empty-state text"),
-        ("#68736e", "#ffffff", "muted text"),
+        ("#bbc9d7", "#1e2833", "dark secondary text"),
+        ("#edf2f7", "#1e2833", "dark body text"),
         ("#76501d", "#fff6e7", "impact category"),
-        ("#78551f", "#fff6e7", "impact reason"),
     ]
     for foreground, background, label in contrast_pairs:
-        if foreground not in source or background not in source:
+        if foreground not in source + controls or background not in source + controls:
             failures.append(f"contrast token missing for {label}")
             continue
         ratio = contrast(foreground, background)

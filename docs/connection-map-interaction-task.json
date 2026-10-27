@@ -1,0 +1,35 @@
+{
+  "version": "2.0",
+  "id": "connection-map-interaction-20261026",
+  "objective": "Improve desktop graph selection, viewport interaction and software-rendering scroll cost",
+  "level": "L3",
+  "profile": "library",
+  "scope": {
+    "include": [
+      "ui/topology.slint",
+      "src/topology.rs",
+      "scripts/measure-graph-preview.ps1",
+      "docs/**",
+      "ui/app.slint",
+      "src/relationships.rs"
+    ],
+    "exclude": []
+  },
+  "target": "local",
+  "risk_flags": [],
+  "requested_actions": [
+    "local_edit",
+    "local_test",
+    "local_evidence"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_edit",
+      "local_test",
+      "local_evidence"
+    ]
+  },
+  "planning": {
+    "plan_ref": "docs/connection-map-interaction-plan.md"
+  }
+}
