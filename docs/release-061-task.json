@@ -12,7 +12,8 @@
     "exclude": []
   },
   "planning": {
-    "plan_ref": "docs/releases/v0.6.1.md"
+    "plan_ref": "docs/releases/v0.6.1.md",
+    "approved": true
   },
   "requested_actions": [
     "local_edit",
@@ -33,5 +34,10 @@
       "prepare_migration",
       "deploy_production"
     ]
-  }
+  },
+  "risk_flags": [
+    "production",
+    "persistent_data",
+    "contract"
+  ]
 }
