@@ -1,0 +1,37 @@
+{
+  "version": "2.0",
+  "id": "release-061",
+  "objective": "Package and publish ITGLA 0.6.1 including all pending desktop and official website changes",
+  "level": "L4",
+  "profile": "migration",
+  "target": "production",
+  "scope": {
+    "include": [
+      "**"
+    ],
+    "exclude": []
+  },
+  "planning": {
+    "plan_ref": "docs/releases/v0.6.1.md"
+  },
+  "requested_actions": [
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence",
+    "prepare_release",
+    "prepare_migration",
+    "deploy_production"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence",
+      "prepare_release",
+      "prepare_migration",
+      "deploy_production"
+    ]
+  }
+}

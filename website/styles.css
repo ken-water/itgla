@@ -523,21 +523,21 @@ button, a { -webkit-tap-highlight-color: transparent; }
 
 .site-footer {
   padding: 52px max(24px, calc((100% - var(--content)) / 2));
-  background: #111816;
-  color: #aebbb7;
+  background: var(--canvas);
+  color: #435d50;
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: minmax(140px, auto) minmax(240px, 1fr);
   gap: 22px 42px;
   align-items: center;
   font-size: 13px;
 }
 
-.footer-brand { color: #fff; }
-.site-footer p { margin: 0; }
-.site-footer nav { display: flex; gap: 24px; }
-.site-footer nav a { color: #d7dfdc; text-decoration: none; }
-.site-footer nav a:hover { color: #fff; }
-.site-footer .copyright { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid #2e3734; }
+.footer-brand { color: #183c32; }
+.site-footer p { margin: 0; max-width: 48ch; }
+.site-footer nav { grid-column: 1 / -1; display: flex; gap: 12px 28px; }
+.site-footer nav a { color: #294e3d; text-decoration: none; }
+.site-footer nav a:hover { color: #102d22; text-decoration: underline; }
+.site-footer .copyright { grid-column: 1 / -1; padding-top: 20px; border-top: 1px solid var(--line); }
 .compact-footer { margin-top: 0; }
 
 .site-footer .footer-brand img { width: 30px; height: 30px; }

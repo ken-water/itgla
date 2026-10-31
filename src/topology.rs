@@ -27,6 +27,112 @@ const RELATIONS: [&str; 10] = [
 fn invalid(text: &str) -> StorageError {
     StorageError::InvalidImport(text.into())
 }
+
+fn view_key(kind: &str, id: i64) -> String {
+    format!("{kind}:{id}")
+}
+
+fn view_keys(value: &str) -> BTreeSet<String> {
+    value
+        .lines()
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Visibility never writes to the repository. Structural ancestors keep focused paths meaningful.
+fn view_subset(
+    active: &BTreeSet<String>,
+    links: &[crate::relationships::ResourceLink],
+    focus: &str,
+    hidden: &BTreeSet<String>,
+    collapsed: &BTreeSet<String>,
+) -> BTreeSet<String> {
+    let mut included = active.clone();
+    if !focus.is_empty() {
+        included.clear();
+        if active.contains(focus) {
+            included.insert(focus.to_owned());
+            for l in links {
+                let source = view_key(&l.source_type, l.source_id);
+                let target = view_key(&l.target_type, l.target_id);
+                if source == focus {
+                    included.insert(target);
+                } else if target == focus {
+                    included.insert(source);
+                }
+            }
+            loop {
+                let old = included.len();
+                for l in links {
+                    let (parent, child) = if l.relation_type == "hosted_on" {
+                        (
+                            view_key(&l.target_type, l.target_id),
+                            view_key(&l.source_type, l.source_id),
+                        )
+                    } else if matches!(
+                        l.relation_type.as_str(),
+                        "owns" | "contains" | "resolves_to" | "origin_on"
+                    ) {
+                        (
+                            view_key(&l.source_type, l.source_id),
+                            view_key(&l.target_type, l.target_id),
+                        )
+                    } else {
+                        continue;
+                    };
+                    if included.contains(&child) && active.contains(&parent) {
+                        included.insert(parent);
+                    }
+                }
+                if old == included.len() {
+                    break;
+                }
+            }
+        }
+    }
+    let mut descendants = collapsed.clone();
+    loop {
+        let old = descendants.len();
+        for l in links {
+            let (parent, child) = if l.relation_type == "hosted_on" {
+                (
+                    view_key(&l.target_type, l.target_id),
+                    view_key(&l.source_type, l.source_id),
+                )
+            } else if matches!(l.relation_type.as_str(), "owns" | "contains") {
+                (
+                    view_key(&l.source_type, l.source_id),
+                    view_key(&l.target_type, l.target_id),
+                )
+            } else {
+                continue;
+            };
+            if descendants.contains(&parent) && active.contains(&child) {
+                descendants.insert(child);
+            }
+        }
+        if old == descendants.len() {
+            break;
+        }
+    }
+    // A shared service must remain visible beside any host whose branch is still expanded.
+    let shared = links
+        .iter()
+        .filter(|l| {
+            l.relation_type == "hosted_on"
+                && active.contains(&view_key(&l.target_type, l.target_id))
+                && !descendants.contains(&view_key(&l.target_type, l.target_id))
+        })
+        .map(|l| view_key(&l.source_type, l.source_id))
+        .collect::<BTreeSet<_>>();
+    included.retain(|k| {
+        active.contains(k)
+            && !hidden.contains(k)
+            && (!descendants.contains(k) || collapsed.contains(k) || shared.contains(k))
+    });
+    included
+}
 #[derive(Clone)]
 struct Resource {
     id: i64,
@@ -36,6 +142,7 @@ struct Resource {
 }
 fn resources(repo: &Repository) -> Result<Vec<Resource>, StorageError> {
     let mut out = Vec::new();
+    let entries = repo.inventory_entries()?;
     for b in repo.businesses()? {
         out.push(Resource {
             id: b.id,
@@ -44,17 +151,13 @@ fn resources(repo: &Repository) -> Result<Vec<Resource>, StorageError> {
             detail: b.tags,
         });
     }
-    for e in repo
-        .inventory_entries()?
-        .into_iter()
-        .filter(|e| !e.hidden && e.kind == 1)
-    {
+    for e in entries.iter().filter(|e| !e.hidden && e.kind == 1) {
         out.push(Resource {
             id: e.id,
             kind: "domain".into(),
-            label: e.details.name,
+            label: e.details.name.clone(),
             detail: if e.details.parent.is_empty() {
-                e.details.cdn
+                e.details.cdn.clone()
             } else {
                 format!("Subdomain of {}", e.details.parent)
             },
@@ -68,29 +171,26 @@ fn resources(repo: &Repository) -> Result<Vec<Resource>, StorageError> {
             detail: s.ip_address,
         });
     }
-    for e in repo
-        .inventory_entries()?
-        .into_iter()
-        .filter(|e| !e.hidden && e.kind == 0)
-    {
+    for e in entries.iter().filter(|e| !e.hidden && e.kind == 0) {
         out.push(Resource {
             id: e.id,
             kind: "service".into(),
-            label: e.details.name,
+            label: e.details.name.clone(),
             detail: format!("{} / {}", e.details.protocol, e.details.ports),
         });
     }
     // Parent domains precede children; services align with their hosting servers.
-    let entries = repo.inventory_entries()?;
+    let entries_by_id: HashMap<_, _> = entries.iter().map(|e| (e.id, e)).collect();
     let server_ids = out
         .iter()
         .filter(|r| r.kind == "server")
-        .map(|r| r.id)
-        .collect::<Vec<_>>();
-    out.sort_by_key(|r| {
-        let entry = entries
-            .iter()
-            .find(|e| e.id == r.id && matches!(r.kind.as_str(), "domain" | "service"));
+        .enumerate()
+        .map(|(rank, r)| (r.id, rank))
+        .collect::<HashMap<_, _>>();
+    out.sort_by_cached_key(|r| {
+        let entry = matches!(r.kind.as_str(), "domain" | "service")
+            .then(|| entries_by_id.get(&r.id).copied())
+            .flatten();
         let rank = match r.kind.as_str() {
             "business" => 0,
             "domain" => 1,
@@ -102,7 +202,7 @@ fn resources(repo: &Repository) -> Result<Vec<Resource>, StorageError> {
                 .and_then(|e| {
                     e.hosts
                         .iter()
-                        .filter_map(|id| server_ids.iter().position(|s| s == id))
+                        .filter_map(|id| server_ids.get(id).copied())
                         .min()
                 })
                 .unwrap_or(usize::MAX)
@@ -124,7 +224,8 @@ fn relation_name(value: &str) -> String {
 
 pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
     let mut stmt=repo.connection.prepare("SELECT id,name,tags,notes FROM businesses WHERE (archived_at IS NOT NULL)=?1 ORDER BY lower(name),id LIMIT 1000")?;
-    let businesses = stmt
+    let contexts = repo.asset_contexts()?;
+    let mut businesses = stmt
         .query_map([w.get_business_hidden()], |r| {
             Ok(BusinessItem {
                 id: r.get::<_, i64>(0)? as i32,
@@ -134,6 +235,41 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             })
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    let query = w.get_business_query().trim().to_lowercase();
+    businesses.retain(|b| {
+        query.is_empty()
+            || format!(
+                "{} {} {} {}",
+                b.name,
+                b.tags,
+                b.notes,
+                contexts
+                    .get(&("business".to_owned(), i64::from(b.id)))
+                    .map(|c| c.data.searchable())
+                    .unwrap_or_default()
+            )
+            .to_lowercase()
+            .contains(&query)
+    });
+    for business in &mut businesses {
+        let context = contexts
+            .get(&("business".to_owned(), i64::from(business.id)))
+            .cloned()
+            .unwrap_or_default();
+        business.notes = format!("{} | {}", context.data.summary(), context.verification()).into();
+    }
+    w.set_business_grid(crate::tables::sorted(
+        businesses
+            .iter()
+            .map(|b| {
+                crate::tables::row(
+                    b.id,
+                    vec![b.name.to_string(), b.tags.to_string(), b.notes.to_string()],
+                )
+            })
+            .collect(),
+        w.get_business_grid_sort(),
+    ));
     w.set_business_rows(ModelRc::new(VecModel::from(businesses)));
     let all = resources(repo)?;
     w.set_topology_choices(ModelRc::new(VecModel::from(
@@ -180,6 +316,45 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             }
         }
     }
+    let before_view = included.len();
+    let hidden = view_keys(&w.get_topology_view_hidden());
+    let collapsed = view_keys(&w.get_topology_view_collapsed());
+    let active_view = included
+        .iter()
+        .map(|(kind, id)| view_key(kind, *id))
+        .collect();
+    let visible_view = view_subset(
+        &active_view,
+        &links,
+        &w.get_topology_view_focus(),
+        &hidden,
+        &collapsed,
+    );
+    included.retain(|(kind, id)| visible_view.contains(&view_key(kind, *id)));
+    w.set_topology_hidden_count((before_view - included.len()) as i32);
+    let mut recovery_labels = Vec::new();
+    let mut recovery_keys = Vec::new();
+    for r in &all {
+        let k = view_key(&r.kind, r.id);
+        if hidden.contains(&k) || collapsed.contains(&k) {
+            recovery_labels.push(
+                format!(
+                    "{} {}: {}",
+                    if hidden.contains(&k) {
+                        "Show"
+                    } else {
+                        "Expand"
+                    },
+                    r.kind,
+                    r.label
+                )
+                .into(),
+            );
+            recovery_keys.push(k.into());
+        }
+    }
+    w.set_topology_recovery_choices(ModelRc::new(VecModel::from(recovery_labels)));
+    w.set_topology_recovery_keys(ModelRc::new(VecModel::from(recovery_keys)));
     let total = all
         .iter()
         .filter(|r| included.contains(&key(&r.kind, r.id)))
@@ -190,6 +365,42 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
         .take(200)
         .collect::<Vec<_>>();
     let mut counters = [0usize; 4];
+    let visible_servers: BTreeSet<_> = visible
+        .iter()
+        .filter(|r| r.kind == "server")
+        .map(|r| r.id)
+        .collect();
+    let visible_services: BTreeSet<_> = visible
+        .iter()
+        .filter(|r| r.kind == "service")
+        .map(|r| r.id)
+        .collect();
+    let mut primary_hosts = HashMap::new();
+    for link in &links {
+        if link.relation_type == "hosted_on"
+            && link.source_type == "service"
+            && link.target_type == "server"
+            && visible_services.contains(&link.source_id)
+            && visible_servers.contains(&link.target_id)
+        {
+            primary_hosts
+                .entry(link.source_id)
+                .or_insert(link.target_id);
+        }
+    }
+    let mut service_counts = HashMap::new();
+    for host in primary_hosts.values() {
+        *service_counts.entry(*host).or_insert(0usize) += 1;
+    }
+    let mut server_rows = HashMap::new();
+    let mut next_row = 0;
+    for server in visible.iter().filter(|r| r.kind == "server") {
+        server_rows.insert(server.id, next_row);
+        next_row += service_counts.get(&server.id).copied().unwrap_or(0).max(1);
+    }
+    let mut service_offsets = HashMap::new();
+    counters[2] = next_row;
+    counters[3] = next_row;
     let mut locations = HashMap::new();
     let mut nodes = Vec::new();
     for r in visible {
@@ -200,14 +411,31 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             _ => 3,
         };
         let x = 20.0 + col as f32 * 300.0;
-        let y = 48.0 + counters[col] as f32 * 112.0;
-        counters[col] += 1;
+        let row = if r.kind == "server" {
+            server_rows[&r.id]
+        } else if r.kind == "service" && primary_hosts.contains_key(&r.id) {
+            let host = primary_hosts[&r.id];
+            let offset = service_offsets.entry(host).or_insert(0usize);
+            let row = server_rows[&host] + *offset;
+            *offset += 1;
+            row
+        } else {
+            let row = counters[col];
+            counters[col] += 1;
+            row
+        };
+        let y = 48.0 + row as f32 * 96.0;
         locations.insert(key(&r.kind, r.id), (x, y));
         nodes.push(TopologyNode {
             id: r.id as i32,
             kind: r.kind.clone().into(),
             label: r.label.clone().into(),
-            detail: r.detail.clone().into(),
+            detail: if collapsed.contains(&view_key(&r.kind, r.id)) {
+                format!("{} | Branch collapsed", r.detail)
+            } else {
+                r.detail.clone()
+            }
+            .into(),
             px: x,
             py: y,
         });
@@ -282,7 +510,7 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             let row = sy as i32;
             let i = used_rails.entry(row).or_insert(0usize);
             *i += 1;
-            sy + 72.0 + *i as f32 * 34.0 / (rails[&row] + 1) as f32
+            sy + 70.0 + *i as f32 * 20.0 / (rails[&row] + 1) as f32
         };
         edges.push(TopologyEdge {
             id: l.id as i32,
@@ -315,7 +543,7 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             editable: true,
         });
     }
-    w.set_topology_height(80.0 + counters.into_iter().max().unwrap_or(0) as f32 * 112.0);
+    w.set_topology_height(80.0 + counters.into_iter().max().unwrap_or(0) as f32 * 96.0);
     w.set_topology_node_choices(ModelRc::new(VecModel::from(
         nodes
             .iter()
@@ -324,7 +552,7 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
     )));
     w.set_topology_nodes(ModelRc::new(VecModel::from(nodes)));
     w.set_topology_edges(ModelRc::new(VecModel::from(edges)));
-    w.set_topology_status(if total>200 {format!("Showing 200 of {total} resources. Filter by business to narrow the map.").into()}else{format!("{total} active resources. Arrows show relationship direction. All links includes dependencies.").into()});
+    w.set_topology_status(if total>200 {format!("Showing 200 of {total} resources. Filter by business to narrow the map.").into()}else{format!("{total} resources. Services sit beside their host. Select a resource to highlight its links; All links shows dependencies.").into()});
     Ok(())
 }
 fn report(w: &AppWindow, result: Result<(), StorageError>) {
@@ -334,6 +562,9 @@ fn report(w: &AppWindow, result: Result<(), StorageError>) {
 }
 /// Selections must not carry over between the real and in-memory workspaces.
 pub fn clear_selection(w: &AppWindow) {
+    w.set_topology_view_hidden("".into());
+    w.set_topology_view_collapsed("".into());
+    w.set_topology_view_focus("".into());
     w.set_business_id(0);
     w.set_business_name("".into());
     w.set_business_tags("".into());
@@ -349,6 +580,40 @@ pub fn clear_selection(w: &AppWindow) {
 pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
     let weak = window.as_weak();
     let r = repo.clone();
+    window.on_topology_view_action(move |action, selected| {
+        let Some(w) = weak.upgrade() else { return };
+        let mut hidden = view_keys(&w.get_topology_view_hidden());
+        let mut collapsed = view_keys(&w.get_topology_view_collapsed());
+        match action {
+            0 => {
+                hidden.clear();
+                collapsed.clear();
+                w.set_topology_view_focus("".into());
+            }
+            1 => {
+                w.set_topology_view_focus(selected.clone());
+            }
+            2 => {
+                collapsed.insert(selected.to_string());
+            }
+            3 => {
+                collapsed.remove(selected.as_str());
+            }
+            4 => {
+                hidden.insert(selected.to_string());
+            }
+            5 => {
+                hidden.remove(selected.as_str());
+                collapsed.remove(selected.as_str());
+            }
+            _ => return,
+        }
+        w.set_topology_view_hidden(hidden.into_iter().collect::<Vec<_>>().join("\n").into());
+        w.set_topology_view_collapsed(collapsed.into_iter().collect::<Vec<_>>().join("\n").into());
+        report(&w, refresh(&w, &r.borrow()));
+    });
+    let weak = window.as_weak();
+    let r = repo.clone();
     window.on_topology_refresh(move || {
         if let Some(w) = weak.upgrade() {
             report(&w, refresh(&w, &r.borrow()));
@@ -362,6 +627,7 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
         w.set_business_name("".into());
         w.set_business_tags("".into());
         w.set_business_notes("".into());
+        w.set_business_context(Default::default());
         let result = (|| {
             let r = r.borrow();
             let mut stmt = r
@@ -378,6 +644,7 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
                 w.set_business_name(name.into());
                 w.set_business_tags(tags.into());
                 w.set_business_notes(notes.into());
+                w.set_business_context(r.asset_context("business", i64::from(id))?.form());
             }
             if id != 0
                 && let Some(event) = r.resource_history("business", i64::from(id))?.first()
@@ -396,7 +663,7 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
     });
     let weak = window.as_weak();
     let r = repo.clone();
-    window.on_business_save(move ||{let Some(w)=weak.upgrade()else{return};let result=(||{let id=r.borrow_mut().save_business(i64::from(w.get_business_id()),w.get_business_name().as_str(),w.get_business_tags().as_str(),w.get_business_notes().as_str())?;w.set_business_id(id as i32);refresh(&w,&r.borrow())?;w.set_topology_status("Business saved. Assign it in a domain or service, or add an Owns link in Connections.".into());Ok(())})();report(&w,result);});
+    window.on_business_save(move ||{let Some(w)=weak.upgrade()else{return};let result=(||{let id=r.borrow_mut().save_business_with_context(i64::from(w.get_business_id()),w.get_business_name().as_str(),w.get_business_tags().as_str(),w.get_business_notes().as_str(),Some(&w.get_business_context()))?;w.set_business_id(id as i32);w.invoke_business_select(id as i32);refresh(&w,&r.borrow())?;w.set_topology_status("Business saved. Assign it in a domain or service, or add an Owns link in Connections.".into());Ok(())})();report(&w,result);});
     let weak = window.as_weak();
     let r = repo.clone();
     window.on_business_hide(move ||{let Some(w)=weak.upgrade()else{return};let result=(||{let n=r.borrow().connection.execute("UPDATE businesses SET archived_at=CASE WHEN ?1 THEN NULL ELSE CURRENT_TIMESTAMP END WHERE id=?2",params![w.get_business_hidden(),w.get_business_id()])?;if n!=1{return Err(invalid("Select an existing business"));}w.set_business_id(0);refresh(&w,&r.borrow())})();report(&w,result);});
@@ -422,6 +689,7 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
                     .ok_or_else(|| invalid("Server no longer exists"))?;
                 w.invoke_tab_selected(0);
                 w.set_editing_id(id);
+                w.invoke_server_context_load(id);
                 w.set_editing_name(s.name.clone().into());
                 w.set_editing_ip_address(s.ip_address.clone().into());
                 w.set_editing_environment(s.environment.clone().into());
@@ -629,6 +897,30 @@ pub fn reset_demo(repo: &mut Repository) -> Result<(), StorageError> {
     ] {
         repo.save_resource_link(0, "service", a, "service", b, relation, note)?;
     }
+    let context = crate::AssetContextForm {
+        owner: "Alex (demo)".into(),
+        backup_contact: "Casey (demo)".into(),
+        environment: "Production".into(),
+        documentation_state: 1,
+        source: "Fictional demo; replace with your own information".into(),
+        ..Default::default()
+    };
+    let tx = repo.connection.transaction()?;
+    crate::asset_context::save_context(&tx, "business", business, Some(&context))?;
+    for server in &servers {
+        crate::asset_context::save_context(&tx, "server", server.id, Some(&context))?;
+    }
+    for (kind, id) in [
+        ("domain", domain),
+        ("domain", portal),
+        ("domain", api_domain),
+    ]
+    .into_iter()
+    .chain(saved.iter().map(|id| ("service", *id)))
+    {
+        crate::asset_context::save_context(&tx, kind, id, Some(&context))?;
+    }
+    tx.commit()?;
     Ok(())
 }
 
@@ -636,6 +928,95 @@ pub fn reset_demo(repo: &mut Repository) -> Result<(), StorageError> {
 mod tests {
     use super::*;
     use slint::Model;
+    #[test]
+    fn graph_views_keep_paths_and_shared_hosts_without_changing_records() -> Result<(), StorageError>
+    {
+        i_slint_backend_testing::init_no_event_loop();
+        let w = AppWindow::new().expect("window");
+        let mut repository = Repository::in_memory()?;
+        reset_demo(&mut repository)?;
+        let repo = Rc::new(RefCell::new(repository));
+        setup(&w, repo.clone());
+        w.invoke_topology_refresh();
+        let original = w.get_topology_nodes().row_count();
+        let links = repo.borrow().resource_links()?;
+        let entries = repo.borrow().inventory_entries()?;
+        let server = w
+            .get_topology_nodes()
+            .iter()
+            .find(|n| n.kind == "server")
+            .expect("server");
+        let selected = view_key("server", server.id as i64);
+        w.invoke_topology_view_action(4, selected.clone().into());
+        assert_eq!(w.get_topology_nodes().row_count(), original - 1);
+        assert_eq!(w.get_topology_hidden_count(), 1);
+        assert_eq!(w.get_topology_recovery_choices().row_count(), 1);
+        w.invoke_topology_view_action(5, selected.clone().into());
+        assert_eq!(w.get_topology_nodes().row_count(), original);
+        w.invoke_topology_view_action(1, selected.clone().into());
+        assert!(w.get_topology_nodes().row_count() < original);
+        assert!(
+            w.get_topology_nodes()
+                .iter()
+                .any(|n| n.kind == "server" && n.id == server.id)
+        );
+        w.invoke_topology_view_action(0, "".into());
+        assert_eq!(w.get_topology_nodes().row_count(), original);
+        w.invoke_topology_view_action(2, selected.into());
+        w.invoke_topology_view_action(0, "".into());
+        assert_eq!(w.get_topology_nodes().row_count(), original);
+        assert_eq!(repo.borrow().resource_links()?, links);
+        assert_eq!(repo.borrow().inventory_entries()?.len(), entries.len());
+        assert_eq!(w.get_topology_recovery_choices().row_count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn collapsed_host_preserves_shared_service_and_focus_preserves_ancestors() {
+        use crate::relationships::ResourceLink;
+        let link = |source: &str, sid, target: &str, tid, relation: &str| ResourceLink {
+            id: 0,
+            source_type: source.into(),
+            source_id: sid,
+            target_type: target.into(),
+            target_id: tid,
+            relation_type: relation.into(),
+            notes: String::new(),
+        };
+        let links = vec![
+            link("business", 1, "domain", 1, "owns"),
+            link("domain", 1, "server", 1, "origin_on"),
+            link("service", 1, "server", 1, "hosted_on"),
+            link("service", 2, "server", 1, "hosted_on"),
+            link("service", 2, "server", 2, "hosted_on"),
+        ];
+        let active = view_keys("business:1\ndomain:1\nserver:1\nserver:2\nservice:1\nservice:2");
+        let collapsed = view_keys("server:1");
+        let shown = view_subset(&active, &links, "", &BTreeSet::new(), &collapsed);
+        assert!(!shown.contains("service:1"));
+        assert!(shown.contains("service:2"));
+        assert!(shown.contains("server:1"));
+        let focused = view_subset(
+            &active,
+            &links,
+            "service:1",
+            &BTreeSet::new(),
+            &BTreeSet::new(),
+        );
+        for node in ["business:1", "domain:1", "server:1", "service:1"] {
+            assert!(focused.contains(node), "Missing {node}");
+        }
+        assert!(!focused.contains("server:2"));
+        let both = view_subset(
+            &active,
+            &links,
+            "",
+            &BTreeSet::new(),
+            &view_keys("server:1\nserver:2"),
+        );
+        assert!(!both.contains("service:2"));
+    }
+
     #[test]
     fn demo_reset_and_graph_edits_share_inventory() -> Result<(), StorageError> {
         let mut repo = Repository::in_memory()?;
@@ -810,6 +1191,50 @@ mod tests {
         reset_demo(&mut repo)?;
         assert_eq!(repo.inventory_entries()?.len(), 7);
         assert_eq!(repo.businesses()?.len(), 1);
+        Ok(())
+    }
+    #[test]
+    fn hosting_groups_reserve_rows_without_pushing_services_past_other_servers()
+    -> Result<(), StorageError> {
+        i_slint_backend_testing::init_no_event_loop();
+        let w = AppWindow::new().expect("window");
+        let mut repo = Repository::in_memory()?;
+        reset_demo(&mut repo)?;
+        let host = repo.server_records()?[0].id;
+        for link in repo.resource_links()? {
+            if link.relation_type == "hosted_on" {
+                repo.delete_resource_link(link.id)?;
+            }
+        }
+        let services: Vec<_> = repo
+            .inventory_entries()?
+            .into_iter()
+            .filter(|e| e.kind == 0)
+            .collect();
+        for service in &services {
+            repo.save_resource_link(0, "service", service.id, "server", host, "hosted_on", "")?;
+        }
+        refresh(&w, &repo)?;
+        let nodes: Vec<_> = w.get_topology_nodes().iter().collect();
+        let host_node = nodes
+            .iter()
+            .find(|n| n.kind == "server" && i64::from(n.id) == host)
+            .expect("host");
+        let mut rows: Vec<_> = nodes
+            .iter()
+            .filter(|n| n.kind == "service")
+            .map(|n| n.py as i32)
+            .collect();
+        rows.sort_unstable();
+        assert_eq!(rows.len(), services.len());
+        assert_eq!(rows[0], host_node.py as i32);
+        assert!(rows.windows(2).all(|r| r[1] - r[0] == 96));
+        assert!(
+            nodes
+                .iter()
+                .filter(|n| n.kind == "server" && i64::from(n.id) != host)
+                .all(|n| n.py > *rows.last().expect("services") as f32)
+        );
         Ok(())
     }
     #[test]

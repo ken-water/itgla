@@ -169,6 +169,17 @@ impl Repository {
         tags: &str,
         notes: &str,
     ) -> Result<i64, StorageError> {
+        self.save_business_with_context(id, name, tags, notes, None)
+    }
+
+    pub fn save_business_with_context(
+        &mut self,
+        id: i64,
+        name: &str,
+        tags: &str,
+        notes: &str,
+        context: Option<&crate::AssetContextForm>,
+    ) -> Result<i64, StorageError> {
         let name = name.trim();
         let tags = tags.trim();
         let notes = notes.trim();
@@ -197,6 +208,7 @@ impl Repository {
             id
         };
         tx.execute("UPDATE operational_inventory SET data=json_set(data,'$.business',?1) WHERE business_id=?2",params![name,saved])?;
+        crate::asset_context::save_context(&tx, "business", saved, context)?;
         tx.commit()?;
         Ok(saved)
     }

@@ -1,3 +1,5 @@
+import { DataTable, GridRow } from "data-table.slint";
+import { AssetContextForm, AssetContextEditor } from "asset-context.slint";
 import { TopologyPanel, TopologyNode, TopologyEdge, BusinessItem } from "topology.slint";
 import { InventoryPanel, InventoryForm, InventoryRow, InventoryChoice } from "inventory.slint";
 import { CheckBox, ComboBox, LineEdit, ScrollView, Palette } from "std-widgets.slint";
@@ -58,15 +60,16 @@ component NavigationTab inherits Rectangle {
     in property <bool> selected;
     in property <length> label-font-size: UiColors.body-size;
     callback activated;
-    background: root.selected ? UiColors.primary : tab-touch.has-hover ? UiColors.selected : transparent;
+    background: root.selected || tab-touch.has-hover ? UiColors.selected : transparent;
     border-radius: 4px;
-    border-width: tab-focus.has-focus ? 2px : root.selected ? 0px : 1px;
+    border-width: tab-focus.has-focus ? 2px : 0px;
     border-color: tab-focus.has-focus ? UiColors.focus : UiColors.border;
     forward-focus: tab-focus;
     accessible-role: tab;
     accessible-label: root.label;
     accessible-action-default => { root.activated(); }
-    Text { width: parent.width; height: parent.height; text: root.label; color: root.selected ? UiColors.on-primary : UiColors.text; font-size: root.label-font-size; font-weight: 750; horizontal-alignment: center; vertical-alignment: center; }
+    Rectangle { x: 0px; width: 3px; height: parent.height - 16px; y: 8px; background: root.selected ? UiColors.primary : transparent; border-radius: 2px; }
+    Text { x: 14px; width: parent.width - 20px; height: parent.height; text: root.label; color: UiColors.text; font-size: root.label-font-size; font-weight: root.selected ? 750 : 500; horizontal-alignment: left; vertical-alignment: center; }
     tab-touch := TouchArea { mouse-cursor: pointer; clicked => { root.activated(); } }
     tab-focus := FocusScope {
         width: 0px;
@@ -110,6 +113,7 @@ component ChoiceRow inherits Rectangle {
 }
 
 component DataCell inherits Rectangle {
+    horizontal-stretch: 0;
     in property <int> server-id;
     in property <int> column-index;
     in property <string> value;
@@ -127,7 +131,7 @@ component DataCell inherits Rectangle {
     accessible-label: root.copy-label + ": " + (root.value == "" ? "empty" : root.value);
     accessible-description: "Press Space to copy. Press Enter to edit.";
     accessible-action-default => { root.copy(root.value, root.copy-label); }
-    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.raised; }
+    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.grid-line; }
     Text { x: 10px; y: 0; width: parent.width - 38px; height: parent.height; text: root.value; color: UiColors.text; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
     if root.show-tooltip && measurement.preferred-width > root.width - 38px: Tooltip {
         Rectangle {
@@ -156,6 +160,7 @@ component DataCell inherits Rectangle {
 }
 
 component HeaderCell inherits Rectangle {
+    horizontal-stretch: 0;
     in property <string> title;
     in property <length> header-font-size: UiColors.body-size - 3px;
     in property <int> ascending-mode: -1;
@@ -215,9 +220,10 @@ component ServerTableRow inherits Rectangle {
     in property <length> row-height: 42px;
     callback edit; callback ports; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string); callback open-endpoint(string, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
-    Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
+    Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.grid-line; }
     HorizontalLayout {
-        spacing: 0px;
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        spacing: 0px; padding: 0px; alignment: start;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.ip-address; copy-label: "IP address"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[3]; server-id: root.item.id; column-index: 3; value: root.item.environment; copy-label: "Environment"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
@@ -226,10 +232,10 @@ component ServerTableRow inherits Rectangle {
         DataCell { width: root.column-widths[6]; server-id: root.item.id; column-index: 6; value: root.item.tags; copy-label: "Tags"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         for value[index] in root.item.custom-values: DataCell { width: root.column-widths[7 + index]; server-id: root.item.id; column-index: 7 + index; value: value; copy-label: root.custom-headers[index]; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(cell-value, label) => { root.copy(cell-value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         Rectangle {
-            width: 116px; background: transparent;
-            if !root.hidden: Button { x: 5px; y: 6px; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
-            if !root.hidden: Button { x: 53px; y: 6px; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
-            if root.hidden: Button { x: 9px; y: 6px; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
+            width: 116px; horizontal-stretch: 0; background: transparent;
+            if !root.hidden: Button { x: 5px; y: (parent.height - 28px) / 2; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
+            if !root.hidden: Button { x: 53px; y: (parent.height - 28px) / 2; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
+            if root.hidden: Button { x: 9px; y: (parent.height - 28px) / 2; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
         }
         Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: transparent; }
     }
@@ -246,7 +252,8 @@ component TableHeader inherits Rectangle {
     callback resize(int, length);
     width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
-        spacing: 0px;
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        spacing: 0px; padding: 0px; alignment: start;
         HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
         HeaderCell { width: root.column-widths[1]; title: "IP ADDRESS"; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(1, value); } }
         HeaderCell { width: root.column-widths[3]; title: "ENVIRONMENT"; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(3, value); } }
@@ -254,8 +261,8 @@ component TableHeader inherits Rectangle {
         HeaderCell { width: root.column-widths[5]; title: "PURPOSE"; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(5, value); } }
         HeaderCell { width: root.column-widths[6]; title: "TAGS"; header-font-size: root.header-font-size; ascending-mode: 12; descending-mode: 13; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(6, value); } }
         for header[index] in root.custom-headers: HeaderCell { width: root.column-widths[7 + index]; title: header; header-font-size: root.header-font-size; ascending-mode: 14 + index * 2; descending-mode: 15 + index * 2; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(7 + index, value); } }
-        HeaderCell { width: 116px; title: "ACTIONS"; header-font-size: root.header-font-size; }
-        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: UiColors.raised; }
+        HeaderCell { width: 116px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
+        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: UiColors.grid-line; }
     }
 }
 
@@ -268,14 +275,15 @@ component SiteTableHeader inherits Rectangle {
     callback resize(int, length);
     width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
-        spacing: 0px;
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        spacing: 0px; padding: 0px; alignment: start;
         HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
         HeaderCell { width: root.column-widths[1]; title: "URL"; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(1, value); } }
         HeaderCell { width: root.column-widths[2]; title: "ENVIRONMENT"; header-font-size: root.header-font-size; ascending-mode: 4; descending-mode: 5; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(2, value); } }
         HeaderCell { width: root.column-widths[3]; title: "STATUS"; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(3, value); } }
         HeaderCell { width: root.column-widths[4]; title: "PURPOSE"; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(4, value); } }
         HeaderCell { width: root.column-widths[5]; title: "TAGS"; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(5, value); } }
-        HeaderCell { width: 116px; title: "ACTIONS"; header-font-size: root.header-font-size; }
+        HeaderCell { width: 116px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
     }
 }
 
@@ -289,9 +297,10 @@ component SiteTableRow inherits Rectangle {
     in property <length> row-height: 42px;
     callback edit; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
-    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.raised; }
+    Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.grid-line; }
     HorizontalLayout {
-        spacing: 0px;
+        x: 0px; y: 0px; width: parent.width; height: parent.height;
+        spacing: 0px; padding: 0px; alignment: start;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.url; copy-label: "URL"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[2]; server-id: root.item.id; column-index: 2; value: root.item.environment; copy-label: "Environment"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
@@ -299,10 +308,10 @@ component SiteTableRow inherits Rectangle {
         DataCell { width: root.column-widths[4]; server-id: root.item.id; column-index: 4; value: root.item.purpose; copy-label: "Purpose"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[5]; server-id: root.item.id; column-index: 5; value: root.item.tags; copy-label: "Tags"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         Rectangle {
-            width: 116px;
-            if !root.hidden: Button { x: 5px; y: 6px; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
-            if !root.hidden: Button { x: 53px; y: 6px; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
-            if root.hidden: Button { x: 9px; y: 6px; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
+            width: 116px; horizontal-stretch: 0;
+            if !root.hidden: Button { x: 5px; y: (parent.height - 28px) / 2; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
+            if !root.hidden: Button { x: 53px; y: (parent.height - 28px) / 2; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
+            if root.hidden: Button { x: 9px; y: (parent.height - 28px) / 2; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
         }
     }
 }
@@ -422,6 +431,12 @@ export component AppWindow inherits Window {
     in-out property <string> editing-site-purpose;
     in-out property <string> editing-site-tags;
     in-out property <int> hide-site-target-id: 0;
+    in-out property <AssetContextForm> server-context;
+    in-out property <AssetContextForm> inventory-context;
+    in-out property <AssetContextForm> business-context;
+    in-out property <string> business-query;
+    callback server-context-load(int);
+    callback open-documentation(string);
     in-out property <int> editing-id: 0;
     in-out property <string> editing-name;
     in-out property <string> editing-tags;
@@ -455,6 +470,26 @@ export component AppWindow inherits Window {
     in-out property <int> topology-link: 0;
     in-out property <string> topology-notes;
     in-out property <string> topology-status;
+    in-out property <string> topology-view-hidden;
+    in-out property <string> topology-view-collapsed;
+    in-out property <string> topology-view-focus;
+    in property <[string]> topology-recovery-choices;
+    in property <[string]> topology-recovery-keys;
+    in property <int> topology-hidden-count;
+    in property <[GridRow]> business-grid;
+    in-out property <int> business-grid-sort: -1;
+    in property <[GridRow]> inventory-grid;
+    in-out property <int> service-grid-sort: -1;
+    in-out property <int> domain-grid-sort: -1;
+    in-out property <bool> work-table-mode: true;
+    in property <[GridRow]> work-grid;
+    in-out property <int> work-grid-sort: -1;
+    callback grid-sort(int,int);
+    callback inventory-host-details(int);
+    in-out property <string> host-details-text;
+    in-out property <bool> host-details-open;
+    changed host-details-open => { if root.host-details-open { host-details-popup.show(); } else { host-details-popup.close(); } }
+    callback topology-view-action(int,string);
     callback topology-refresh(); callback business-select(int); callback business-save(); callback business-hide();
     callback topology-open(string,int); callback topology-save-link(); callback topology-select-link(int); callback topology-remove-link();
     in-out property <int> active-tab: 0;
@@ -523,6 +558,34 @@ export component AppWindow inherits Window {
         Palette.color-scheme = root.theme-index == 4 ? ColorScheme.dark : ColorScheme.light;
     }
 
+    property <bool> appearance-open: false;
+    property <int> previous-theme: 0;
+    property <int> previous-font: 2;
+    property <int> previous-density: 1;
+    property <bool> previous-dirty: false;
+    property <string> previous-appearance-status;
+    property <bool> previous-appearance-error: false;
+    callback open-appearance;
+    open-appearance => {
+        root.previous-theme = root.theme-index;
+        root.previous-font = root.font-size-step;
+        root.previous-density = root.table-density;
+        root.previous-dirty = root.appearance-dirty;
+        root.previous-appearance-status = root.appearance-status;
+        root.previous-appearance-error = root.appearance-error;
+        root.appearance-status = ""; root.appearance-error = false;
+        root.appearance-open = true; appearance-popup.show();
+    }
+    callback cancel-appearance;
+    cancel-appearance => {
+        root.theme-index = root.previous-theme;
+        root.font-size-step = root.previous-font;
+        root.table-density = root.previous-density;
+        root.appearance-dirty = root.previous-dirty;
+        root.appearance-status = root.previous-appearance-status;
+        root.appearance-error = root.previous-appearance-error;
+        root.appearance-open = false; appearance-popup.close(); appearance-trigger.focus();
+    }
     in-out property <bool> appearance-dirty: false;
     in-out property <string> appearance-status;
     in-out property <bool> appearance-error: false;
@@ -552,7 +615,7 @@ export component AppWindow inherits Window {
     in-out property <bool> editing-cell-is-site: false;
     property <length> caption-font-size: UiColors.body-size - 1px;
     property <length> body-font-size: UiColors.body-size;
-    property <length> server-control-height: max(36px, UiColors.body-size + 24px);
+    property <length> server-control-height: max(40px, UiColors.body-size + 24px);
     property <length> control-font-size: UiColors.body-size + 1px;
     property <length> panel-title-font-size: UiColors.body-size + 5px;
     property <length> page-title-font-size: root.font-size-step <= 2 ? (22 + root.font-size-step * 3) * 1px : (24 + root.font-size-step * 2) * 1px;
@@ -561,7 +624,8 @@ export component AppWindow inherits Window {
     property <length> medium-font-size: root.control-font-size;
     property <length> large-font-size: root.page-title-font-size;
     property <length> hover-font-size: UiColors.body-size + 4px;
-    property <length> table-row-height: root.table-density == 0 ? 34px : root.table-density == 1 ? 42px : 50px;
+    property <length> workspace-left: 184px;
+    property <length> table-row-height: max(UiColors.body-size + 24px, root.table-density == 0 ? 34px : root.table-density == 1 ? 42px : 50px);
     default-font-size: root.control-font-size;
     in-out property <length> table-width: 816px;
     in-out property <[length]> site-column-widths: [180px, 260px, 140px, 120px, 220px, 180px];
@@ -624,7 +688,7 @@ export component AppWindow inherits Window {
     callback auto-map-import;
     callback confirm-import;
     callback tab-selected(int);
-    function request-tab(tab: int) { if !root.onboarding-open && !root.endpoints-open { root.tab-selected(tab); } }
+    function request-tab(tab: int) { if !root.onboarding-open && !root.endpoints-open && !root.appearance-open { root.tab-selected(tab); } }
     callback work-selected(int);
     callback save-work(int, string, string, string, string, string, string, string, string);
     callback new-work;
@@ -696,26 +760,32 @@ export component AppWindow inherits Window {
         if root.demo-mode: Text { x: 240px; y: 22px; width: 210px; text: "DEMO WORKSPACE"; color: #dceee8; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
         Text { x: parent.width - 370px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "SERVICES" : root.active-tab == 5 ? "DOMAINS" : root.active-tab == 6 ? "BUSINESSES" : root.active-tab == 7 ? "CONNECTIONS" : "SETTINGS"; color: #dceee8; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
         guide-trigger := Button { x: parent.width - 246px; y: 10px; width: 76px; height: 36px; text: "Guide"; clicked => { root.onboarding-open = true; } }
-        appearance-trigger := Button { x: parent.width - 150px; y: 10px; width: 122px; height: 36px; text: "Appearance"; clicked => { root.appearance-status = ""; root.appearance-error = false; appearance-popup.show(); } }
+        appearance-trigger := Button { x: parent.width - 150px; y: 10px; width: 122px; height: 36px; text: "Appearance"; clicked => { root.open-appearance(); } }
     }
 
     Rectangle {
-        x: 28px; y: 64px; width: parent.width - 56px; height: 42px; background: UiColors.raised; border-radius: 5px;
-        servers-tab := NavigationTab { x: 4px; y: 4px; width: 112px; height: 34px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
-        sites-tab := NavigationTab { x: 120px; y: 4px; width: 112px; height: 34px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
-        NavigationTab { x: 236px; y: 4px; width: 112px; height: 34px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
-        NavigationTab { x: 352px; y: 4px; width: 112px; height: 34px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
-        NavigationTab { x: 468px; y: 4px; width: 128px; height: 34px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
-        NavigationTab { x: 600px; y: 4px; width: 136px; height: 34px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
-        settings-tab := NavigationTab { x: 740px; y: 4px; width: 112px; height: 34px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.request-tab(2); } }
+        x: 12px; y: 72px; width: 152px; height: parent.height - 88px;
+        background: UiColors.surface; border-radius: 8px;
+        Text { x: 14px; y: 18px; width: parent.width - 28px; text: "Workspace"; color: UiColors.muted; font-size: root.caption-font-size; }
+        servers-tab := NavigationTab { x: 6px; y: 54px; width: parent.width - 12px; height: 42px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
+        sites-tab := NavigationTab { x: 6px; y: 102px; width: parent.width - 12px; height: 42px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
+        NavigationTab { x: 6px; y: 150px; width: parent.width - 12px; height: 42px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
+        NavigationTab { x: 6px; y: 198px; width: parent.width - 12px; height: 42px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
+        NavigationTab { x: 6px; y: 246px; width: parent.width - 12px; height: 42px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
+        NavigationTab { x: 6px; y: 294px; width: parent.width - 12px; height: 42px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
+        settings-tab := NavigationTab { x: 6px; y: parent.height - 54px; width: parent.width - 12px; height: 42px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.request-tab(2); } }
     }
 
     if root.active-tab == 6 || root.active-tab == 7: TopologyPanel {
-        x: 28px; y: 122px; width: parent.width - 56px; height: parent.height - 146px;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px;
+        view-hidden-count: root.topology-hidden-count; recovery-choices: root.topology-recovery-choices; recovery-keys: root.topology-recovery-keys;
+        focus-key: root.topology-view-focus; view-action(action,key) => { root.topology-view-action(action,key); }
+        grid-rows: root.business-grid; grid-sort-mode: root.business-grid-sort; grid-sort(mode) => { root.grid-sort(0,mode); }
         business-mode: root.active-tab == 6; businesses: root.business-rows;
         nodes: root.topology-nodes; node-choices: root.topology-node-choices; edges: root.topology-edges; choices: root.topology-choices;
         business-choices: root.topology-business-choices; canvas-height: root.topology-height;
         filter-index <=> root.topology-filter; hidden <=> root.business-hidden;
+        business-query <=> root.business-query; context <=> root.business-context; open-link(url) => { root.open-documentation(url); }
         business-id <=> root.business-id; business-name <=> root.business-name; business-tags <=> root.business-tags; business-notes <=> root.business-notes;
         source-index <=> root.topology-source; target-index <=> root.topology-target; relation-index <=> root.topology-relation;
         link-notes <=> root.topology-notes; link-id <=> root.topology-link; status: root.topology-status;
@@ -727,9 +797,13 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 4 || root.active-tab == 5: InventoryPanel {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px;
         editor-open <=> root.inventory-editor-requested;
         show-map => { root.request-tab(7); }
+        context <=> root.inventory-context; open-link(url) => { root.open-documentation(url); }
+        grid-rows: root.inventory-grid; grid-sort-mode: root.inventory-form.kind == 0 ? root.service-grid-sort : root.domain-grid-sort;
+        grid-sort(mode) => { root.grid-sort(root.inventory-form.kind == 0 ? 1 : 2,mode); }
+        host-details(id) => { root.inventory-host-details(id); }
         form <=> root.inventory-form; rows: root.inventory-rows; hosts <=> root.inventory-hosts;
         relations: root.inventory-relations; target-labels: root.inventory-target-labels;
         target-index <=> root.inventory-target-index; relation-kind <=> root.inventory-relation-kind;
@@ -758,9 +832,9 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 0: Rectangle {
-        x: 28px; y: 138px; width: parent.width - (root.server-editor-open ? 496px : 56px); height: parent.height - 162px; background: transparent;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - (root.server-editor-open ? 468px : 24px); height: parent.height - 104px; background: transparent;
         Text { x: 0; y: 0; text: root.show-hidden ? "Hidden servers" : root.active-tag == "" ? "Servers" : "Servers tagged " + root.active-tag; color: UiColors.text; font-size: root.large-font-size; font-weight: 750; }
-        Button { x: 0; y: 40px; width: 126px; height: 32px; compact: true; primary: true; text: "New server"; clicked => { root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; root.server-editor-open = true; } }
+        Button { x: 0; y: 40px; width: 126px; height: 32px; compact: true; primary: true; text: "New server"; clicked => { root.server-context-load(0); root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; root.server-editor-open = true; } }
         Button { x: 134px; y: 40px; width: 160px; height: 32px; compact: true; quiet: true; text: root.active-tag == "" ? "Filter tags" : root.active-tag; clicked => { server-tags-popup.show(); } }
         server-tags-popup := PopupWindow {
             x: 134px; y: 76px; width: 240px; height: min(360px, 52px + root.available-tags.length * 40px); close-policy: close-on-click-outside;
@@ -791,10 +865,10 @@ export component AppWindow inherits Window {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
                 content-x <=> root.server-table-scroll-x;
                 VerticalLayout {
-                    width: root.table-width; spacing: 0px;
+                    x: 0px; y: 0px; width: root.table-width; spacing: 0px; padding: 0px; alignment: start;
                     for server in root.servers: ServerTableRow {
                         item: server; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; cell-font-size: root.small-font-size; hover-font-size: root.hover-font-size; hidden: root.show-hidden; show-tooltips: root.show-cell-tooltips; row-height: root.table-row-height;
-                        edit => { root.server-editor-open = true; root.editing-id = server.id; root.editing-name = server.name; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.editing-environment = server.environment; root.editing-status = server.status; root.editing-purpose = server.purpose; root.editing-tags = server.tags; root.status-message = ""; }
+                        edit => { root.server-editor-open = true; root.editing-id = server.id; root.server-context-load(server.id); root.editing-name = server.name; root.editing-ip-address = server.ip-address; root.editing-ports = server.ports; root.editing-environment = server.environment; root.editing-status = server.status; root.editing-purpose = server.purpose; root.editing-tags = server.tags; root.status-message = ""; }
                         hide => { root.hide-target-id = server.id; }
                         restore => { root.restore-server(server.id); }
                         copy(value, label) => { root.copy-value(value, label); }
@@ -809,7 +883,7 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 0 && root.server-editor-open: Rectangle {
-        x: parent.width - 452px; y: 138px; width: 424px; height: parent.height - 162px;
+        x: parent.width - 452px; y: 80px; width: 424px; height: parent.height - 104px;
         background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
         ScrollView {
             x: 1px; y: 1px; width: parent.width - 2px; height: parent.height - root.server-control-height - 28px;
@@ -823,7 +897,7 @@ export component AppWindow inherits Window {
                 if root.editing-id != 0: HorizontalLayout {
                     spacing: 8px;
                     Button { text: "Services"; clicked => { root.open-server-inventory(root.editing-id); } }
-                    Button { text: "New"; clicked => { root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; } }
+                    Button { text: "New"; clicked => { root.server-context-load(0); root.editing-id = 0; root.editing-name = ""; root.editing-ip-address = ""; root.editing-ports = ""; root.editing-environment = root.environment-options[0]; root.editing-status = root.status-options[0]; root.editing-purpose = ""; root.editing-tags = ""; root.status-message = ""; } }
                 }
                 FieldLabel { text: "NAME *"; token-size: root.caption-font-size; }
                 LineEdit { accessible-label: "Server name"; min-height: root.server-control-height; placeholder-text: "api-gateway-01"; text <=> root.editing-name; }
@@ -837,6 +911,7 @@ export component AppWindow inherits Window {
                 LineEdit { accessible-label: "Server purpose"; min-height: root.server-control-height; placeholder-text: "Public API gateway"; text <=> root.editing-purpose; }
                 FieldLabel { text: "TAGS"; token-size: root.caption-font-size; }
                 server-tags-edit := LineEdit { accessible-label: "Server tags"; min-height: root.server-control-height; placeholder-text: "api, customer-facing"; text <=> root.editing-tags; }
+                AssetContextEditor { form <=> root.server-context; show-environment: false; open-link(url) => { root.open-documentation(url); } }
                 HelperText { text: root.editing-id == 0 ? "A pending SSH service on port 22 will be created in Services. Review it there before confirming." : "Manage ports, versions and access accounts in Services."; token-size: root.body-font-size; }
                 if root.status-message != "": Text { text: root.status-message; color: root.status-is-error ? UiColors.error : UiColors.success; font-size: root.body-font-size; font-weight: 650; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
             }
@@ -845,7 +920,7 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 1: Rectangle {
-        x: 28px; y: 138px; width: parent.width - (root.site-editor-open ? 412px : 56px); height: parent.height - 162px; background: transparent;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - (root.site-editor-open ? 384px : 24px); height: parent.height - 104px; background: transparent;
         PageHeader { x: 0; y: 0; text: root.show-hidden-sites ? "Hidden sites" : "Sites"; token-size: root.page-title-font-size; }
         Button { x: parent.width - 254px; y: -4px; width: 112px; height: 32px; primary: true; text: "New site"; clicked => { root.editing-site-id = 0; root.editing-site-name = ""; root.editing-site-url = ""; root.editing-site-environment = root.environment-options[0]; root.editing-site-status = root.status-options[0]; root.editing-site-purpose = ""; root.editing-site-tags = ""; root.status-message = ""; root.site-editor-open = true; } }
         Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: root.show-hidden-sites ? "Back to active" : "Hidden (" + root.hidden-site-count + ")"; clicked => { root.show-hidden-sites-changed(!root.show-hidden-sites); } }
@@ -867,7 +942,7 @@ export component AppWindow inherits Window {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
                 content-x <=> root.site-table-scroll-x;
                 VerticalLayout {
-                    width: root.site-table-width; spacing: 0px;
+                    x: 0px; y: 0px; width: root.site-table-width; spacing: 0px; padding: 0px; alignment: start;
                     for site in root.sites: SiteTableRow {
                         item: site; column-widths: root.site-column-widths; table-width: root.site-table-width; cell-font-size: root.small-font-size; hidden: root.show-hidden-sites; show-tooltips: root.show-cell-tooltips; row-height: root.table-row-height;
                         edit => { root.site-editor-open = true; root.editing-site-id = site.id; root.editing-site-name = site.name; root.editing-site-url = site.url; root.editing-site-environment = site.environment; root.editing-site-status = site.status; root.editing-site-purpose = site.purpose; root.editing-site-tags = site.tags; root.status-message = ""; }
@@ -910,7 +985,7 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 2: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: transparent;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px; background: transparent;
         PageHeader { x: 0; y: 0; text: "Settings"; token-size: root.page-title-font-size; }
         SectionLabel { x: 0; y: 40px; text: "DISPLAY / CUSTOM FIELDS / BACKUPS"; token-size: root.caption-font-size; }
         ScrollView {
@@ -974,7 +1049,7 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 10: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
         PageHeader { x: 24px; y: 22px; text: "Projects"; token-size: root.page-title-font-size; }
         SectionLabel { x: 24px; y: 58px; text: "START@  ·  DESC  ·  PRIORITY  ·  LAUNCH@"; token-size: root.caption-font-size; }
         Rectangle {
@@ -995,7 +1070,7 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 11: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
         PageHeader { x: 24px; y: 22px; text: "Operations"; token-size: root.page-title-font-size; }
         SectionLabel { x: 24px; y: 58px; text: "PUBLISH@  ·  MEDIA  ·  CHANNEL"; token-size: root.caption-font-size; }
         Rectangle {
@@ -1014,15 +1089,16 @@ export component AppWindow inherits Window {
     }
 
     if root.active-tab == 12: Rectangle {
-        x: 28px; y: 138px; width: parent.width - 56px; height: parent.height - 162px; background: transparent;
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px; background: transparent;
         PageHeader { x: 0; y: 0; text: "Work inbox"; token-size: root.page-title-font-size; }
-        SectionLabel { x: 0; y: 34px; text: "PLAN THE CHANGE BEFORE THE CHANGE PLANS YOU"; token-size: root.caption-font-size; }
-        Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: "+  New work"; clicked => { root.new-work(); } }
-        work-search := LineEdit { x: 10px; y: 68px; width: parent.width * 0.46 - 314px; height: 32px; placeholder-text: "Search work"; text <=> root.work-list-query; edited => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
-        kind-filter := ComboBox { x: parent.width * 0.46 - 294px; y: 68px; width: 90px; height: 32px; model: ["All types", "Change", "Task", "Renewal", "Incident", "Migration", "Launch", "Maintenance"]; current-index <=> root.work-list-kind-filter; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
-        status-filter := ComboBox { x: parent.width * 0.46 - 198px; y: 68px; width: 90px; height: 32px; model: ["All status", "Inbox", "Planned", "Ready", "In progress", "Blocked", "Done", "Cancelled"]; current-index <=> root.work-list-status-filter; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
-        work-sort := ComboBox { x: parent.width * 0.46 - 102px; y: 68px; width: 92px; height: 32px; model: ["Default", "Priority", "Due date", "Status", "Title"]; current-index <=> root.work-list-sort-mode; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
-        work-page-scroll := ScrollView {
+        CheckBox { x: 0; y: 34px; text: "Table view"; checked <=> root.work-table-mode; }
+        if root.work-table-mode: DataTable { x: 0; y: 108px; width: parent.width; height: parent.height - 108px; headers: ["Title", "Type", "Owner", "Status", "Priority", "Due date"]; rows: root.work-grid; selected-id: root.selected-work-id; sort-mode: root.work-grid-sort; sort(mode) => { root.grid-sort(3,mode); } open(id) => { root.work-selected(id); root.work-table-mode = false; } }
+        Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: "+  New work"; clicked => { root.work-table-mode = false; root.new-work(); } }
+        work-search := LineEdit { x: 10px; y: 68px; width: max(110px, parent.width - 330px); height: 32px; placeholder-text: "Search work"; text <=> root.work-list-query; edited => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
+        kind-filter := ComboBox { x: parent.width - 300px; y: 68px; width: 90px; height: 32px; model: ["All types", "Change", "Task", "Renewal", "Incident", "Migration", "Launch", "Maintenance"]; current-index <=> root.work-list-kind-filter; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
+        status-filter := ComboBox { x: parent.width - 204px; y: 68px; width: 90px; height: 32px; model: ["All status", "Inbox", "Planned", "Ready", "In progress", "Blocked", "Done", "Cancelled"]; current-index <=> root.work-list-status-filter; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
+        work-sort := ComboBox { x: parent.width - 108px; y: 68px; width: 92px; height: 32px; model: ["Default", "Priority", "Due date", "Status", "Title"]; current-index <=> root.work-list-sort-mode; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
+        if !root.work-table-mode: work-page-scroll := ScrollView {
         y: 108px; width: parent.width; height: parent.height - 108px;
         content-y <=> root.work-page-scroll-y;
         work-content := Rectangle {
@@ -1138,13 +1214,19 @@ export component AppWindow inherits Window {
     }
 
     appearance-popup := PopupWindow {
-        x: root.width - 648px; y: 64px; width: 620px; height: min(720px, root.height - 84px);
-        close-policy: close-on-click-outside;
+        x: 0px; y: 0px; width: root.width; height: root.height;
+        close-policy: no-auto-close;
+        forward-focus: appearance-cancel;
+        FocusScope {
+            key-pressed(event) => { if event.text == Key.Escape { root.cancel-appearance(); return accept; } return reject; }
+            Rectangle { width: parent.width; height: parent.height; background: #00000033; TouchArea { }
         Rectangle {
+            x: parent.width - self.width - 20px; y: 72px;
+            width: min(620px, parent.width - 40px); height: parent.height - 92px;
             background: UiColors.surface; border-width: 1px; border-color: UiColors.action-border; border-radius: 8px;
             PanelTitle { x: 20px; y: 18px; text: "Appearance"; token-size: UiColors.body-size + 7px; }
-            Button { x: parent.width - 88px; y: 12px; width: 72px; height: 36px; text: "Close"; accessible-label: "Close appearance"; clicked => { appearance-popup.close(); appearance-trigger.focus(); } }
-            Text { x: 20px; y: 58px; width: parent.width - 40px; height: 34px; text: "Preview right here. Your current workspace changes too."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+            Button { x: parent.width - 88px; y: 12px; width: 72px; height: 36px; text: "Close"; accessible-label: "Close appearance"; clicked => { root.cancel-appearance(); } }
+            Text { x: 20px; y: 58px; width: parent.width - 40px; height: 34px; text: "Changes appear immediately. Apply to keep them, or Cancel to restore your previous appearance."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
             ScrollView {
                 x: 20px; y: 100px; width: parent.width - 40px; height: parent.height - 200px;
                 content-width: self.width; content-height: 440px + (UiColors.body-size - 11px) * 10;
@@ -1154,11 +1236,32 @@ export component AppWindow inherits Window {
                     edited => { root.appearance-dirty = true; root.appearance-status = ""; root.appearance-error = false; }
                 }
             }
-            Text { x: 20px; y: parent.height - 92px; width: parent.width - 40px; height: 32px; text: root.appearance-error && root.appearance-status != "" ? root.appearance-status : root.appearance-dirty ? "Preview only · not saved yet." : root.appearance-status != "" ? root.appearance-status : "Save settings to keep these choices after restarting."; color: root.appearance-error ? UiColors.error : UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
-            Button { x: parent.width - 188px; y: parent.height - 52px; width: 168px; height: 36px; primary: true; text: "Save settings"; clicked => { root.save-settings(); } }
+            Text { x: 20px; y: parent.height - 92px; width: parent.width - 40px; height: 32px; text: root.appearance-error && root.appearance-status != "" ? root.appearance-status : root.appearance-dirty ? "Preview only · not saved yet." : root.appearance-status != "" ? root.appearance-status : "Your workspace updates as you choose."; color: root.appearance-error ? UiColors.error : UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
+            appearance-cancel := Button { x: parent.width - 240px; y: parent.height - 52px; width: 100px; height: 36px; text: "Cancel"; clicked => { root.cancel-appearance(); } }
+            Button { x: parent.width - 128px; y: parent.height - 52px; width: 108px; height: 36px; primary: true; text: "Apply"; clicked => { root.save-settings(); if !root.appearance-error { root.appearance-open = false; appearance-popup.close(); appearance-trigger.focus(); } } }
+        }
+        }
         }
     }
 
+    host-details-popup := PopupWindow {
+        x: 0; y: 0; width: root.width; height: root.height; close-policy: no-auto-close;
+        forward-focus: host-details-close;
+        FocusScope { key-pressed(event) => { if event.text == Key.Escape { root.host-details-open = false; return accept; } return reject; }
+            Rectangle { width: parent.width; height: parent.height; background: #00000066;
+                TouchArea { }
+                Rectangle { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
+                    width: min(720px, parent.width - 40px); height: min(620px, parent.height - 40px); background: UiColors.surface; border-radius: 8px;
+                    VerticalLayout { padding: 20px; spacing: 12px;
+                        HorizontalLayout { Text { text: "Hosting server details"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
+                            host-details-close := Button { compact: true; text: "Close"; clicked => { root.host-details-open = false; } }
+                        }
+                        ScrollView { vertical-stretch: 1; Text { text: root.host-details-text; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; } }
+                    }
+                }
+            }
+        }
+    }
     guide-popup := PopupWindow {
         forward-focus: guide-close;
         x: 0; y: 0; width: root.width; height: root.height;

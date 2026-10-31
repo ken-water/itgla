@@ -1,5 +1,6 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
+mod asset_context;
 #[allow(dead_code)]
 mod domain;
 mod endpoints;
@@ -9,6 +10,7 @@ mod relationships;
 mod secrets;
 #[allow(dead_code)]
 mod storage;
+mod tables;
 mod topology;
 
 use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
@@ -28,7 +30,7 @@ use storage::{
 
 slint::include_modules!();
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 struct TableState {
     query: String,
     tag: String,
@@ -191,6 +193,24 @@ fn set_work_rows(
         _ => {}
     }
     let rows = work_items.iter().map(work_to_row).collect::<Vec<_>>();
+    window.set_work_grid(tables::sorted(
+        rows.iter()
+            .map(|r| {
+                tables::row(
+                    r.id,
+                    vec![
+                        r.title.to_string(),
+                        r.kind.to_string(),
+                        r.owner.to_string(),
+                        r.status.to_string(),
+                        r.priority.to_string(),
+                        r.due_at.to_string(),
+                    ],
+                )
+            })
+            .collect(),
+        window.get_work_grid_sort(),
+    ));
     window.set_work_items(ModelRc::new(VecModel::from(rows)));
     Ok(())
 }
@@ -531,9 +551,24 @@ fn refresh(
     tags.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
     sort_records(&mut records, state.sort_mode);
     window.set_sort_mode_index(state.sort_mode as i32);
+    let contexts = repository.asset_contexts()?;
     let rows = records
         .iter()
-        .filter(|server| matches_filters(server, state))
+        .filter(|server| {
+            if matches_filters(server, state) {
+                return true;
+            }
+            let mut without_query = state.clone();
+            without_query.query.clear();
+            matches_filters(server, &without_query)
+                && contexts
+                    .get(&("server".to_owned(), server.id))
+                    .is_some_and(|c| {
+                        c.data
+                            .searchable()
+                            .contains(&state.query.trim().to_lowercase())
+                    })
+        })
         .map(to_row)
         .collect::<Vec<_>>();
 
@@ -1053,6 +1088,7 @@ fn show_status(window: &AppWindow, message: &str) {
 }
 
 fn clear_editor(window: &AppWindow) {
+    window.set_server_context(Default::default());
     window.set_editing_id(0);
     window.set_editing_name(SharedString::new());
     window.set_editing_tags(SharedString::new());
@@ -1070,7 +1106,7 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
     }
     if std::env::var_os("ITGLA_AUDIT_LARGE_DARK").is_some() {
         window.set_theme_index(4);
-        window.set_font_size_step(4);
+        window.set_font_size_step(3);
     }
     if let Ok(size) = std::env::var("ITGLA_AUDIT_WINDOW_SIZE")
         && let Some((width, height)) = size.split_once('x').and_then(|(width, height)| {
@@ -1146,6 +1182,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let window = AppWindow::new()?;
     operational::setup(&window, repository.clone());
     topology::setup(&window, repository.clone());
+    tables::setup(&window);
     endpoints::bind(&window, repository.clone(), table_state.clone());
     let preferences = repository.borrow().workspace_preferences();
     apply_preferences(&window, &preferences);
@@ -1747,7 +1784,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let callback_repository = Rc::clone(&repository);
     let weak = window.as_weak();
     window.on_font_size_changed(move |step| {
-        let step = step.clamp(0, 4);
+        let step = step.clamp(1, 3);
         if callback_repository
             .borrow()
             .set_font_size_step(i64::from(step))
@@ -1786,7 +1823,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             let Some(window) = weak.upgrade() else { return };
             let mut preferences = callback_repository.borrow().workspace_preferences();
             preferences.theme_index = i64::from(theme.clamp(0, 4));
-            preferences.font_size_step = i64::from(font.clamp(0, 4));
+            preferences.font_size_step = i64::from(font.clamp(1, 3));
             preferences.table_density = i64::from(density.clamp(0, 2));
             preferences.show_cell_tooltips = tooltips;
             preferences.fit_columns_on_open = fit;
@@ -2291,9 +2328,36 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
-    let weak = window.as_weak();
     let callback_repository = Rc::clone(&repository);
     let callback_state = Rc::clone(&table_state);
+    let weak = window.as_weak();
+    let context_repository = repository.clone();
+    window.on_server_context_load(move |id| {
+        let Some(window) = weak.upgrade() else { return };
+        window.set_server_context(Default::default());
+        if id != 0 {
+            match context_repository
+                .borrow()
+                .asset_context("server", i64::from(id))
+            {
+                Ok(context) => window.set_server_context(context.form()),
+                Err(error) => show_error(&window, &error),
+            }
+        }
+    });
+    let weak = window.as_weak();
+    window.on_open_documentation(move |url| {
+        let Some(window) = weak.upgrade() else { return };
+        let result = asset_context::validate_documentation_link(&url).and_then(|()| {
+            webbrowser::open(&url).map_err(|error| {
+                StorageError::InvalidImport(format!("Could not open documentation: {error}"))
+            })
+        });
+        if let Err(error) = result {
+            show_error(&window, &error);
+        }
+    });
+    let weak = window.as_weak();
     window.on_save_server(
         move |id, name, ip_address, ports, environment, status, purpose, tags| {
             let Some(window) = weak.upgrade() else { return };
@@ -2312,7 +2376,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 purpose: purpose.to_string(),
             };
             let id = (id > 0).then_some(i64::from(id));
-            let save_result = callback_repository.borrow_mut().save_server(id, &draft);
+            let save_result = callback_repository.borrow_mut().save_server_with_context(
+                id,
+                &draft,
+                Some(&window.get_server_context()),
+            );
             match save_result {
                 Ok(saved_id) => {
                     if let Err(error) = refresh(
@@ -2324,6 +2392,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         return;
                     }
                     window.set_editing_id(i32::try_from(saved_id).unwrap_or(i32::MAX));
+                    window.invoke_server_context_load(saved_id as i32);
                     window.set_onboarding_open(false);
                     show_status(
                         &window,
@@ -2930,8 +2999,15 @@ mod tests {
             .next()
             .expect("name column header");
         let header_y = header.absolute_position().y + header.size().height / 2.0;
+        let header_x = header.absolute_position().x;
+        let sort_header =
+            ElementHandle::find_by_accessible_label(&window, "IP ADDRESS, not sorted")
+                .next()
+                .expect("IP address column header");
+        let sort_x = sort_header.absolute_position().x + sort_header.size().width / 2.0;
+        let resize_x = header_x + header.size().width - 1.0;
         for expected in [2, 3, 2] {
-            let position = LogicalPosition::new(250.0, header_y);
+            let position = LogicalPosition::new(sort_x, header_y);
             window
                 .window()
                 .dispatch_event(WindowEvent::PointerMoved { position });
@@ -2947,7 +3023,7 @@ mod tests {
                 });
             assert_eq!(window.get_sort_mode_index(), expected);
         }
-        let start = LogicalPosition::new(187.0, header_y);
+        let start = LogicalPosition::new(resize_x, header_y);
         window
             .window()
             .dispatch_event(WindowEvent::PointerMoved { position: start });
@@ -2956,12 +3032,12 @@ mod tests {
             position: start,
             button: PointerEventButton::Left,
         });
-        for x in [197.0, 207.0, 217.0] {
+        for x in [resize_x + 10.0, resize_x + 20.0, resize_x + 30.0] {
             window.window().dispatch_event(WindowEvent::PointerMoved {
                 position: LogicalPosition::new(x, header_y),
             });
         }
-        let end = LogicalPosition::new(217.0, header_y);
+        let end = LogicalPosition::new(resize_x + 30.0, header_y);
         window
             .window()
             .dispatch_event(WindowEvent::PointerReleased {
@@ -2970,7 +3046,7 @@ mod tests {
             });
         assert_eq!(window.get_column_widths().row_data(0), Some(190.0));
         window.window().dispatch_event(WindowEvent::PointerMoved {
-            position: LogicalPosition::new(211.0, header_y),
+            position: LogicalPosition::new(resize_x + 24.0, header_y),
         });
         assert_eq!(window.get_column_widths().row_data(0), Some(190.0));
         assert_eq!(window.get_sort_mode_index(), 2, "resizing must not sort");
@@ -3131,9 +3207,48 @@ mod tests {
         let slider = ElementHandle::find_by_accessible_label(&window, "Text size control")
             .next()
             .expect("text size slider");
-        assert_eq!(slider.accessible_value_minimum(), Some(0.0));
-        assert_eq!(slider.accessible_value_maximum(), Some(4.0));
-        for step in 0..=4 {
+        assert_eq!(slider.accessible_value_minimum(), Some(1.0));
+        assert_eq!(slider.accessible_value_maximum(), Some(3.0));
+        // Pointer positions between labels must resolve to a discrete stop.
+        for (fraction, expected) in [(0.0, 1), (0.2, 1), (0.4, 2), (0.7, 2), (0.9, 3), (1.0, 3)] {
+            let slider = ElementHandle::find_by_accessible_label(&window, "Text size control")
+                .next()
+                .unwrap();
+            let origin = slider.absolute_position();
+            let position = LogicalPosition::new(
+                origin.x + 22.0 + (slider.size().width - 44.0) * fraction,
+                origin.y + 22.0,
+            );
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved { position });
+            window.window().dispatch_event(WindowEvent::PointerPressed {
+                position,
+                button: PointerEventButton::Left,
+            });
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerReleased {
+                    position,
+                    button: PointerEventButton::Left,
+                });
+            assert_eq!(window.get_font_size_step(), expected);
+        }
+        for (key, expected) in [
+            (Key::Home, 1),
+            (Key::RightArrow, 2),
+            (Key::End, 3),
+            (Key::LeftArrow, 2),
+        ] {
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyPressed { text: key.into() });
+            window
+                .window()
+                .dispatch_event(WindowEvent::KeyReleased { text: key.into() });
+            assert_eq!(window.get_font_size_step(), expected);
+        }
+        for step in 1..=3 {
             slider.set_accessible_value(step.to_string());
             assert_eq!(window.get_font_size_step(), step);
         }
@@ -3147,7 +3262,7 @@ mod tests {
             assert_eq!(choice.accessible_checked(), Some(true));
         }
         assert_eq!(window.get_theme_index(), 2);
-        assert_eq!(window.get_font_size_step(), 0);
+        assert_eq!(window.get_font_size_step(), 1);
         assert_eq!(window.get_table_density(), 2);
         assert!(window.get_appearance_dirty());
         assert_eq!(*saved.borrow(), None, "preview must not silently persist");
@@ -3159,8 +3274,53 @@ mod tests {
             .next()
             .expect("save button")
             .invoke_accessible_default_action();
-        assert_eq!(*saved.borrow(), Some((2, 0, 2)));
+        assert_eq!(*saved.borrow(), Some((2, 1, 2)));
         assert!(!window.get_appearance_dirty());
+    }
+
+    #[test]
+    fn appearance_popup_cancel_restores_draft_and_blocks_navigation() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_theme_index(2);
+        window.set_font_size_step(1);
+        window.set_table_density(0);
+        window.set_appearance_dirty(true);
+        window.set_appearance_status("Previous draft".into());
+        window.show().expect("show window");
+        let calls = Rc::new(RefCell::new(0));
+        let observed = Rc::clone(&calls);
+        window.on_tab_selected(move |_| *observed.borrow_mut() += 1);
+        window.invoke_open_appearance();
+        window.set_theme_index(4);
+        window.set_font_size_step(3);
+        window.set_table_density(2);
+        ElementHandle::find_by_accessible_label(&window, "Services")
+            .next()
+            .expect("services navigation")
+            .invoke_accessible_default_action();
+        assert_eq!(
+            *calls.borrow(),
+            0,
+            "preview must block background navigation"
+        );
+        window.invoke_cancel_appearance();
+        assert_eq!(
+            (
+                window.get_theme_index(),
+                window.get_font_size_step(),
+                window.get_table_density()
+            ),
+            (2, 1, 0)
+        );
+        assert!(window.get_appearance_dirty());
+        assert_eq!(window.get_appearance_status(), "Previous draft");
+        ElementHandle::find_by_accessible_label(&window, "Services")
+            .next()
+            .expect("services navigation")
+            .invoke_accessible_default_action();
+        assert_eq!(*calls.borrow(), 1, "navigation resumes after cancel");
     }
 
     #[test]
@@ -3207,11 +3367,19 @@ mod tests {
         window.show().expect("show window");
         for tab in [2, 4, 5] {
             window.set_active_tab(tab);
-            assert!(
+            assert_eq!(
                 ElementHandle::find_by_accessible_label(&window, "Fit columns")
                     .next()
-                    .is_none()
+                    .is_some(),
+                tab != 2
             );
+            if tab != 2 {
+                ElementHandle::find_by_accessible_label(&window, "Fit columns")
+                    .next()
+                    .expect("local inventory fit")
+                    .invoke_accessible_default_action();
+                assert_eq!(*calls.borrow(), 0, "inventory fit must not resize Servers");
+            }
             assert!(
                 ElementHandle::find_by_accessible_label(&window, "Import servers")
                     .next()
@@ -3260,6 +3428,10 @@ mod tests {
             endpoints: ModelRc::new(VecModel::default()),
         }])));
         window.set_available_tags(ModelRc::new(VecModel::from(vec!["production".into()])));
+        let widths = window.get_column_widths().iter().collect::<Vec<_>>();
+        update_table_geometry(&window, &widths);
+        window.window().set_size(PhysicalSize::new(1_400, 900));
+
         window.show().expect("show test window");
 
         assert!(
@@ -3274,6 +3446,31 @@ mod tests {
                 .is_some(),
             "sortable table headers need their direction in the name"
         );
+        for (heading, cell) in [
+            ("NAME, sorted ascending", "Name: api-07"),
+            ("IP ADDRESS, not sorted", "IP address: 203.0.113.7"),
+            ("ENVIRONMENT, not sorted", "Environment: production"),
+            ("STATUS, not sorted", "Status: active"),
+            ("PURPOSE, not sorted", "Purpose: Public API"),
+            ("TAGS, not sorted", "Tags: production"),
+        ] {
+            let header = ElementHandle::find_by_accessible_label(&window, heading)
+                .next()
+                .unwrap();
+            let data = ElementHandle::find_by_accessible_label(&window, cell)
+                .next()
+                .unwrap();
+            assert!(
+                (header.absolute_position().x - data.absolute_position().x).abs() < 1.1,
+                "column {heading} must align: header {:?}, cell {:?}",
+                header.absolute_position(),
+                data.absolute_position()
+            );
+            assert!(
+                (header.size().width - data.size().width).abs() < 1.1,
+                "column {heading} must keep the same width"
+            );
+        }
         ElementHandle::find_by_accessible_label(&window, "Filter tags")
             .next()
             .expect("tag filter menu")
@@ -3430,7 +3627,7 @@ mod tests {
         let window = AppWindow::new().expect("test window");
         window.window().set_size(PhysicalSize::new(1000, 640));
         window.set_onboarding_open(false);
-        window.set_font_size_step(4);
+        window.set_font_size_step(3);
         window.set_server_editor_open(true);
         window.show().expect("show window");
         slint::platform::update_timers_and_animations();

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.6.1 - 2026-10-31
+
+- Publish businesses, connection map, compact inventory tables, host details and appearance improvements in the desktop app.
+- Refresh the official website, screenshots, download links and release guidance for this release.
+
+
 ## 0.6.0 - 2026-10-27
 
 - Add businesses and a connection map for domains, servers, services and their relationships.

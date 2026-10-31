@@ -361,9 +361,21 @@ impl Repository {
         &mut self,
         id: i64,
         kind: i32,
+        details: Details,
+        hosts: &[i64],
+        credentials: Option<Option<Vec<u8>>>,
+    ) -> Result<i64, StorageError> {
+        self.save_inventory_with_context(id, kind, details, hosts, credentials, None)
+    }
+
+    pub fn save_inventory_with_context(
+        &mut self,
+        id: i64,
+        kind: i32,
         mut details: Details,
         hosts: &[i64],
         credentials: Option<Option<Vec<u8>>>,
+        context: Option<&crate::AssetContextForm>,
     ) -> Result<i64, StorageError> {
         details.validate(kind)?;
         if hosts.len() > 100 {
@@ -490,8 +502,8 @@ impl Repository {
             )?;
         }
         transaction.execute(
-            "DELETE FROM operational_hosts WHERE inventory_id=?1",
-            [saved],
+            "DELETE FROM operational_hosts WHERE inventory_id=?1 AND server_id NOT IN (SELECT CAST(value AS INTEGER) FROM json_each(?2))",
+            params![saved, serde_json::to_string(hosts)?],
         )?;
         for host in hosts {
             transaction.execute(
@@ -509,6 +521,12 @@ impl Repository {
         if kind == 1 {
             transaction.execute("UPDATE operational_inventory SET data=json_set(data,'$.parent',?1) WHERE parent_domain_id=?2 AND json_extract(data,'$.parent') IS NOT ?1", params![details.name,saved])?;
         }
+        crate::asset_context::save_context(
+            &transaction,
+            if kind == 0 { "service" } else { "domain" },
+            saved,
+            context,
+        )?;
         transaction.commit()?;
         Ok(saved)
     }
@@ -540,13 +558,17 @@ impl Repository {
     }
 
     pub fn mark_inventory_verified(&self, id: i64) -> Result<(), StorageError> {
-        if self.connection.execute(
-            "UPDATE operational_inventory SET verified_at=date('now'),data=json_set(data,'$.pending_confirmation',json('false')) WHERE id=?1 AND hidden=0",
-            [id],
-        )? != 1
-        {
+        let tx = self.connection.unchecked_transaction()?;
+        if tx.execute("UPDATE operational_inventory SET verified_at=date('now'),data=json_set(data,'$.pending_confirmation',json('false')) WHERE id=?1 AND hidden=0", [id])? != 1 {
             return Err(invalid("Inventory record is hidden or no longer exists"));
         }
+        tx.execute(
+            "UPDATE operational_inventory SET verified_at=date('now') WHERE id=?1",
+            [id],
+        )?;
+        tx.execute("INSERT INTO asset_context(resource_type,resource_id,verified_at) SELECT CASE kind WHEN 0 THEN 'service' ELSE 'domain' END,id,datetime('now') FROM operational_inventory WHERE id=?1 ON CONFLICT(resource_type,resource_id) DO UPDATE SET verified_at=excluded.verified_at,verified_by=''", [id])?;
+        tx.execute("INSERT INTO resource_history(resource_type,resource_id,action,summary) SELECT CASE kind WHEN 0 THEN 'service' ELSE 'domain' END,id,'updated','Information checked' FROM operational_inventory WHERE id=?1", [id])?;
+        tx.commit()?;
         Ok(())
     }
 
@@ -560,9 +582,10 @@ impl Repository {
     ) -> Result<usize, StorageError> {
         let entries = self.inventory_entries()?;
         let servers = self.server_records()?;
+        let contexts = self.asset_contexts()?;
         let query = query.trim().to_lowercase();
         let mut output = String::from(
-            "Type,Name,Address,Version,Ports,Parent,Registrar,Registered,Expires,CDN,Servers,Tags,Notes,Last verified,Protocol,Transport,Confirmation\r\n",
+            "Type,Name,Address,Version,Ports,Parent,Registrar,Registered,Expires,CDN,Servers,Tags,Notes,Last verified,Protocol,Transport,Confirmation,Technical contact,Backup contact,Environment,Documentation status,Documentation URL,Information source,Checked by\r\n",
         );
         let mut count = 0;
         for entry in entries.iter().filter(|entry| {
@@ -577,8 +600,19 @@ impl Repository {
                 .map(|server| server.name.as_str())
                 .collect::<Vec<_>>()
                 .join(", ");
-            let searchable =
-                format!("{} {host_names}", serde_json::to_string(&entry.details)?).to_lowercase();
+            let context = contexts
+                .get(&(
+                    if kind == 0 { "service" } else { "domain" }.to_owned(),
+                    entry.id,
+                ))
+                .cloned()
+                .unwrap_or_default();
+            let searchable = format!(
+                "{} {host_names} {}",
+                serde_json::to_string(&entry.details)?,
+                context.data.searchable()
+            )
+            .to_lowercase();
             if !query.is_empty() && !searchable.contains(&query) {
                 continue;
             }
@@ -604,6 +638,21 @@ impl Repository {
                 } else {
                     "Confirmed"
                 },
+                &context.data.owner,
+                &context.data.backup_contact,
+                &context.data.environment,
+                [
+                    "Not recorded",
+                    "Unknown",
+                    "Not applicable",
+                    "Link available",
+                ]
+                .get(context.data.documentation_state as usize)
+                .copied()
+                .unwrap_or("Not recorded"),
+                &context.data.documentation,
+                &context.data.source,
+                &context.verified_by,
             ];
             for (index, value) in values.iter().enumerate() {
                 if index != 0 {
@@ -710,7 +759,9 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
     let host_filter = i64::from(window.get_inventory_server_filter());
     let servers = repository.server_records()?;
     let hidden_servers = repository.hidden_server_records()?;
+    let contexts = repository.asset_contexts()?;
     let mut rows = Vec::new();
+    let mut grid = Vec::new();
     for entry in &entries {
         let host_names = entry
             .hosts
@@ -731,15 +782,52 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
             .collect::<Vec<_>>()
             .join(", ");
         let data = serde_json::to_string(&entry.details)?;
+        let context = contexts
+            .get(&(
+                if entry.kind == 0 { "service" } else { "domain" }.to_owned(),
+                entry.id,
+            ))
+            .cloned()
+            .unwrap_or_default();
         if entry.kind == kind
             && entry.hidden == window.get_inventory_show_hidden()
             && (host_filter == 0 || entry.hosts.contains(&host_filter))
             && (query.is_empty()
-                || format!("{data} {host_names}")
+                || format!("{data} {host_names} {}", context.data.searchable())
                     .to_lowercase()
                     .contains(&query))
         {
             let d = &entry.details;
+            grid.push(crate::tables::row(
+                entry.id as i32,
+                if kind == 0 {
+                    vec![
+                        d.name.clone(),
+                        host_names.clone(),
+                        d.ports.clone(),
+                        d.protocol.clone(),
+                        d.version.clone(),
+                        if d.pending_confirmation {
+                            "Pending confirmation".into()
+                        } else if entry.verification_due {
+                            "Needs verification".into()
+                        } else {
+                            "Checked".into()
+                        },
+                        d.tags.clone(),
+                    ]
+                } else {
+                    vec![
+                        d.name.clone(),
+                        host_names.clone(),
+                        d.parent.clone(),
+                        d.registrar.clone(),
+                        d.expires.clone(),
+                        d.cdn.clone(),
+                        d.tags.clone(),
+                    ]
+                },
+            ));
             rows.push(InventoryRow {
                 id: entry.id as i32,
                 name: d.name.clone().into(),
@@ -774,7 +862,13 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
                         .collect::<Vec<_>>(),
                 )),
                 tags: d.tags.clone().into(),
-                notes: d.notes.clone().into(),
+                notes: format!(
+                    "{} | {} | {}",
+                    context.data.summary(),
+                    context.verification(),
+                    d.notes
+                )
+                .into(),
                 verification: if entry.details.pending_confirmation {
                     "Pending confirmation - review service settings".to_owned()
                 } else if entry.verification_due {
@@ -795,6 +889,14 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
             });
         }
     }
+    window.set_inventory_grid(crate::tables::sorted(
+        grid,
+        if kind == 0 {
+            window.get_service_grid_sort()
+        } else {
+            window.get_domain_grid_sort()
+        },
+    ));
     window.set_inventory_rows(ModelRc::new(VecModel::from(rows)));
     let selected = entries
         .iter()
@@ -903,6 +1005,32 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
     window.set_inventory_credentials_available(secrets::AVAILABLE);
     let weak = window.as_weak();
     let repo = repository.clone();
+    window.on_inventory_host_details(move |id| {
+        let Some(w) = weak.upgrade() else { return };
+        let result = (|| {
+            let repo = repo.borrow();
+            let entries = repo.inventory_entries()?;
+            let entry = entries.iter().find(|e| e.id == i64::from(id)).ok_or_else(|| invalid("Record no longer exists"))?;
+            let mut servers = repo.server_records()?;
+            servers.extend(repo.hidden_server_records()?);
+            let mut sections = Vec::new();
+            for host in &entry.hosts {
+                if let Some(server) = servers.iter().find(|s| s.id == *host) {
+                    let mut text = format!("{} ({})\nEnvironment: {} | Status: {}\nTags: {}\nNotes: {}\n\nRecent history (up to 100 events):",server.name,server.ip_address,server.environment,server.status,server.tags.join(", "),server.purpose);
+                    let history = repo.resource_history("server", *host)?;
+                    if history.is_empty() { text.push_str("\nNo recorded events."); }
+                    for event in history { text.push_str(&format!("\n{} | {} | {}",event.occurred_at,event.action,event.summary)); }
+                    sections.push(text);
+                }
+            }
+            w.set_host_details_text(if sections.is_empty() { "No hosting servers assigned.".into() } else { sections.join("\n\n--------------------\n\n").into() });
+            w.set_host_details_open(true);
+            Ok(())
+        })();
+        message(&w,result);
+    });
+    let weak = window.as_weak();
+    let repo = repository.clone();
     window.on_inventory_connect(move || {
         let Some(w) = weak.upgrade() else { return };
         let result = (|| {
@@ -954,6 +1082,14 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
             let entries = repo.borrow().inventory_entries()?;
             if let Some(entry) = entries.iter().find(|e| e.id == i64::from(id)) {
                 w.set_inventory_form(form(entry));
+                w.set_inventory_context(
+                    repo.borrow()
+                        .asset_context(
+                            if entry.kind == 0 { "service" } else { "domain" },
+                            entry.id,
+                        )?
+                        .form(),
+                );
             }
             refresh(&w, &repo.borrow())
         })();
@@ -965,6 +1101,7 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
         let Some(w) = weak.upgrade() else { return };
         clear_credentials(&w);
         w.set_inventory_hosts(ModelRc::default());
+        w.set_inventory_context(Default::default());
         w.set_inventory_form(InventoryForm {
             kind,
             ..Default::default()
@@ -1027,12 +1164,13 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
                 .filter(|h| h.selected)
                 .map(|h| i64::from(h.id))
                 .collect::<Vec<_>>();
-            let id = repo.borrow_mut().save_inventory(
+            let id = repo.borrow_mut().save_inventory_with_context(
                 i64::from(f.id),
                 f.kind,
                 details,
                 &hosts,
                 credentials,
+                Some(&w.get_inventory_context()),
             )?;
             clear_credentials(&w);
             w.invoke_inventory_select(id as i32);

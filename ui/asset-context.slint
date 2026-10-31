@@ -1,0 +1,39 @@
+import { CheckBox, ComboBox, LineEdit } from "std-widgets.slint";
+import { Button, UiColors } from "controls.slint";
+
+export struct AssetContextForm {
+    owner: string, backup-contact: string, environment: string,
+    documentation: string, documentation-state: int, source: string,
+    verification: string, reviewer: string, checked-now: bool,
+}
+
+export component AssetContextEditor inherits VerticalLayout {
+    in-out property <AssetContextForm> form;
+    in property <bool> show-environment: true;
+    callback open-link(string);
+    spacing: 8px;
+    Text { text: "Responsibility & references"; color: UiColors.text; font-weight: 700; font-size: UiColors.body-size + 1px; }
+    Text { text: "Optional. Blank means not recorded. Enter Unknown or Not applicable explicitly when appropriate."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+    Text { text: "Technical contact"; color: UiColors.text; }
+    LineEdit { accessible-label: "Technical contact"; placeholder-text: "Person, team or contact reference"; text <=> root.form.owner; }
+    Text { text: "Backup contact"; color: UiColors.text; }
+    LineEdit { accessible-label: "Backup contact"; placeholder-text: "Who can cover for the maintainer?"; text <=> root.form.backup-contact; }
+    if root.show-environment: VerticalLayout {
+        spacing: 8px;
+        Text { text: "Environment"; color: UiColors.text; }
+        LineEdit { accessible-label: "Resource environment"; placeholder-text: "Production, staging, Unknown..."; text <=> root.form.environment; }
+    }
+    Text { text: "Documentation"; color: UiColors.text; }
+    ComboBox { accessible-label: "Documentation availability"; model: ["Not recorded", "Unknown", "Not applicable", "Link available"]; current-index <=> root.form.documentation-state; }
+    if root.form.documentation-state == 3: HorizontalLayout {
+        spacing: 8px;
+        LineEdit { accessible-label: "Documentation URL"; placeholder-text: "https://..."; text <=> root.form.documentation; }
+        Button { compact: true; text: "Open"; enabled: root.form.documentation != ""; clicked => { root.open-link(root.form.documentation); } }
+    }
+    Text { text: "Information source"; color: UiColors.text; }
+    LineEdit { accessible-label: "Information source"; placeholder-text: "Import, colleague, ticket or reference"; text <=> root.form.source; }
+    Text { text: root.form.verification == "" ? "Not checked" : root.form.verification; color: UiColors.muted; wrap: word-wrap; }
+    CheckBox { text: "I checked this information"; checked <=> root.form.checked-now; }
+    if root.form.checked-now: LineEdit { accessible-label: "Checked by"; placeholder-text: "Checked by (optional)"; text <=> root.form.reviewer; }
+    Text { text: "Save applies this check. Edits require a new check. This is not live monitoring."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+}

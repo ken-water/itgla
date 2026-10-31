@@ -21,7 +21,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 20;
+const SCHEMA_VERSION: i64 = 21;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -508,6 +508,13 @@ impl Repository {
             transaction.pragma_update(None, "user_version", 20)?;
             transaction.commit()?;
         }
+        if self.schema_version()? == 20 {
+            self.automatic_backup("pre-schema-21.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/021_asset_context.sql"))?;
+            transaction.pragma_update(None, "user_version", 21)?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -517,11 +524,11 @@ impl Repository {
             [],
             |row| row.get::<_, String>(0),
         )?;
-        Ok(value.parse::<i64>().unwrap_or(2).clamp(0, 4))
+        Ok(value.parse::<i64>().unwrap_or(2).clamp(1, 3))
     }
 
     pub fn set_font_size_step(&self, step: i64) -> Result<(), StorageError> {
-        self.set_setting("font_size_step", &step.clamp(0, 4).to_string())
+        self.set_setting("font_size_step", &step.clamp(1, 3).to_string())
     }
 
     fn setting(&self, key: &str) -> Option<String> {
@@ -556,7 +563,7 @@ impl Repository {
             .unwrap_or_else(|| vec![true; 7]);
         WorkspacePreferences {
             theme_index: number("theme_index", 0).clamp(0, 4),
-            font_size_step: number("font_size_step", 2).clamp(0, 4),
+            font_size_step: number("font_size_step", 2).clamp(1, 3),
             table_density: number("table_density", 1).clamp(0, 2),
             show_cell_tooltips: number("show_cell_tooltips", 1) != 0,
             fit_columns_on_open: number("fit_columns_on_open", 0) != 0,
@@ -597,7 +604,7 @@ impl Repository {
             ),
             (
                 "font_size_step",
-                preferences.font_size_step.clamp(0, 4).to_string(),
+                preferences.font_size_step.clamp(1, 3).to_string(),
             ),
             (
                 "table_density",
@@ -2413,15 +2420,29 @@ impl Repository {
         id: Option<i64>,
         draft: &ServerDraft,
     ) -> Result<i64, StorageError> {
+        self.save_server_with_context(id, draft, None)
+    }
+
+    pub fn save_server_with_context(
+        &mut self,
+        id: Option<i64>,
+        draft: &ServerDraft,
+        context: Option<&crate::AssetContextForm>,
+    ) -> Result<i64, StorageError> {
         let draft = validate_server(draft).map_err(ValidationError::from)?;
         let tags = draft.tags.join(", ");
         let transaction = self.connection.transaction()?;
         let result = if let Some(id) = id {
-            transaction.execute(
+            let updated = transaction.execute(
                 "UPDATE server_records SET name=?1,purpose=?2,tags=?3,ip_address=?4,ports=?5,environment=?6,status=?7,updated_at=CURRENT_TIMESTAMP
                  WHERE id=?8 AND archived_at IS NULL",
                 params![draft.name, draft.purpose, tags, draft.ip_address, draft.ports, draft.environment, draft.status, id],
             )?;
+            if updated != 1 {
+                return Err(StorageError::InvalidImport(
+                    "Server is hidden or no longer exists".into(),
+                ));
+            }
             id
         } else {
             transaction.execute(
@@ -2434,6 +2455,7 @@ impl Repository {
             crate::operational::seed_server_services(&transaction, id, true)?;
             id
         };
+        crate::asset_context::save_context(&transaction, "server", result, context)?;
         transaction.commit()?;
         Ok(result)
     }
@@ -4005,19 +4027,19 @@ mod tests {
         assert_eq!(repository.font_size_step()?, 2);
         repository.set_font_size_step(1)?;
         assert_eq!(repository.font_size_step()?, 1);
-        for step in 0..=4 {
+        for step in 1..=3 {
             repository.set_font_size_step(step)?;
             assert_eq!(repository.font_size_step()?, step);
             assert_eq!(repository.workspace_preferences().font_size_step, step);
         }
         repository.set_font_size_step(99)?;
-        assert_eq!(repository.font_size_step()?, 4);
+        assert_eq!(repository.font_size_step()?, 3);
         let mut preferences = repository.workspace_preferences();
         preferences.theme_index = 4;
         preferences.font_size_step = 4;
         repository.set_workspace_preferences(&preferences)?;
         assert_eq!(repository.workspace_preferences().theme_index, 4);
-        assert_eq!(repository.workspace_preferences().font_size_step, 4);
+        assert_eq!(repository.workspace_preferences().font_size_step, 3);
         repository.connection.execute(
             "UPDATE app_settings SET value='invalid' WHERE key='font_size_step'",
             [],

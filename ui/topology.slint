@@ -1,3 +1,5 @@
+import { DataTable, GridRow } from "data-table.slint";
+import { AssetContextForm, AssetContextEditor } from "asset-context.slint";
 import { Button, UiColors } from "controls.slint";
 import { ScrollView, LineEdit, ComboBox, CheckBox } from "std-widgets.slint";
 export struct TopologyNode { id: int, kind: string, label: string, detail: string, px: float, py: float }
@@ -27,6 +29,17 @@ component ConnectionLine inherits Rectangle {
 
 }
 export component TopologyPanel inherits Rectangle {
+    in property <[GridRow]> grid-rows;
+    in property <int> grid-sort-mode;
+    callback grid-sort(int);
+    in property <int> view-hidden-count;
+    in property <[string]> recovery-choices;
+    in property <[string]> recovery-keys;
+    in property <string> focus-key;
+    callback view-action(int,string);
+    in-out property <AssetContextForm> context;
+    in-out property <string> business-query;
+    callback open-link(string);
     in property <bool> business-mode;
     in property <[BusinessItem]> businesses;
     in property <[TopologyNode]> nodes;
@@ -79,31 +92,28 @@ export component TopologyPanel inherits Rectangle {
         HorizontalLayout { height: 40px; spacing: 8px;
             Text { text: root.business-mode ? "Businesses" : "Connections"; font-size: UiColors.body-size + 10px; color: UiColors.text; font-weight: 750; }
             if root.business-mode: Button { compact: true; primary: true; text: "New business"; clicked => { root.hidden = false; root.refresh(); root.select-business(0); root.editing = true; } }
-            if !root.business-mode: ComboBox { accessible-label: "Business filter"; width: 220px; model: root.business-choices; current-index <=> root.filter-index; selected => { root.refresh(); } }
-            if !root.business-mode: Button { compact: true; text: "New service"; clicked => { root.new-resource(4); } }
-            if !root.business-mode: Button { compact: true; text: "New domain"; clicked => { root.new-resource(5); } }
+            if !root.business-mode: ComboBox { accessible-label: "Business filter"; horizontal-stretch: 1; min-width: 120px; model: root.business-choices; current-index <=> root.filter-index; selected => { root.refresh(); } }
+            if !root.business-mode && root.width > 1000px: Button { compact: true; text: "New service"; clicked => { root.new-resource(4); } }
+            if !root.business-mode && root.width > 1000px: Button { compact: true; text: "New domain"; clicked => { root.new-resource(5); } }
             Button { compact: true; quiet: true; text: "Refresh"; clicked => { root.refresh(); } }
         }
+        if root.business-mode: LineEdit { accessible-label: "Search businesses"; placeholder-text: "Search businesses, contacts and references"; text <=> root.business-query; edited => { root.refresh(); } }
         if root.business-mode: CheckBox { text: "Show hidden businesses"; checked <=> root.hidden; toggled => { root.select-business(0); root.editing = false; root.refresh(); } }
         if root.business-mode: HorizontalLayout { spacing: 16px;
-            ScrollView { horizontal-stretch: 1; VerticalLayout { spacing: 4px;
-                for business in root.businesses: Rectangle { height: 84px; background: root.business-id == business.id ? UiColors.selected : UiColors.surface; border-width: 1px; border-color: UiColors.border;
-                    HorizontalLayout { padding: 12px; spacing: 10px;
-                        VerticalLayout { min-width: 0px; horizontal-stretch: 1; Text { text: business.name; color: UiColors.text; font-size: UiColors.body-size; font-weight: 700; overflow: elide; } Text { text: business.tags + "  " + business.notes; color: UiColors.muted; overflow: elide; } }
-                        Button { compact: true; min-width: 72px; max-width: 72px; height: 36px; text: "Edit"; clicked => { root.select-business(business.id); root.editing = true; } }
-                    }
-                }
-                if root.businesses.length == 0: Text { text: "No businesses yet. Create one, then assign domains and services to it."; color: UiColors.muted; wrap: word-wrap; }
-            } }
+            DataTable { horizontal-stretch: 1; headers: ["Business", "Tags", "Notes / responsibility"]; rows: root.grid-rows; selected-id: root.business-id; sort-mode: root.grid-sort-mode; sort(mode) => { root.grid-sort(mode); } open(id) => { root.select-business(id); root.editing = true; } }
             if root.editing: Rectangle { width: 340px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
-                VerticalLayout { padding: 16px; spacing: 10px;
+                VerticalLayout { padding: 12px; spacing: 10px;
+                  ScrollView { vertical-stretch: 1; VerticalLayout { spacing: 10px;
                     HorizontalLayout { Text { text: "Business details"; color: UiColors.text; font-weight: 700; } Button { compact: true; quiet: true; text: "Close"; clicked => { root.editing = false; } } }
                     Text { text: "Name"; color: UiColors.text; } LineEdit { accessible-label: "Business name"; text <=> root.business-name; }
                     Text { text: "Tags"; color: UiColors.text; } LineEdit { accessible-label: "Business tags"; text <=> root.business-tags; }
                     Text { text: "Notes"; color: UiColors.text; } LineEdit { accessible-label: "Business notes"; text <=> root.business-notes; }
+                    AssetContextEditor { form <=> root.context; open-link(url) => { root.open-link(url); } }
+                  } }
+                    HorizontalLayout { spacing: 8px;
                     Button { compact: true; primary: true; text: "Save business"; enabled: !root.hidden; clicked => { root.save-business(); } }
                     if root.business-id != 0: Button { compact: true; text: root.hidden ? "Restore business" : "Hide business"; clicked => { root.hide-business(); root.editing = false; } }
-                    Rectangle { vertical-stretch: 1; background: transparent; }
+                    }
                 }
             }
         }
@@ -113,18 +123,24 @@ export component TopologyPanel inherits Rectangle {
                 selected => { root.select-node(root.nodes[locate-box.current-index]); root.scroll-y = max(min(0px, root.view-height - root.map-height), min(0px, 28px - root.nodes[locate-box.current-index].py * 1px)); }
             }
             CheckBox { text: "All links"; checked <=> root.all-links; }
-            Button { compact: true; text: "Top"; clicked => { root.scroll-y = 0px; } }
-            Button { compact: true; text: "Page up"; clicked => { root.page-map(1); } }
-            Button { compact: true; text: "Page down"; clicked => { root.page-map(-1); } }
-            Button { compact: true; text: "Add link"; clicked => { root.link-id = 0; root.link-notes = ""; root.link-editing = true; } }
+            Button { width: 56px; horizontal-stretch: 0; compact: true; text: "Top"; clicked => { root.scroll-y = 0px; } }
+            Button { visible: root.width > 1040px; compact: true; text: "Page up"; clicked => { root.page-map(1); } }
+            Button { visible: root.width > 1040px; compact: true; text: "Page down"; clicked => { root.page-map(-1); } }
+            Button { width: 96px; horizontal-stretch: 0; compact: true; text: "Add link"; clicked => { root.link-id = 0; root.link-notes = ""; root.link-editing = true; } }
+        }
+        if !root.business-mode: HorizontalLayout { height: 36px; spacing: 8px;
+            ComboBox { accessible-label: "Selected resource view actions"; horizontal-stretch: 1; enabled: root.selected-key != ""; model: ["Selected resource…", "Only this and related", "Collapse branch", "Expand branch", "Temporarily hide"]; selected => { if self.current-index > 0 { root.view-action(self.current-index, root.selected-key); self.current-index = 0; } } }
+            if root.recovery-choices.length > 0: ComboBox { accessible-label: "Restore hidden resource or expand branch"; horizontal-stretch: 1; model: root.recovery-choices; current-index: -1; selected => { root.view-action(5, root.recovery-keys[self.current-index]); self.current-index = -1; } }
+            Button { compact: true; text: "Show all"; enabled: root.view-hidden-count > 0 || root.focus-key != "" || root.recovery-choices.length > 0; clicked => { root.view-action(0, ""); } }
+            Text { text: root.view-hidden-count + " hidden in this view"; color: UiColors.muted; vertical-alignment: center; }
         }
         if !root.business-mode: Rectangle { height: 28px; background: UiColors.raised;
-            for lane[index] in ["Business", "Domain / Subdomain", "Server", "Service"]: Text { x: (20 + index * 300) * (max(960px, root.view-width) / 1220px) * 1px + root.scroll-x; y: 4px; width: 220px; text: lane; color: UiColors.muted; font-weight: 700; }
+            for lane[index] in ["Business", "Domain / Subdomain", "Server", "Service"]: Text { x: (20 + index * 300) * (max(UiColors.body-size >= 15px ? 1080px : 820px, root.view-width) / 1220px) * 1px + root.scroll-x; y: 4px; width: 220px; text: lane; color: UiColors.muted; font-weight: 700; }
         }
         if !root.business-mode: graph := ScrollView { vertical-stretch: 1; mouse-drag-pan-enabled: true;
             content-y <=> root.scroll-y; content-x <=> root.scroll-x;
             changed visible-height => { root.view-height = self.visible-height; } changed visible-width => { root.view-width = self.visible-width; }
-            content-width: max(960px, self.visible-width); content-height: max(self.visible-height, root.canvas-height * 1px);
+            content-width: max(UiColors.body-size >= 15px ? 1080px : 820px, self.visible-width); content-height: max(self.visible-height, root.canvas-height * 1px);
             canvas := Rectangle { width: graph.content-width; height: root.map-height; background: UiColors.surface;
                 private property <float> zoom: self.width / 1220px;
                 // Keep graph state stable during pointer movement. Selection traces links explicitly.

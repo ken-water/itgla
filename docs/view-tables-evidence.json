@@ -1,0 +1,79 @@
+{
+  "version": "2.0",
+  "task_id": "scoped-graph-tables",
+  "target_revision": "f3783bad9bbcadf84cada26957f499f7844556fb",
+  "gates": {
+    "format": {
+      "status": "pass",
+      "command": "cargo +1.92.0 fmt -- --check",
+      "evidence": [
+        "docs/view-tables-preview.md"
+      ]
+    },
+    "check": {
+      "status": "pass",
+      "command": "cargo +1.92.0 build --release --locked",
+      "evidence": [
+        "output/view-tables-build.log"
+      ]
+    },
+    "clippy": {
+      "status": "pass",
+      "command": "cargo +1.92.0 clippy --locked --all-targets -- -D warnings",
+      "evidence": [
+        "output/view-tables-clippy.log"
+      ]
+    },
+    "tests": {
+      "status": "pass",
+      "command": "cargo +1.92.0 test --locked --no-fail-fast",
+      "evidence": [
+        "output/view-tables-tests.log"
+      ]
+    }
+  },
+  "diff": {
+    "paths": [
+      "docs/engineering.md",
+      "scripts/check-english-ui.mjs",
+      "src/main.rs",
+      "src/operational.rs",
+      "src/relationships.rs",
+      "src/storage.rs",
+      "src/topology.rs",
+      "ui/app.slint",
+      "ui/appearance.slint",
+      "ui/controls.slint",
+      "ui/inventory.slint",
+      "ui/topology.slint",
+      "website/403.html",
+      "website/404.html",
+      "website/account.html",
+      "website/cookies.html",
+      "website/custom-server-fields.html",
+      "website/downloads.html",
+      "website/feedback.html",
+      "website/homepage.css",
+      "website/import-server-inventory.html",
+      "website/index.html",
+      "website/legal.html",
+      "website/llms.txt",
+      "website/local-first-server-inventory.html",
+      "website/privacy.html",
+      "website/refund.html",
+      "website/release-notes.html",
+      "website/server-inventory-example.html",
+      "website/server-inventory.html",
+      "website/server-spreadsheet-alternative.html",
+      "website/signin.html",
+      "website/styles.css",
+      "website/tests/site.spec.js"
+    ],
+    "files_changed": 34,
+    "lines_added": 1222,
+    "lines_deleted": 263,
+    "new_files": 0,
+    "dependencies_added": [],
+    "public_api_changed": false
+  }
+}

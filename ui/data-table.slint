@@ -1,0 +1,77 @@
+import { ScrollView } from "std-widgets.slint";
+import { Button, UiColors } from "controls.slint";
+
+export struct GridRow { id: int, cells: [string] }
+
+// One grid geometry for header and body; headers never scroll vertically.
+export component DataTable inherits Rectangle {
+    in property <[string]> headers;
+    in property <[GridRow]> rows;
+    in property <int> selected-id;
+    in property <int> sort-mode: -1;
+    in property <int> link-column: -1;
+    in property <string> action-label: "Open";
+    in property <string> empty-label: "No matching records.";
+    in property <length> row-height: max(40px, UiColors.body-size + 24px);
+    callback open(int);
+    callback cell-link(int, int);
+    callback sort(int);
+    private property <[length]> widths: [180px, 150px, 130px, 140px, 130px, 120px, 140px, 140px, 140px];
+    private property <length> scroll-x;
+    private property <bool> fitted: true;
+    private property <length> fitted-width: max(82px, (root.width - 90px) / max(1, root.headers.length));
+    private property <length> data-width: root.column-width(0) + root.column-width(1) + root.column-width(2) + root.column-width(3) + root.column-width(4) + root.column-width(5) + root.column-width(6) + root.column-width(7) + root.column-width(8);
+    pure function column-width(index: int) -> length { return index >= root.headers.length ? 0px : root.fitted ? root.fitted-width : root.widths[index]; }
+    public function fit() { root.fitted = true; root.scroll-x = 0px; }
+    background: UiColors.surface;
+    border-width: 1px; border-color: UiColors.border;
+    VerticalLayout { spacing: 0px; padding: 1px;
+        HorizontalLayout { height: 34px; padding-left: 8px; padding-right: 4px;
+            Text { text: root.rows.length + " records"; color: UiColors.muted; vertical-alignment: center; font-size: UiColors.body-size - 1px; }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+            Button { compact: true; quiet: true; text: "Fit columns"; clicked => { root.fit(); } }
+        }
+        Rectangle { height: max(36px, UiColors.body-size + 20px); clip: true; background: UiColors.raised;
+            HorizontalLayout { x: root.scroll-x; width: root.data-width + 88px; height: parent.height; spacing: 0px;
+                for title[index] in root.headers: Rectangle {
+                    width: root.column-width(index); background: transparent;
+                    Text { x: 8px; width: parent.width - 23px; height: parent.height; text: title + (root.sort-mode / 2 == index && root.sort-mode >= 0 ? (mod(root.sort-mode, 2) == 0 ? " ↑" : " ↓") : ""); color: UiColors.text; font-size: UiColors.body-size - 1px; font-weight: 700; overflow: elide; vertical-alignment: center; }
+                    Button { width: parent.width - 14px; height: parent.height; quiet: true; text: ""; accessible-label: "Sort by " + title; clicked => { root.sort(root.sort-mode == index * 2 ? index * 2 + 1 : index * 2); } }
+                    Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.grid-line; }
+                    TouchArea { private property <length> initial-width;
+                        changed pressed => { if self.pressed { self.initial-width = root.column-width(index); } }
+                        x: parent.width - 14px; width: 14px; height: parent.height; mouse-cursor: ew-resize;
+                        moved => { if self.pressed { if root.fitted { root.widths = [root.column-width(0), root.column-width(1), root.column-width(2), root.column-width(3), root.column-width(4), root.column-width(5), root.column-width(6), root.column-width(7), root.column-width(8)]; root.fitted = false; } root.widths[index] = max(72px, self.initial-width + self.mouse-x - self.pressed-x); } }
+                    }
+                }
+                Text { width: 88px; text: "Actions"; color: UiColors.muted; vertical-alignment: center; horizontal-alignment: center; }
+            }
+        }
+        body := ScrollView { vertical-stretch: 1; content-x <=> root.scroll-x;
+            VerticalLayout { width: max(body.visible-width, root.data-width + 88px); spacing: 0px;
+                for record[row-index] in root.rows: Rectangle {
+                    height: root.row-height; background: root.selected-id == record.id ? UiColors.selected : mod(row-index, 2) == 0 ? UiColors.surface : UiColors.canvas;
+                    HorizontalLayout { spacing: 0px;
+                        for value[index] in record.cells: Rectangle { width: root.column-width(index); clip: true; background: transparent;
+                            if index != root.link-column: Text { x: 8px; width: parent.width - 16px; height: parent.height; text: value; color: UiColors.text; font-size: UiColors.body-size; overflow: elide; vertical-alignment: center; }
+                            if index == root.link-column: Rectangle {
+                                background: host-link.has-hover ? UiColors.selected : transparent;
+                                accessible-role: button;
+                                accessible-label: "View hosting servers for " + record.cells[0];
+                                accessible-action-default => { root.cell-link(record.id, index); }
+                                Text { x: 8px; width: parent.width - 16px; height: parent.height; text: value; color: UiColors.text; font-size: UiColors.body-size; font-weight: 600; overflow: elide; vertical-alignment: center; }
+                                host-link := TouchArea { mouse-cursor: pointer; clicked => { root.cell-link(record.id, index); } }
+                            }
+                            Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.grid-line; }
+                        }
+                        Rectangle { width: 88px; background: transparent;
+                            Button { x: 6px; y: (parent.height - 30px) / 2; width: 76px; height: 30px; compact: true; text: root.action-label; accessible-label: root.action-label + " " + record.cells[0]; clicked => { root.open(record.id); } }
+                        }
+                    }
+                    Rectangle { y: parent.height - 1px; height: 1px; width: parent.width; background: UiColors.grid-line; }
+                }
+                if root.rows.length == 0: Text { height: 76px; text: root.empty-label; color: UiColors.muted; wrap: word-wrap; vertical-alignment: center; horizontal-alignment: center; }
+            }
+        }
+    }
+}

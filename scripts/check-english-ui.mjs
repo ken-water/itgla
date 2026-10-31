@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
-const root = path.resolve(import.meta.dirname, "..");
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const targets = ["ui/app.slint", "src", "website", "server/analytics", "README.md", "CHANGELOG.md", "docs"];
 const extensions = new Set([".html", ".js", ".mjs", ".md", ".rs", ".slint"]);
 const forbidden = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;

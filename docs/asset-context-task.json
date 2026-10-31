@@ -1,0 +1,11 @@
+{
+  "version": "2.0", "id": "asset-context-phase-one",
+  "objective": "Add optional responsibility, references and manual verification to the existing business/server/service/domain inventory",
+  "level": "L4", "profile": "migration", "target": "local",
+  "scope": {"include": ["src/**", "ui/**", "migrations/021_asset_context.sql", "docs/**", ".agents/**", "website/**"], "exclude": [".github/**", "server/**"]},
+  "planning": {"plan_ref": "docs/adr/0005-asset-responsibility-context.md", "approved": true},
+  "risk_flags": ["persistent_data", "contract"],
+  "requested_actions": ["local_edit", "local_test", "local_build", "local_evidence", "prepare_migration"],
+  "authority": {"allowed_actions": ["local_edit", "local_test", "local_build", "local_evidence", "prepare_migration"]},
+  "metadata": {"approval_basis": "User requested implementation of the previously proposed first phase. Only isolated local database migration is exercised; no production execution."}
+}

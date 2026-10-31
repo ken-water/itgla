@@ -1,4 +1,4 @@
-import { Slider } from "std-widgets.slint";
+
 import { Button, UiColors } from "controls.slint";
 
 component AppearancePreview inherits Rectangle {
@@ -40,19 +40,36 @@ export component AppearanceControls inherits Rectangle {
                 clicked => { root.theme-index = index; root.edited(); }
             }
         }
-        Text { text: "Text size: " + ["Small", "Medium", "Large", "Extra large", "Largest"][root.font-size-step] + " · " + (root.font-size-step + 1) + " of 5"; accessible-label: "Text size"; accessible-role: text; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; }
-        Slider {
-            height: 32px; minimum: 0; maximum: 4; step: 1;
-            value: root.font-size-step;
-            accessible-label: "Text size control";
-            changed(value) => { root.font-size-step = round(value); root.edited(); }
-        }
-        Rectangle {
-            height: 32px; background: transparent;
-            for size[index] in ["1", "2", "3", "4", "5"]: Text {
-                x: 2px + (parent.width - 24px) * index / 4; width: 20px; height: 32px;
-                text: size; horizontal-alignment: center;
-                color: root.font-size-step == index ? UiColors.text : UiColors.muted; font-size: [11px, 12px, 13px, 15px, 17px][index]; vertical-alignment: center;
+        Text { text: "Text size: " + ["Small", "Medium", "Large"][max(0, min(2, root.font-size-step - 1))] + " / " + max(1, min(3, root.font-size-step)) + " of 3"; accessible-label: "Text size"; accessible-role: text; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; }
+        size-control := Rectangle {
+            height: 76px; background: transparent;
+            accessible-role: slider; accessible-label: "Text size control";
+            accessible-value: root.font-size-step;
+            accessible-value-minimum: 1; accessible-value-maximum: 3; accessible-value-step: 1;
+            accessible-action-set-value(v) => { if v.is-float() { root.font-size-step = round(max(1, min(3, v.to-float()))); root.edited(); } }
+            accessible-action-increment => { root.font-size-step = min(3, root.font-size-step + 1); root.edited(); }
+            accessible-action-decrement => { root.font-size-step = max(1, root.font-size-step - 1); root.edited(); }
+            forward-focus: size-focus;
+            Rectangle { x: 22px; y: 20px; width: parent.width - 44px; height: 4px; background: UiColors.border; border-radius: 2px; }
+            for size[index] in ["1", "2", "3"]: Rectangle {
+                x: (parent.width - 44px) * index / 2; width: 44px; height: 76px;
+                Rectangle { x: 18px; y: 18px; width: 8px; height: 8px; background: UiColors.primary; border-radius: 4px; }
+                Text { y: 40px; width: parent.width; height: 32px; text: size; horizontal-alignment: center; vertical-alignment: center; color: root.font-size-step == index + 1 ? UiColors.text : UiColors.muted; font-size: [12px, 13px, 15px][index]; font-weight: root.font-size-step == index + 1 ? 750 : 500; }
+            }
+            Rectangle { x: 10px + (parent.width - 44px) * (max(1, min(3, root.font-size-step)) - 1) / 2; y: 10px; width: 24px; height: 24px; background: UiColors.primary; border-width: size-focus.has-focus ? 3px : 2px; border-color: size-focus.has-focus ? UiColors.focus : UiColors.surface; border-radius: 12px; }
+            size-touch := TouchArea {
+                mouse-cursor: pointer;
+                pointer-event(event) => { if event.button == PointerEventButton.left && event.kind == PointerEventKind.down { size-focus.focus(); root.font-size-step = 1 + round(max(0, min(2, (self.mouse-x - 22px) / (self.width - 44px) * 2))); root.edited(); } }
+                moved => { if self.pressed { root.font-size-step = 1 + round(max(0, min(2, (self.mouse-x - 22px) / (self.width - 44px) * 2))); root.edited(); } }
+            }
+            size-focus := FocusScope { width: 0px;
+                key-pressed(event) => {
+                    if event.text == Key.RightArrow || event.text == Key.UpArrow { root.font-size-step = min(3, root.font-size-step + 1); root.edited(); return accept; }
+                    if event.text == Key.LeftArrow || event.text == Key.DownArrow { root.font-size-step = max(1, root.font-size-step - 1); root.edited(); return accept; }
+                    if event.text == Key.Home { root.font-size-step = 1; root.edited(); return accept; }
+                    if event.text == Key.End { root.font-size-step = 3; root.edited(); return accept; }
+                    return reject;
+                }
             }
         }
         HorizontalLayout {
