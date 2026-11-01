@@ -72,6 +72,30 @@ test("slow chart and feedback resources do not block document load or sign-in", 
   await expect(page.locator("#downloads-events tbody tr")).toHaveCount(1);
 });
 
+test("a stalled section preserves other data and hidden tabs are fetched on demand", async ({ page }) => {
+  await page.clock.install();
+  await page.route("**/admin/api/events?*", () => {});
+  const paths = [];
+  page.on("request", (request) => paths.push(new URL(request.url()).pathname));
+  await page.goto("http://127.0.0.1:4174/admin");
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill("test-password");
+  const events = page.waitForRequest("**/admin/api/events?*");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await events;
+  await expect(page.locator("#overview-metrics")).toContainText("1,284");
+  await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
+  expect(paths).not.toContain("/admin/api/downloads");
+  expect(paths).not.toContain("/admin/api/countries");
+  expect(paths).not.toContain("/admin/api/download-countries");
+  await page.clock.fastForward(15001);
+  await expect(page.locator("#dashboard-error")).toContainText("Recent events:");
+  await expect(page.locator("#overview-metrics")).toContainText("1,284");
+  await page.getByRole("tab", { name: "Downloads", exact: true }).click();
+  await expect(page.locator("#downloads-events tbody tr")).toHaveCount(1);
+  await expect(page.locator("#dashboard-error")).toBeHidden();
+});
+
 test("stalled login request times out and restores the sign-in button", async ({ page }) => {
   await page.clock.install();
   await page.route("**/admin/api/login", () => {});

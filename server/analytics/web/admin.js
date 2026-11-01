@@ -347,44 +347,80 @@ function renderErrors(target, rows) {
   ]);
 }
 
+let dashboardGeneration = 0;
 async function loadDashboard() {
-  const chartReady = loadCharts();
+  const generation = ++dashboardGeneration;
+  const selected = document.querySelector('[data-tab].is-active')?.dataset.tab || "overview";
   const error = element("dashboard-error");
   error.hidden = true;
   const days = element("days").value;
-  try {
-    const [overview, daily, pages, events, errors, downloads, countries, downloadCountries] = await Promise.all([
-      api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`), api(`/downloads?days=${days}`), api(`/countries?days=${days}`), api(`/download-countries?days=${days}`),
-    ]);
-    renderOverviewMetrics(overview);
-    renderPages("overview-pages", pages);
-    renderEvents("overview-events", events);
-    renderDownloadEvents("downloads-events", downloads.events);
-    renderCountrySummary("country-summary", countries.summary);
-    renderDownloadCountrySummary("download-country-summary", downloadCountries.summary);
-    renderErrors("errors-events", errors);
-    await chartReady;
-    renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
-    renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
-    renderCountryTrend("country-trend", countries.daily);
-    renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads", label: "Downloads" }], "Daily package downloads");
-    renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
-    renderDownloadCountryTrend("download-country-trend", downloadCountries.daily, downloadCountries.summary);
-    element("downloads-funnel").innerHTML = [
-      ["Download page visitors", downloads.summary.page_visitors],
-      ["Successful download visitors", downloads.summary.successful_visitors],
-      ["Failed requests", downloads.summary.failures],
-      ["No download after visiting", downloads.summary.no_download_visitors],
-    ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
-    if (document.querySelector('[data-tab="feedback"].is-active')) window.loadFeedback?.();
-  } catch (requestError) {
-    if (requestError.status === 401) return showLogin();
-    error.textContent = requestError.message;
+  const failures = [];
+  function report(label, requestError) {
+    if (generation !== dashboardGeneration) return;
+    if (requestError.status === 401) { dashboardGeneration++; showLogin(); return; }
+    failures.push(`${label}: ${requestError.message}`);
+    error.textContent = `${failures.join(" ")} Other available data is shown. Use Refresh to retry.`;
     error.hidden = false;
+  }
+  async function section(path, label, targets, render, chart) {
+    targets.forEach((id) => { element(id).innerHTML = empty(`Loading ${label.toLowerCase()}…`); });
+    try {
+      const data = await api(`${path}?days=${days}`);
+      if (generation !== dashboardGeneration) return;
+      render(data);
+      if (chart) {
+        await loadCharts();
+        if (generation === dashboardGeneration) chart(data);
+      }
+    } catch (requestError) {
+      if (generation !== dashboardGeneration) return;
+      targets.forEach((id) => { element(id).innerHTML = empty(`${label} could not be loaded. Use Refresh to retry.`); });
+      report(label, requestError);
+    }
+  }
+  const tasks = [];
+  if (selected !== "feedback") {
+    tasks.push(section("/overview", "Summary", ["overview-metrics", "traffic-metrics", "downloads-metrics", "errors-metrics"], renderOverviewMetrics));
+  }
+  const trends = {
+    overview: ["overview-trend", [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }]],
+    traffic: ["traffic-trend", [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }]],
+    downloads: ["downloads-trend", [{ field: "downloads", className: "downloads", label: "Downloads" }]],
+    errors: ["errors-trend", [{ field: "errors", className: "errors", label: "Errors" }]],
+  };
+  if (trends[selected]) {
+    const [target, series] = trends[selected];
+    tasks.push(section("/daily", "Daily trend", [target], () => {}, (rows) => renderTrend(target, rows, series, "Daily activity")));
+  }
+  if (selected === "overview") {
+    tasks.push(section("/pages", "Top pages", ["overview-pages"], (rows) => renderPages("overview-pages", rows)));
+    tasks.push(section("/events", "Recent events", ["overview-events"], (rows) => renderEvents("overview-events", rows)));
+  } else if (selected === "traffic") {
+    tasks.push(section("/countries", "Countries", ["country-summary", "country-trend"], (data) => renderCountrySummary("country-summary", data.summary), (data) => renderCountryTrend("country-trend", data.daily)));
+  } else if (selected === "downloads") {
+    tasks.push(section("/downloads", "Download activity", ["downloads-events", "downloads-funnel"], (data) => {
+      renderDownloadEvents("downloads-events", data.events);
+      element("downloads-funnel").innerHTML = [
+        ["Download page visitors", data.summary.page_visitors],
+        ["Successful download visitors", data.summary.successful_visitors],
+        ["Failed requests", data.summary.failures],
+        ["No download after visiting", data.summary.no_download_visitors],
+      ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
+    }));
+    tasks.push(section("/download-countries", "Download countries", ["download-country-summary", "download-country-trend"], (data) => renderDownloadCountrySummary("download-country-summary", data.summary), (data) => renderDownloadCountryTrend("download-country-trend", data.daily, data.summary)));
+  } else if (selected === "errors") {
+    tasks.push(section("/errors", "Failed requests", ["errors-events"], (rows) => renderErrors("errors-events", rows)));
+  } else if (selected === "feedback") {
+    tasks.push(import("/admin/feedback.js").then(() => window.loadFeedback()).catch((requestError) => report("Feedback", requestError)));
+  }
+  await Promise.allSettled(tasks);
+  if (generation === dashboardGeneration && failures.length) {
+    element("freshness").textContent = "Some sections could not be updated. Available data is shown below.";
   }
 }
 
 function showLogin() {
+  dashboardGeneration++;
   element("dashboard").hidden = true;
   element("login").hidden = false;
   element("username").focus();
@@ -433,12 +469,7 @@ document.querySelectorAll("[data-tab]").forEach((tab) => {
       panel.classList.toggle("is-active", active);
       panel.hidden = !active;
     });
-    if (selected === "feedback") {
-      window.loadFeedback?.().catch((error) => {
-        element("dashboard-error").textContent = error.message;
-        element("dashboard-error").hidden = false;
-      });
-    }
+    void loadDashboard();
   });
 });
 element("logout").addEventListener("click", async () => {
