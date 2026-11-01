@@ -11,6 +11,29 @@ pub fn row(id: i32, cells: Vec<String>) -> GridRow {
     }
 }
 
+/// Width preferences use only displayed metadata, with bounded long values.
+/// Narrow numeric ports should not take the same space as host descriptions.
+pub fn inventory_widths(rows: &[GridRow], kind: i32) -> ModelRc<f32> {
+    let minimum = if kind == 0 {
+        [18, 22, 7, 13, 8, 18, 12]
+    } else {
+        [22, 22, 18, 16, 12, 12, 12]
+    };
+    let values = minimum
+        .into_iter()
+        .enumerate()
+        .map(|(index, floor)| {
+            rows.iter()
+                .filter_map(|row| row.cells.row_data(index))
+                .map(|value| value.chars().count())
+                .max()
+                .unwrap_or(0)
+                .clamp(floor, if index < 2 { 40 } else { 24 }) as f32
+        })
+        .collect::<Vec<_>>();
+    ModelRc::new(VecModel::from(values))
+}
+
 pub fn sorted(mut rows: Vec<GridRow>, mode: i32) -> ModelRc<GridRow> {
     if mode >= 0 {
         let column = (mode / 2) as usize;
@@ -64,6 +87,23 @@ pub fn setup(window: &AppWindow) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inventory_widths_favor_long_names_and_bound_extreme_values() {
+        let rows = vec![row(
+            1,
+            vec![
+                "Orders PostgreSQL primary".into(),
+                "a".repeat(500),
+                "5432".into(),
+            ],
+        )];
+        let widths = inventory_widths(&rows, 0);
+        assert!(widths.row_data(0).unwrap() > widths.row_data(2).unwrap());
+        assert_eq!(widths.row_data(1), Some(40.0));
+        assert_eq!(widths.row_count(), 7);
+        assert_eq!(inventory_widths(&[], 1).row_data(4), Some(12.0));
+    }
+
     #[test]
     fn numeric_ports_and_stable_case_insensitive_sorting() {
         let rows = vec![

@@ -903,6 +903,17 @@ fn mapping_options(columns: &[ServerColumn]) -> Vec<SharedString> {
 }
 
 fn default_mapping(header: &str, columns: &[ServerColumn]) -> usize {
+    if matches!(
+        header.trim(),
+        "\u{540d}\u{79f0}"
+            | "\u{670d}\u{52a1}\u{5668}\u{540d}\u{79f0}"
+            | "\u{670d}\u{52a1}\u{5668}\u{540d}"
+            | "\u{4e3b}\u{673a}\u{540d}"
+            | "\u{5b9e}\u{4f8b}\u{540d}\u{79f0}"
+    ) {
+        return 1;
+    }
+
     let normalized = header
         .chars()
         .filter(|character| character.is_ascii_alphanumeric())
@@ -2847,6 +2858,96 @@ mod tests {
     };
 
     #[test]
+    fn connection_headers_follow_real_canvas_on_resize_font_changes_and_horizontal_scroll() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_active_tab(7);
+        window.set_onboarding_open(false);
+        window.set_topology_height(400.0);
+        window.set_topology_nodes(ModelRc::new(VecModel::from(
+            ["business", "domain", "server", "service"]
+                .into_iter()
+                .enumerate()
+                .map(|(i, kind)| TopologyNode {
+                    id: (i + 1) as i32,
+                    kind: kind.into(),
+                    label: format!("lane-{i}").into(),
+                    detail: "fixture".into(),
+                    px: 20.0 + i as f32 * 300.0,
+                    py: 48.0,
+                })
+                .collect::<Vec<_>>(),
+        )));
+        window.window().set_size(PhysicalSize::new(2400, 900));
+        window.show().expect("show window");
+        let pairs = ["Business", "Domain / Subdomain", "Server", "Service"]
+            .into_iter()
+            .enumerate()
+            .map(|(i, title)| {
+                let heading = ElementHandle::find_by_accessible_label(
+                    &window,
+                    &format!("Connection column {title}"),
+                )
+                .next()
+                .expect("lane heading");
+                let kind = ["business", "domain", "server", "service"][i];
+                let node = ElementHandle::find_by_accessible_label(
+                    &window,
+                    &format!("Select {kind}: lane-{i}"),
+                )
+                .next()
+                .expect("lane node");
+                (heading, node)
+            })
+            .collect::<Vec<_>>();
+        for font in 1..=3 {
+            window.set_font_size_step(font);
+            for width in [900, 1240, 2400] {
+                window.window().set_size(PhysicalSize::new(width, 900));
+                slint::platform::update_timers_and_animations();
+                for (heading, node) in &pairs {
+                    assert!(
+                        (heading.absolute_position().x - node.absolute_position().x).abs() < 2.0,
+                        "font {font}, width {width}: heading {:?}, node {:?}",
+                        heading.absolute_position(),
+                        node.absolute_position()
+                    );
+                }
+                let node = &pairs[0].1;
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::PointerScrolled {
+                        position: LogicalPosition::new(
+                            node.absolute_position().x + 40.0,
+                            node.absolute_position().y + 20.0,
+                        ),
+                        delta_x: -180.0,
+                        delta_y: 0.0,
+                    });
+                slint::platform::update_timers_and_animations();
+                for (heading, node) in &pairs {
+                    assert!(
+                        (heading.absolute_position().x - node.absolute_position().x).abs() < 2.0
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn chinese_server_name_headers_are_not_imported_as_anonymous_custom_columns() {
+        for title in [
+            "\u{540d}\u{79f0}",
+            "\u{670d}\u{52a1}\u{5668}\u{540d}\u{79f0}",
+            "\u{4e3b}\u{673a}\u{540d}",
+            "\u{5b9e}\u{4f8b}\u{540d}\u{79f0}",
+        ] {
+            assert_eq!(default_mapping(title, &[]), 1);
+        }
+        assert_ne!(default_mapping("\u{5907}\u{6ce8}", &[]), 1);
+    }
+
+    #[test]
     fn guide_blocks_background_navigation_and_escape_restores_it() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
@@ -3068,7 +3169,7 @@ mod tests {
         window.show().expect("show test window");
 
         window.invoke_focus_navigation();
-        for expected_tab in 0..=1 {
+        for expected_tab in [0, 4] {
             window.window().dispatch_event(WindowEvent::KeyPressed {
                 text: Key::Return.into(),
             });
@@ -3076,7 +3177,7 @@ mod tests {
                 text: Key::Return.into(),
             });
             assert_eq!(window.get_active_tab(), expected_tab);
-            if expected_tab < 1 {
+            if expected_tab == 0 {
                 window.window().dispatch_event(WindowEvent::KeyPressed {
                     text: Key::Tab.into(),
                 });
@@ -3130,11 +3231,11 @@ mod tests {
             labels,
             [
                 "Servers",
-                "Sites",
                 "Services",
                 "Domains",
                 "Businesses",
                 "Connections",
+                "Sites",
                 "Settings"
             ]
         );
@@ -3507,6 +3608,256 @@ mod tests {
     }
 
     #[test]
+    fn server_and_site_headers_follow_horizontal_scroll_and_stay_fixed_vertically() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.window().set_size(PhysicalSize::new(1000, 700));
+        window.set_servers(ModelRc::new(VecModel::from(
+            (1..=12)
+                .map(|id| ServerRow {
+                    id,
+                    name: format!("api-{id}").into(),
+                    ip_address: "203.0.113.7".into(),
+                    environment: "production".into(),
+                    status: "active".into(),
+                    purpose: "Public API".into(),
+                    tags: "customer-facing".into(),
+                    ..ServerRow::default()
+                })
+                .collect::<Vec<_>>(),
+        )));
+        window.set_sites(ModelRc::new(VecModel::from(
+            (1..=12)
+                .map(|id| SiteRow {
+                    id,
+                    name: format!("Portal {id}").into(),
+                    url: "https://app.example.test".into(),
+                    environment: "production".into(),
+                    status: "active".into(),
+                    purpose: "Customer portal".into(),
+                    tags: "customer-facing".into(),
+                })
+                .collect::<Vec<_>>(),
+        )));
+        let widths = vec![320.0; 7];
+        window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
+        update_table_geometry(&window, &widths);
+        window.set_site_column_widths(ModelRc::new(VecModel::from(vec![320.0; 6])));
+        window.set_site_table_width(2036.0);
+        window.show().expect("show window");
+        for size in 1..=3 {
+            window.set_font_size_step(size);
+            for tab in [0, 1] {
+                window.set_active_tab(tab);
+                window.set_server_table_scroll_x(0.0);
+                window.set_site_table_scroll_x(0.0);
+                let field = |label: &str| {
+                    ElementHandle::find_by_accessible_label(&window, label)
+                        .next()
+                        .unwrap_or_else(|| {
+                            panic!(
+                                "missing {label}; headers: {:?}",
+                                ElementHandle::find_by_element_type_name(&window, "HeaderCell")
+                                    .map(|e| e.accessible_label())
+                                    .collect::<Vec<_>>()
+                            )
+                        })
+                };
+                // Capture handles while every column intersects the viewport.
+                window.window().set_size(PhysicalSize::new(2600, 700));
+                let pairs = if tab == 0 {
+                    vec![
+                        ("NAME, sorted ascending", "Name: api-1"),
+                        ("IP ADDRESS, not sorted", "IP address: 203.0.113.7"),
+                    ]
+                } else {
+                    vec![
+                        ("NAME, sorted ascending", "Name: Portal 1"),
+                        ("URL, not sorted", "URL: https://app.example.test"),
+                    ]
+                };
+                let columns = pairs
+                    .into_iter()
+                    .chain([
+                        ("ENVIRONMENT, not sorted", "Environment: production"),
+                        ("STATUS, not sorted", "Status: active"),
+                        (
+                            "PURPOSE, not sorted",
+                            if tab == 0 {
+                                "Purpose: Public API"
+                            } else {
+                                "Purpose: Customer portal"
+                            },
+                        ),
+                        ("TAGS, not sorted", "Tags: customer-facing"),
+                    ])
+                    .map(|(title, value)| (title, field(title), field(value)))
+                    .collect::<Vec<_>>();
+                let header = field("NAME, sorted ascending");
+                window.window().set_size(PhysicalSize::new(1000, 700));
+                let initial_header_y = header.absolute_position().y;
+                let initial_header_x = header.absolute_position().x;
+                let position =
+                    LogicalPosition::new(initial_header_x + 150.0, initial_header_y + 60.0);
+                for _ in 0..3 {
+                    window
+                        .window()
+                        .dispatch_event(WindowEvent::PointerScrolled {
+                            position,
+                            delta_x: -160.0,
+                            delta_y: 0.0,
+                        });
+                    slint::platform::update_timers_and_animations();
+                    let offset = if tab == 0 {
+                        window.get_server_table_scroll_x()
+                    } else {
+                        window.get_site_table_scroll_x()
+                    };
+                    assert!(offset < -1.0, "test must actually scroll table {tab}");
+                    for (title, heading, cell) in &columns {
+                        assert!(
+                            (heading.absolute_position().x - cell.absolute_position().x).abs()
+                                < 1.1,
+                            "tab {tab}, size {size}, offset {offset}, {title}: header {:?}, cell {:?}",
+                            heading.absolute_position(),
+                            cell.absolute_position()
+                        );
+                        assert!((heading.size().width - cell.size().width).abs() < 1.1);
+                    }
+                    assert!((header.absolute_position().x - initial_header_x - offset).abs() < 1.1);
+                    assert!((header.absolute_position().y - initial_header_y).abs() < 1.1);
+                }
+                window
+                    .window()
+                    .dispatch_event(WindowEvent::PointerScrolled {
+                        position,
+                        delta_x: 0.0,
+                        delta_y: -100.0,
+                    });
+                assert!((header.absolute_position().y - initial_header_y).abs() < 1.1);
+                field("Fit columns").invoke_accessible_default_action();
+                let offset = if tab == 0 {
+                    window.get_server_table_scroll_x()
+                } else {
+                    window.get_site_table_scroll_x()
+                };
+                assert_eq!(
+                    offset, 0.0,
+                    "Fit columns resets the table and header together"
+                );
+                assert!((header.absolute_position().x - initial_header_x).abs() < 1.1);
+            }
+        }
+    }
+
+    #[test]
+    fn shared_grid_headers_and_rows_scroll_together_after_column_resize() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.window().set_size(PhysicalSize::new(1100, 760));
+        window.set_inventory_grid(ModelRc::new(VecModel::from(vec![crate::tables::row(
+            1,
+            vec!["Sample".into(); 7],
+        )])));
+        window.set_business_grid(ModelRc::new(VecModel::from(vec![crate::tables::row(
+            1,
+            vec!["Sample".into(); 3],
+        )])));
+        window.set_work_grid(ModelRc::new(VecModel::from(vec![crate::tables::row(
+            1,
+            vec!["Sample".into(); 6],
+        )])));
+        window.set_work_table_mode(true);
+        window.show().expect("show window");
+        for (tab, title, action) in [
+            (4, "Service", "View Sample"),
+            (5, "Domain", "View Sample"),
+            (6, "Business", "Open Sample"),
+            (12, "Title", "Open Sample"),
+        ] {
+            window.set_active_tab(tab);
+            let mut form = window.get_inventory_form();
+            form.kind = if tab == 5 { 1 } else { 0 };
+            window.set_inventory_form(form);
+            window.set_inventory_column_weights(crate::tables::inventory_widths(
+                &[],
+                if tab == 5 { 1 } else { 0 },
+            ));
+            let field = |label: &str| {
+                ElementHandle::find_by_accessible_label(&window, label)
+                    .next()
+                    .unwrap_or_else(|| {
+                        panic!(
+                            "missing {label}; headers: {:?}",
+                            ElementHandle::find_by_element_type_name(&window, "HeaderCell")
+                                .map(|e| e.accessible_label())
+                                .collect::<Vec<_>>()
+                        )
+                    })
+            };
+            let heading = field(&format!("Sort by {title}"));
+            let row_action = field(action);
+            let initial_width = heading.size().width;
+            let start = LogicalPosition::new(
+                heading.absolute_position().x + heading.size().width - 3.0,
+                heading.absolute_position().y + heading.size().height / 2.0,
+            );
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved { position: start });
+            window.window().dispatch_event(WindowEvent::PointerPressed {
+                position: start,
+                button: PointerEventButton::Left,
+            });
+            slint::platform::update_timers_and_animations();
+            let end = LogicalPosition::new(start.x + 900.0, start.y);
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerMoved { position: end });
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerReleased {
+                    position: end,
+                    button: PointerEventButton::Left,
+                });
+            assert!(
+                heading.size().width > initial_width + 400.0,
+                "resize failed for {tab}: start {start:?}, before {initial_width}, after {}",
+                heading.size().width
+            );
+            let before_header = heading.absolute_position();
+            let before_action = row_action.absolute_position();
+            let position = LogicalPosition::new(
+                before_header.x + 100.0,
+                before_header.y + heading.size().height + 25.0,
+            );
+            window
+                .window()
+                .dispatch_event(WindowEvent::PointerScrolled {
+                    position,
+                    delta_x: -180.0,
+                    delta_y: 0.0,
+                });
+            slint::platform::update_timers_and_animations();
+            let delta_header = heading.absolute_position().x - before_header.x;
+            let delta_action = row_action.absolute_position().x - before_action.x;
+            assert!(
+                delta_header < -1.0,
+                "table {tab} must actually scroll after resizing"
+            );
+            assert!(
+                (delta_header - delta_action).abs() < 1.1,
+                "table {tab}: header {delta_header}, rows {delta_action}"
+            );
+            assert!((heading.absolute_position().y - before_header.y).abs() < 1.1);
+            field("Fit columns").invoke_accessible_default_action();
+            assert!((heading.absolute_position().x - before_header.x).abs() < 1.1);
+        }
+    }
+
+    #[test]
     fn desktop_layout_accepts_windows_high_dpi_scale_factors() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
@@ -3618,6 +3969,151 @@ mod tests {
             ElementHandle::find_by_accessible_label(&window, "Site URL")
                 .next()
                 .is_some()
+        );
+    }
+
+    #[test]
+    fn inventory_details_are_read_only_and_cancel_reloads_without_saving() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(4);
+        let saved = InventoryForm {
+            id: 42,
+            kind: 0,
+            name: "Orders API".into(),
+            ports: "443".into(),
+            ..Default::default()
+        };
+        window.set_inventory_form(saved.clone());
+        window.set_inventory_editor_requested(true);
+        let saves = std::rc::Rc::new(std::cell::Cell::new(0));
+        let count = saves.clone();
+        window.on_inventory_save(move || count.set(count.get() + 1));
+        let weak = window.as_weak();
+        window.on_inventory_select(move |id| {
+            assert_eq!(id, 42);
+            weak.upgrade().unwrap().set_inventory_form(saved.clone());
+        });
+        window.show().expect("show window");
+        slint::platform::update_timers_and_animations();
+        let exists = |label: &str| {
+            ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .is_some()
+        };
+        assert!(!exists("Service name or domain"));
+        assert!(!exists("Save record"));
+        assert!(exists("Copy port"));
+        ElementHandle::find_by_accessible_label(&window, "Edit record")
+            .next()
+            .unwrap()
+            .invoke_accessible_default_action();
+        assert!(exists("Service name or domain"));
+        assert!(exists("Save record"));
+        assert!(
+            !exists("Technical contact"),
+            "Optional context starts collapsed"
+        );
+        let mut draft = window.get_inventory_form();
+        draft.name = "Unsaved change".into();
+        window.set_inventory_form(draft);
+        ElementHandle::find_by_accessible_label(&window, "Cancel")
+            .next()
+            .unwrap()
+            .invoke_accessible_default_action();
+        assert_eq!(window.get_inventory_form().name, "Orders API");
+        assert!(!exists("Save record"));
+        assert_eq!(saves.get(), 0);
+    }
+
+    #[test]
+    fn new_inventory_records_open_basic_fields_and_keep_optional_values() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(4);
+        window.show().expect("show window");
+        ElementHandle::find_by_accessible_label(&window, "New")
+            .next()
+            .unwrap()
+            .invoke_accessible_default_action();
+        let exists = |label: &str| {
+            ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .is_some()
+        };
+        assert!(exists("Service name or domain"));
+        assert!(exists("Service ports"));
+        assert!(exists("Save record"));
+        assert!(!exists("Service version"));
+        let mut form = window.get_inventory_form();
+        form.version = "16.4".into();
+        window.set_inventory_form(form);
+        for _ in 0..2 {
+            ElementHandle::find_by_accessible_label(&window, "More record details (optional)")
+                .next()
+                .unwrap()
+                .invoke_accessible_default_action();
+        }
+        assert!(!exists("Service version"));
+        assert_eq!(window.get_inventory_form().version, "16.4");
+    }
+
+    #[test]
+    fn inventory_core_columns_fit_and_optional_sort_keeps_original_index() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(4);
+        window.window().set_size(PhysicalSize::new(1200, 800));
+        let rows = vec![crate::tables::row(
+            1,
+            vec![
+                "Orders API".into(),
+                "app-01 / production".into(),
+                "443".into(),
+                "HTTPS".into(),
+                "2.1".into(),
+                "Not checked".into(),
+                "orders".into(),
+            ],
+        )];
+        window.set_inventory_column_weights(crate::tables::inventory_widths(&rows, 0));
+        window.set_inventory_grid(ModelRc::new(VecModel::from(rows)));
+        let sorted = std::rc::Rc::new(std::cell::Cell::new((-1, -1)));
+        let result = sorted.clone();
+        window.on_grid_sort(move |kind, mode| result.set((kind, mode)));
+        window.show().expect("show window");
+        for size in 1..=3 {
+            window.set_font_size_step(size);
+            slint::platform::update_timers_and_animations();
+            let field = |label: &str| {
+                ElementHandle::find_by_accessible_label(&window, label)
+                    .next()
+                    .expect(label)
+            };
+            let name = field("Sort by Service");
+            let port = field("Sort by Port");
+            assert!(name.size().width > port.size().width);
+            let view = field("View Orders API");
+            assert!(
+                view.absolute_position().x + view.size().width < 1200.0,
+                "Default columns fit without scrolling at each text size"
+            );
+        }
+        ElementHandle::find_by_accessible_label(&window, "More columns")
+            .next()
+            .unwrap()
+            .invoke_accessible_default_action();
+        ElementHandle::find_by_accessible_label(&window, "Sort by Version")
+            .next()
+            .unwrap()
+            .invoke_accessible_default_action();
+        assert_eq!(
+            sorted.get(),
+            (1, 8),
+            "Additional columns retain the underlying sort column"
         );
     }
 

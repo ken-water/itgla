@@ -1,19 +1,59 @@
 const element = (id) => document.getElementById(id);
 const charts = new Map();
 
-async function api(path, options = {}) {
-  const response = await fetch(`/admin/api${path}`, {
-    credentials: "same-origin",
-    headers: { "Content-Type": "application/json", ...(options.headers || {}) },
-    ...options,
-  });
-  const body = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const error = new Error(body.message || "The request failed. Try again.");
-    error.status = response.status;
-    throw error;
+let chartLoading;
+function loadCharts() {
+  if (!chartLoading) {
+    chartLoading = new Promise((resolve) => {
+      const timer = setTimeout(() => resolve(false), 10000);
+      // Dynamic imports do not hold up the document load event or secure sign-in.
+      import("/admin/chart.umd.min.js").then(() => {
+        clearTimeout(timer);
+        resolve(true);
+      }, () => {
+        clearTimeout(timer);
+        resolve(false);
+      });
+    });
   }
-  return body;
+  return chartLoading.then((loaded) => {
+    if (!loaded) chartLoading = undefined;
+    return loaded;
+  });
+}
+
+function chartUnavailable(container) {
+  if (typeof window.Chart === "function") return false;
+  container.innerHTML = empty("Chart unavailable. Your data is still available in the tables. Refresh to retry.");
+  return true;
+}
+
+async function api(path, options = {}) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 15000);
+  try {
+    const response = await fetch(`/admin/api${path}`, {
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json", ...(options.headers || {}) },
+      ...options,
+      signal: controller.signal,
+    });
+    const body = await response.json().catch((error) => {
+      if (controller.signal.aborted) throw error;
+      return {};
+    });
+    if (!response.ok) {
+      const error = new Error(body.message || "The request failed. Try again.");
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("The request timed out. Check your connection and try again.");
+    throw error;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function escapeHtml(value) {
@@ -86,6 +126,7 @@ function renderOverviewMetrics(overview) {
 
 function renderTrend(target, rows, series, ariaLabel) {
   const container = element(target);
+  if (chartUnavailable(container)) return;
   charts.get(target)?.destroy();
   if (!rows.length) {
     container.innerHTML = empty("No data for this period.");
@@ -151,6 +192,7 @@ function renderTrend(target, rows, series, ariaLabel) {
 }
 
 function renderCountryTrend(target, rows) {
+  if (chartUnavailable(element(target))) return;
   const countries = [...new Set(rows.map((row) => row.country))].slice(0, 6);
   const days = [...new Set(rows.map((row) => row.day))];
   const byDay = new Map(days.map((day) => [day, new Map()]));
@@ -203,6 +245,7 @@ function renderCountrySummary(target, rows) {
 }
 
 function renderDownloadCountryTrend(target, rows, summary) {
+  if (chartUnavailable(element(target))) return;
   // Pick countries by their total downloads for the selected period. The daily
   // result is ordered by date, so taking its first rows can show unrelated
   // countries with zero downloads on the day being inspected.
@@ -305,6 +348,7 @@ function renderErrors(target, rows) {
 }
 
 async function loadDashboard() {
+  const chartReady = loadCharts();
   const error = element("dashboard-error");
   error.hidden = true;
   const days = element("days").value;
@@ -313,24 +357,25 @@ async function loadDashboard() {
       api(`/overview?days=${days}`), api(`/daily?days=${days}`), api(`/pages?days=${days}`), api(`/events?days=${days}`), api(`/errors?days=${days}`), api(`/downloads?days=${days}`), api(`/countries?days=${days}`), api(`/download-countries?days=${days}`),
     ]);
     renderOverviewMetrics(overview);
-    renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
-    renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
-    renderCountryTrend("country-trend", countries.daily);
-    renderCountrySummary("country-summary", countries.summary);
-    renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads", label: "Downloads" }], "Daily package downloads");
-    renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
     renderPages("overview-pages", pages);
     renderEvents("overview-events", events);
     renderDownloadEvents("downloads-events", downloads.events);
-    renderDownloadCountryTrend("download-country-trend", downloadCountries.daily, downloadCountries.summary);
+    renderCountrySummary("country-summary", countries.summary);
     renderDownloadCountrySummary("download-country-summary", downloadCountries.summary);
+    renderErrors("errors-events", errors);
+    await chartReady;
+    renderTrend("overview-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
+    renderTrend("traffic-trend", daily, [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }], "Daily page views and unique visitors");
+    renderCountryTrend("country-trend", countries.daily);
+    renderTrend("downloads-trend", daily, [{ field: "downloads", className: "downloads", label: "Downloads" }], "Daily package downloads");
+    renderTrend("errors-trend", daily, [{ field: "errors", className: "errors", label: "Errors" }], "Daily page errors");
+    renderDownloadCountryTrend("download-country-trend", downloadCountries.daily, downloadCountries.summary);
     element("downloads-funnel").innerHTML = [
       ["Download page visitors", downloads.summary.page_visitors],
       ["Successful download visitors", downloads.summary.successful_visitors],
       ["Failed requests", downloads.summary.failures],
       ["No download after visiting", downloads.summary.no_download_visitors],
     ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
-    renderErrors("errors-events", errors);
     if (document.querySelector('[data-tab="feedback"].is-active')) window.loadFeedback?.();
   } catch (requestError) {
     if (requestError.status === 401) return showLogin();
@@ -357,6 +402,8 @@ element("login-form").addEventListener("submit", async (event) => {
   const error = element("login-error");
   error.textContent = "";
   button.disabled = true;
+  button.textContent = "Signing in…";
+  button.setAttribute("aria-busy", "true");
   try {
     await api("/login", { method: "POST", body: JSON.stringify({ username: element("username").value, password: element("password").value }) });
     element("password").value = "";
@@ -366,6 +413,8 @@ element("login-form").addEventListener("submit", async (event) => {
     element("password").focus();
   } finally {
     button.disabled = false;
+    button.textContent = "Sign in";
+    button.removeAttribute("aria-busy");
   }
 });
 
@@ -397,4 +446,9 @@ element("logout").addEventListener("click", async () => {
   showLogin();
 });
 
+// Enable submission only after the JSON POST handler has been registered.
+element("login-button").disabled = false;
+element("login-button").textContent = "Sign in";
+element("login-status").hidden = true;
+void import("/admin/feedback.js").catch(() => {});
 api("/me").then((session) => session.authenticated ? showDashboard() : showLogin()).catch(showLogin);

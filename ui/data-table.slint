@@ -8,6 +8,10 @@ export component DataTable inherits Rectangle {
     in property <[string]> headers;
     in property <[GridRow]> rows;
     in property <int> selected-id;
+    in property <[bool]> shown-columns: [true, true, true, true, true, true, true, true, true];
+    in property <[float]> column-weights: [2.5, 2, 1.5, 1.5, 1.3, 1.3, 1.3, 1.3, 1.3];
+    pure function weight(index: int) -> float { return index >= root.headers.length || !root.shown-columns[index] ? 0 : root.column-weights[index]; }
+    private property <float> total-weight: max(1, root.weight(0) + root.weight(1) + root.weight(2) + root.weight(3) + root.weight(4) + root.weight(5) + root.weight(6) + root.weight(7) + root.weight(8));
     in property <int> sort-mode: -1;
     in property <int> link-column: -1;
     in property <string> action-label: "Open";
@@ -19,9 +23,8 @@ export component DataTable inherits Rectangle {
     private property <[length]> widths: [180px, 150px, 130px, 140px, 130px, 120px, 140px, 140px, 140px];
     private property <length> scroll-x;
     private property <bool> fitted: true;
-    private property <length> fitted-width: max(82px, (root.width - 90px) / max(1, root.headers.length));
     private property <length> data-width: root.column-width(0) + root.column-width(1) + root.column-width(2) + root.column-width(3) + root.column-width(4) + root.column-width(5) + root.column-width(6) + root.column-width(7) + root.column-width(8);
-    pure function column-width(index: int) -> length { return index >= root.headers.length ? 0px : root.fitted ? root.fitted-width : root.widths[index]; }
+    pure function column-width(index: int) -> length { return index >= root.headers.length || !root.shown-columns[index] ? 0px : root.fitted ? max(72px, (root.width - 106px) * root.weight(index) / root.total-weight) : root.widths[index]; }
     public function fit() { root.fitted = true; root.scroll-x = 0px; }
     background: UiColors.surface;
     border-width: 1px; border-color: UiColors.border;
@@ -34,7 +37,7 @@ export component DataTable inherits Rectangle {
         Rectangle { height: max(36px, UiColors.body-size + 20px); clip: true; background: UiColors.raised;
             HorizontalLayout { x: root.scroll-x; width: root.data-width + 88px; height: parent.height; spacing: 0px;
                 for title[index] in root.headers: Rectangle {
-                    width: root.column-width(index); background: transparent;
+                    visible: root.column-width(index) > 0px; width: root.column-width(index); background: transparent;
                     Text { x: 8px; width: parent.width - 23px; height: parent.height; text: title + (root.sort-mode / 2 == index && root.sort-mode >= 0 ? (mod(root.sort-mode, 2) == 0 ? " ↑" : " ↓") : ""); color: UiColors.text; font-size: UiColors.body-size - 1px; font-weight: 700; overflow: elide; vertical-alignment: center; }
                     Button { width: parent.width - 14px; height: parent.height; quiet: true; text: ""; accessible-label: "Sort by " + title; clicked => { root.sort(root.sort-mode == index * 2 ? index * 2 + 1 : index * 2); } }
                     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.grid-line; }
@@ -52,7 +55,7 @@ export component DataTable inherits Rectangle {
                 for record[row-index] in root.rows: Rectangle {
                     height: root.row-height; background: root.selected-id == record.id ? UiColors.selected : mod(row-index, 2) == 0 ? UiColors.surface : UiColors.canvas;
                     HorizontalLayout { spacing: 0px;
-                        for value[index] in record.cells: Rectangle { width: root.column-width(index); clip: true; background: transparent;
+                        for value[index] in record.cells: Rectangle { visible: root.column-width(index) > 0px; width: root.column-width(index); clip: true; background: transparent;
                             if index != root.link-column: Text { x: 8px; width: parent.width - 16px; height: parent.height; text: value; color: UiColors.text; font-size: UiColors.body-size; overflow: elide; vertical-alignment: center; }
                             if index == root.link-column: Rectangle {
                                 background: host-link.has-hover ? UiColors.selected : transparent;

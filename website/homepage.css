@@ -169,3 +169,26 @@
 .homepage .download-band .button-light { background: var(--teal-dark); color: #fff; }
 .homepage .download-band .button-outline { color: var(--teal-dark); background: #fff; border-color: #91a79a; }
 .homepage .download-band .button-outline:hover { background: #f1f3ed; }
+
+/* One primary lookup journey; secondary capabilities stay available on demand. */
+.homepage .capability-disclosure > summary { cursor: pointer; min-height: 48px; padding: 16px 0; font-size: clamp(20px, 2vw, 26px); color: var(--teal-dark); font-weight: 650; }
+.homepage .capability-disclosure[open] > summary { margin-bottom: 28px; }
+.homepage .inventory-coverage, .homepage .home-workflow, .homepage .handover-scenarios { padding-block: 24px; }
+.connection-example { background: #edf2ed; }
+.connection-example figure { margin: 32px 0 0; }
+.connection-example img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.connection-example figcaption { color: var(--home-muted); font-size: 13px; margin-top: 12px; }
+.connection-example figcaption a { display: inline-flex; align-items: center; min-height: 44px; }
+.website-account-note { margin: 0; padding: 24px max(24px, calc((100% - 1200px) / 2)); background: var(--canvas); color: var(--home-muted); font-size: 14px; }
+.website-account-note a { display: inline-flex; align-items: center; min-height: 44px; }
+@media (max-width: 560px) {
+  .connection-example figure { overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+  .connection-example img { width: 760px; max-width: none; border: 0; }
+  .connection-example figcaption { padding: 0 12px; }
+  .hero-product picture { display: block; }
+}
+
+.homepage .inventory-coverage > .capability-disclosure { grid-column: 1 / -1; min-width: 0; }
+
+.mobile-crop-note { display: none; }
+@media (max-width: 560px) { .mobile-crop-note { display: inline; } }

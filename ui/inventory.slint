@@ -18,6 +18,14 @@ export struct ResourceNode { id: int, kind: string, name: string, detail: string
 export struct ResourceEdge { id: int, source-kind: string, source-id: int, target-kind: string, target-id: int, relation-kind: string, source-label: string, target-label: string, notes: string }
 export struct ResourceChoice { id: int, kind: string, label: string }
 
+component DetailField inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    spacing: 3px;
+    Text { text: root.label; color: UiColors.muted; font-size: UiColors.body-size - 1px; }
+    Text { text: root.value == "" ? "Not recorded" : root.value; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
+}
+
 component Label inherits Text { color: UiColors.text; font-size: UiColors.body-size - 1px; font-weight: 650; }
 
 component RecordActions inherits Rectangle {
@@ -48,12 +56,19 @@ component RecordActions inherits Rectangle {
 
 export component InventoryPanel inherits Rectangle {
     in property <[GridRow]> grid-rows;
+    in property <[float]> column-weights: [2.8, 2.8, 1, 1.3, 1, 1.7, 1.5];
     in property <int> grid-sort-mode;
     callback grid-sort(int);
     callback host-details(int);
     in-out property <AssetContextForm> context;
     callback open-link(string);
     in-out property <bool> editor-open: false;
+    private property <bool> editing: false;
+    private property <bool> account-open: false;
+    private property <bool> relations-open: false;
+    private property <bool> more-columns: false;
+    private property <bool> extra-details: false;
+    changed editor-open => { if !root.editor-open { root.editing = false; root.reveal = false; } }
     private property <int> record-kind: root.form.kind;
     changed record-kind => { root.editor-open = false; }
     in-out property <int> view-mode: 0;
@@ -103,7 +118,7 @@ export component InventoryPanel inherits Rectangle {
                 Text { text: root.form.kind == 0 ? "Services" : "Domains"; color: UiColors.text; font-size: UiColors.body-size + 11px; font-weight: 750; }
                 Button { compact: true; primary: root.view-mode == 1; text: "Connections"; clicked => { root.show-map(); } }
                 Button { compact: true; quiet: true; text: "Export CSV"; clicked => { root.export(); } }
-                Button { compact: true; primary: true; text: "New"; clicked => { root.new-record(root.form.kind); root.editor-open = true; } }
+                Button { compact: true; primary: true; text: "New"; clicked => { root.new-record(root.form.kind); root.editor-open = true; root.editing = true; } }
             }
             HorizontalLayout {
                 min-height: 36px; spacing: 16px;
@@ -113,14 +128,17 @@ export component InventoryPanel inherits Rectangle {
             }
             if root.show-hidden: Text { text: "Hidden records are kept here. Choose Restore to return one to the active list."; color: UiColors.muted; wrap: word-wrap; }
             LineEdit { accessible-label: "Search inventory"; height: 36px; placeholder-text: "Search name, tag, note, host, version…"; text <=> root.query; edited => { root.refresh(); } }
+            CheckBox { text: "More columns"; checked <=> root.more-columns; }
             DataTable {
                 vertical-stretch: 1;
                 headers: root.form.kind == 0 ? ["Service", "Hosting servers", "Port", "Protocol", "Version", "Status", "Tags"] : ["Domain", "Origin servers", "Parent domain", "Registrar", "Expiry", "CDN", "Tags"];
                 rows: root.grid-rows; selected-id: root.form.id; sort-mode: root.grid-sort-mode; link-column: 1;
-                action-label: root.show-hidden ? "Restore" : "Edit";
+                shown-columns: root.form.kind == 0 ? [true, true, true, true, root.more-columns, true, root.more-columns] : [true, true, root.more-columns, root.more-columns, true, true, root.more-columns];
+                column-weights: root.column-weights;
+                action-label: root.show-hidden ? "Restore" : "View";
                 sort(mode) => { root.grid-sort(mode); }
                 cell-link(id,index) => { root.host-details(id); }
-                open(id) => { if root.show-hidden { root.hide(id,false); } else { root.select-record(id); root.editor-open = true; } }
+                open(id) => { if root.show-hidden { root.hide(id,false); } else { root.select-record(id); root.editing = false; root.account-open = false; root.relations-open = false; root.editor-open = true; } }
             }
         }
         if root.editor-open: Rectangle {
@@ -131,14 +149,86 @@ export component InventoryPanel inherits Rectangle {
                 VerticalLayout {
                     padding: 14px; spacing: 8px;
                     HorizontalLayout {
-                        Text { text: (root.form.id == 0 ? "Add " : "Edit ") + (root.form.kind == 0 ? "service" : "domain"); color: UiColors.text; font-size: UiColors.body-size + 4px; font-weight: 700; }
+                        Text { text: (root.form.id == 0 ? "Add " : root.editing ? "Edit " : "View ") + (root.form.kind == 0 ? "service" : "domain"); color: UiColors.text; font-size: UiColors.body-size + 4px; font-weight: 700; }
                         Button { compact: true; quiet: true; text: "Close"; clicked => { root.editor-open = false; } }
                     }
+                    if !root.editing: VerticalLayout {
+                        spacing: 14px;
+                        HorizontalLayout {
+                            spacing: 12px;
+                            DetailField { label: root.form.kind == 0 ? "Service" : "Domain"; value: root.form.name; }
+                            if root.form.business != "": DetailField { label: "Business / system"; value: root.form.business; }
+                        }
+                        if root.form.pending-confirmation: Text { text: "Pending confirmation. Choose Edit to check and confirm this service."; color: UiColors.warning; wrap: word-wrap; }
+                        if root.form.kind == 0: VerticalLayout {
+                            spacing: 12px;
+                            HorizontalLayout {
+                                spacing: 12px;
+                                DetailField { label: "Port / protocol / transport"; value: root.form.ports + " / " + root.form.protocol + " / " + root.form.transport; }
+                                DetailField { label: "Version"; value: root.form.version; }
+                            }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { compact: true; text: "Copy port"; clicked => { root.copy(root.form.ports, "Port"); } }
+                                Button { compact: true; text: root.form.protocol == "SSH" ? "Copy SSH command" : root.form.protocol == "HTTP" || root.form.protocol == "HTTPS" ? "Open in browser" : "Copy connection address"; enabled: !root.form.pending-confirmation; clicked => { root.connect(); } }
+                                Rectangle { horizontal-stretch: 1; background: transparent; }
+                            }
+                        }
+                        HorizontalLayout {
+                            spacing: 12px;
+                            DetailField { horizontal-stretch: 1; label: "Access address / DNS target"; value: root.form.address; }
+                            if root.form.address != "": Button { compact: true; quiet: true; text: "Copy address"; clicked => { root.copy(root.form.address, "Address"); } }
+                        }
+                        if root.form.kind == 1: VerticalLayout {
+                            spacing: 12px;
+                            if root.form.parent != "": DetailField { label: "Parent domain"; value: root.form.parent; }
+                            if root.form.registrar != "": DetailField { label: "Registrar"; value: root.form.registrar; }
+                            if root.form.registered != "": DetailField { label: "Registered"; value: root.form.registered; }
+                            if root.form.expires != "": DetailField { label: "Expires"; value: root.form.expires; }
+                            if root.form.cdn != "": DetailField { label: "CDN / proxy"; value: root.form.cdn; }
+                        }
+                        Label { text: "LINKED SERVERS"; }
+                        VerticalLayout {
+                            spacing: 0px;
+                            for host in root.hosts: VerticalLayout {
+                                if host.selected: Text { text: host.label; color: UiColors.text; wrap: word-wrap; }
+                            }
+                        }
+                        Button { compact: true; quiet: true; text: "View server details"; clicked => { root.host-details(root.form.id); } }
+                        if root.form.tags != "": DetailField { label: "Tags"; value: root.form.tags; }
+                        if root.form.notes != "": DetailField { label: "Notes"; value: root.form.notes; }
+                        if root.context.owner != "": DetailField { label: "Technical contact"; value: root.context.owner; }
+                        if root.context.backup-contact != "": DetailField { label: "Backup contact"; value: root.context.backup-contact; }
+                        if root.context.environment != "": DetailField { label: "Environment"; value: root.context.environment; }
+                        if root.context.documentation-state != 0: DetailField { label: "Documentation"; value: root.context.documentation-state == 1 ? "Unknown" : root.context.documentation-state == 2 ? "Not applicable" : root.context.documentation; }
+                        if root.context.documentation-state == 3 && root.context.documentation != "": Button { compact: true; text: "Open documentation"; clicked => { root.open-link(root.context.documentation); } }
+                        if root.context.source != "": DetailField { label: "Information source"; value: root.context.source; }
+                        DetailField { label: "Verification"; value: root.context.verification; }
+                        if root.form.has-credentials: VerticalLayout {
+                            spacing: 8px;
+                            Text { text: "Saved access account (protected)"; color: UiColors.text; }
+                            Button { compact: true; text: "Unlock saved account (30 sec)"; enabled: root.credentials-available; clicked => { root.unlock(); } }
+                            HorizontalLayout {
+                                spacing: 8px;
+                                Button { compact: true; text: "Copy user"; clicked => { root.copy-secret(false); } }
+                                Button { compact: true; text: "Copy password"; clicked => { root.copy-secret(true); } }
+                            }
+                            CheckBox { text: "Show saved account"; checked <=> root.reveal; enabled: root.credentials-available && (root.username != "" || root.password != ""); }
+                            if root.reveal: VerticalLayout {
+                                spacing: 8px;
+                                DetailField { label: "Username"; value: root.username; }
+                                DetailField { label: "Password"; value: root.password; }
+                            }
+                            Text { text: "Clipboard history may retain copied secrets."; color: UiColors.muted; wrap: word-wrap; }
+                        }
+                        DetailField { label: "Last verified"; value: root.form.verified-at; }
+                        for relation in root.relations: DetailField { label: relation.name; value: relation.notes; }
+                    }
+                    if root.editing: VerticalLayout {
+                        spacing: 8px;
                     if root.form.pending-confirmation: Text { text: "Pending confirmation. Check the port, protocol and hosting server, then choose Confirm service."; color: UiColors.warning; font-size: UiColors.body-size; wrap: word-wrap; }
                     Label { text: root.form.kind == 0 ? "NAME *" : "DOMAIN / HOSTNAME *"; }
                     LineEdit { accessible-label: "Service name or domain"; placeholder-text: root.form.kind == 0 ? "Orders PostgreSQL primary" : "api.example.com"; text <=> root.form.name; }
-                    Label { text: "BUSINESS / SYSTEM (OPTIONAL)"; }
-                    LineEdit { accessible-label: "Business or system"; placeholder-text: "Customer platform"; text <=> root.form.business; }
                     if root.form.kind == 0: VerticalLayout {
                         spacing: 8px;
                         Label { text: "PORT"; }
@@ -150,6 +240,37 @@ export component InventoryPanel inherits Rectangle {
                         Text { text: "Add a separate service for each port on the same server."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
                         Label { text: "PROTOCOL / APPLICATION"; }
                         LineEdit { accessible-label: "Service protocol"; placeholder-text: "SSH, MySQL, PostgreSQL, HTTPS"; text <=> root.form.protocol; }
+
+                    }
+                    VerticalLayout {
+                        padding-top: 12px; padding-bottom: 12px; spacing: 12px;
+                        Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS"; }
+                        Text { text: root.form.kind == 0 ? "Choose all servers that run this service. Save record applies your selection." : "Choose the actual origin servers, independently of DNS or CDN addresses. Save record applies your selection."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+                        ScrollView {
+                            height: root.hosts.length == 0 ? 76px : root.hosts.length < 4 ? root.hosts.length * 64px + 8px : 224px;
+                            VerticalLayout {
+                                spacing: 8px; padding: 4px;
+                                for host[index] in root.hosts: Rectangle {
+                                    height: 56px; background: host.selected ? UiColors.selected : UiColors.surface;
+                                    border-width: 1px; border-color: host.selected ? UiColors.success : UiColors.border; border-radius: 5px;
+                                    CheckBox {
+                                        x: 10px; y: 4px; width: parent.width - 20px; height: parent.height - 8px;
+                                        text: host.label; checked: host.selected;
+                                        toggled => { root.hosts[index].selected = self.checked; }
+                                    }
+                                }
+                                if root.hosts.length == 0: Text { height: 64px; text: "No servers yet. Add a server in the Servers tab, then return to link it here."; color: UiColors.muted; wrap: word-wrap; }
+                            }
+                        }
+                        Text { text: "Missing a server? Add it in the Servers tab first."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+                    }
+                    CheckBox { text: "More record details (optional)"; checked <=> root.extra-details; }
+                    if root.extra-details: VerticalLayout {
+                        spacing: 8px;
+                    Label { text: "BUSINESS / SYSTEM (OPTIONAL)"; }
+                    LineEdit { accessible-label: "Business or system"; placeholder-text: "Customer platform"; text <=> root.form.business; }
+                    if root.form.kind == 0: VerticalLayout {
+                        spacing: 8px;
                         Label { text: "TRANSPORT"; }
                         ComboBox { accessible-label: "Service transport"; model: ["Unspecified", "TCP", "UDP"]; current-index: root.form.transport == "TCP" ? 1 : root.form.transport == "UDP" ? 2 : 0; selected(value) => { root.form.transport = value; } }
                         Label { text: "VERSION"; }
@@ -190,30 +311,10 @@ export component InventoryPanel inherits Rectangle {
                     LineEdit { accessible-label: "Tags separated by commas"; placeholder-text: "production, orders, critical"; text <=> root.form.tags; }
                     Label { text: "NOTES"; }
                     TextEdit { accessible-label: "Notes"; height: 78px; text <=> root.form.notes; }
-                    AssetContextEditor { form <=> root.context; open-link(url) => { root.open-link(url); } }
-                    VerticalLayout {
-                        padding-top: 12px; padding-bottom: 12px; spacing: 12px;
-                        Label { text: root.form.kind == 0 ? "HOSTING SERVERS" : "ORIGIN SERVERS"; }
-                        Text { text: root.form.kind == 0 ? "Choose all servers that run this service. Save record applies your selection." : "Choose the actual origin servers, independently of DNS or CDN addresses. Save record applies your selection."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
-                        ScrollView {
-                            height: root.hosts.length == 0 ? 76px : root.hosts.length < 4 ? root.hosts.length * 64px + 8px : 224px;
-                            VerticalLayout {
-                                spacing: 8px; padding: 4px;
-                                for host[index] in root.hosts: Rectangle {
-                                    height: 56px; background: host.selected ? UiColors.selected : UiColors.surface;
-                                    border-width: 1px; border-color: host.selected ? UiColors.success : UiColors.border; border-radius: 5px;
-                                    CheckBox {
-                                        x: 10px; y: 4px; width: parent.width - 20px; height: parent.height - 8px;
-                                        text: host.label; checked: host.selected;
-                                        toggled => { root.hosts[index].selected = self.checked; }
-                                    }
-                                }
-                                if root.hosts.length == 0: Text { height: 64px; text: "No servers yet. Add a server in the Servers tab, then return to link it here."; color: UiColors.muted; wrap: word-wrap; }
-                            }
-                        }
-                        Text { text: "Missing a server? Add it in the Servers tab first."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
                     }
-                    if root.form.kind == 0: VerticalLayout {
+                    AssetContextEditor { form <=> root.context; open-link(url) => { root.open-link(url); } }
+                    if root.form.kind == 0: CheckBox { text: "Edit access account (optional)"; checked <=> root.account-open; }
+                    if root.form.kind == 0 && root.account-open: VerticalLayout {
                         spacing: 8px;
                         Label { text: "ACCESS ACCOUNT (OPTIONAL)"; }
                         Text { text: root.credentials-available ? "Protected for this Windows user. Device/profile changes require re-entering credentials. Metadata and notes are not encrypted." : "Credential storage is available on Windows only. Keep secrets in your password manager on this platform."; font-size: UiColors.body-size - 2px; color: UiColors.muted; wrap: word-wrap; }
@@ -233,8 +334,9 @@ export component InventoryPanel inherits Rectangle {
                         Text { text: "Blank fields keep the saved account. Enter both fields to replace it. Clipboard history may retain copied secrets."; color: UiColors.muted; font-size: UiColors.body-size - 2px; wrap: word-wrap; }
                     }
                     if root.form.id != 0: Text { text: root.form.verified-at == "" ? "Not yet verified" : "Last verified " + root.form.verified-at; color: UiColors.muted; }
-                    if root.status != "": Text { text: root.status; color: root.status-error ? UiColors.error : UiColors.success; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
-                    if root.form.kind == 0 && root.form.id != 0: VerticalLayout {
+
+                    if root.form.kind == 0 && root.form.id != 0: CheckBox { text: "Edit service relationships"; checked <=> root.relations-open; }
+                    if root.form.kind == 0 && root.form.id != 0 && root.relations-open: VerticalLayout {
                         spacing: 8px;
                         Label { text: "SERVICE RELATIONS · SOURCE → TARGET"; }
                         Text { text: "The current service is the source. Reverse links appear on the target service too."; color: UiColors.muted; font-size: UiColors.body-size - 2px; wrap: word-wrap; }
@@ -249,9 +351,13 @@ export component InventoryPanel inherits Rectangle {
                             Button { compact: true; quiet: true; text: "Remove relation"; clicked => { root.remove-relation(relation.id); } }
                         }
                     }
+                    }
+                    if root.status != "": Text { text: root.status; color: root.status-error ? UiColors.error : UiColors.success; wrap: word-wrap; accessible-role: text; accessible-label: self.text; }
                 }
             }
-            Button { x: parent.width - self.width - 14px; y: parent.height - max(40px, UiColors.body-size + 24px) - 14px; width: 190px; height: max(40px, UiColors.body-size + 24px); text: root.form.pending-confirmation ? "Confirm service" : "Save record"; primary: true; enabled: !root.show-hidden; clicked => { root.save(); } }
+            if !root.editing: Button { x: parent.width - 204px; y: parent.height - max(40px, UiColors.body-size + 24px) - 14px; width: 190px; height: max(40px, UiColors.body-size + 24px); text: "Edit record"; primary: true; clicked => { root.editing = true; } }
+            if root.editing && root.form.id != 0: Button { x: 14px; y: parent.height - max(40px, UiColors.body-size + 24px) - 14px; width: 92px; height: max(40px, UiColors.body-size + 24px); text: "Cancel"; clicked => { root.select-record(root.form.id); root.editing = false; } }
+            if root.editing: Button { x: parent.width - self.width - 14px; y: parent.height - max(40px, UiColors.body-size + 24px) - 14px; width: 190px; height: max(40px, UiColors.body-size + 24px); text: root.form.pending-confirmation ? "Confirm service" : "Save record"; primary: true; enabled: !root.show-hidden; clicked => { root.save(); } }
         }
     }
 }

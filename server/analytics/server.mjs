@@ -4,7 +4,7 @@ import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
-import { daysFromUrl, hash, isMeaningfulVisitor, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
+import { adminCredentialRedirect, daysFromUrl, hash, isMeaningfulVisitor, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
 import { lookupGeo } from "./geo.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -453,6 +453,10 @@ async function recentErrors(days) {
 async function handle(request, response) {
   const url = new URL(request.url, `http://${request.headers.host || "localhost"}`);
   const pathname = url.pathname;
+  if (adminCredentialRedirect(url)) {
+    response.writeHead(303, { ...securityHeaders("text/plain; charset=utf-8"), Location: "/admin" });
+    return response.end("Use the sign-in form at /admin.");
+  }
   if (request.method === "GET" && pathname === "/healthz") {
     await pool.query("select 1");
     return json(response, 200, { status: "ok" });

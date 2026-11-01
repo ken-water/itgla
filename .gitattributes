@@ -1,0 +1,2 @@
+scripts/*.sh text eol=lf
+packaging/windows/*.nsi text eol=lf

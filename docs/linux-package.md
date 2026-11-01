@@ -1,0 +1,9 @@
+﻿# Linux package compatibility
+
+The Linux x86_64 build baseline is Ubuntu 22.04 / glibc 2.35. Build the application using `scripts/build-linux-baseline.sh` on a Docker-enabled build host. It uses an isolated disposable Ubuntu container and the host's pinned/locked Rust dependencies; it does not change running production containers. Set `ITGLA_LINUX_BUILD_IMAGE` to an approved mirror or pinned Ubuntu 22.04 image digest. Record the resolved image ID with candidate evidence.
+
+Run packaging on the Linux build host with `ITGLA_LINUX_BINARY=<baseline-target>/release/itgla ITGLA_PACKAGE_OUTPUT=<candidate-dir> bash scripts/package-linux-installers.sh`. Use a dedicated source checkout/target directory: the selected baseline binary is copied to its release path for cargo-packager. Native builds remain supported only if they pass the same ABI ceiling. `scripts/check-linux-abi.py` rejects binaries requiring newer glibc before creating packages. It never removes version requirements or relabels an incompatible executable.
+
+DEB runtime dependencies are calculated from the actual packaged ELF by dpkg-shlibdeps. The package declares its maintainer, description, runtime dependencies and recommended desktop portal providers. RPM uses automatic ELF dependency generation. File choosers use the desktop portal; users need an appropriate provider for their desktop session. AppImage still depends on host glibc and a suitable display/session.
+
+glibc compatibility is necessary but not sufficient. Validate desktop launch, fonts, clipboard, portal file dialogs, import/export, upgrade and uninstall on clean Ubuntu 22.04/24.04, Debian 12 and a supported Fedora release. Do not claim every distribution is supported from a container compilation alone. Retain data under `$XDG_DATA_HOME/itgla` or `~/.local/share/itgla` on uninstall. `ITGLA_DATA_DIR` overrides that path.

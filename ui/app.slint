@@ -479,6 +479,7 @@ export component AppWindow inherits Window {
     in property <[GridRow]> business-grid;
     in-out property <int> business-grid-sort: -1;
     in property <[GridRow]> inventory-grid;
+    in property <[float]> inventory-column-weights;
     in-out property <int> service-grid-sort: -1;
     in-out property <int> domain-grid-sort: -1;
     in-out property <bool> work-table-mode: true;
@@ -766,13 +767,15 @@ export component AppWindow inherits Window {
     Rectangle {
         x: 12px; y: 72px; width: 152px; height: parent.height - 88px;
         background: UiColors.surface; border-radius: 8px;
-        Text { x: 14px; y: 18px; width: parent.width - 28px; text: "Workspace"; color: UiColors.muted; font-size: root.caption-font-size; }
-        servers-tab := NavigationTab { x: 6px; y: 54px; width: parent.width - 12px; height: 42px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
-        sites-tab := NavigationTab { x: 6px; y: 102px; width: parent.width - 12px; height: 42px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
-        NavigationTab { x: 6px; y: 150px; width: parent.width - 12px; height: 42px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
-        NavigationTab { x: 6px; y: 198px; width: parent.width - 12px; height: 42px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
-        NavigationTab { x: 6px; y: 246px; width: parent.width - 12px; height: 42px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
-        NavigationTab { x: 6px; y: 294px; width: parent.width - 12px; height: 42px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
+        Text { x: 14px; y: 18px; text: "Inventory"; color: UiColors.muted; font-size: root.caption-font-size; }
+        servers-tab := NavigationTab { x: 6px; y: 48px; width: parent.width - 12px; height: 42px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
+        NavigationTab { x: 6px; y: 94px; width: parent.width - 12px; height: 42px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
+        NavigationTab { x: 6px; y: 140px; width: parent.width - 12px; height: 42px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
+        Text { x: 14px; y: 196px; text: "Relationships"; color: UiColors.muted; font-size: root.caption-font-size; }
+        NavigationTab { x: 6px; y: 224px; width: parent.width - 12px; height: 42px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
+        NavigationTab { x: 6px; y: 270px; width: parent.width - 12px; height: 42px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
+        Text { x: 14px; y: 326px; text: "Bookmarks"; color: UiColors.muted; font-size: root.caption-font-size; }
+        sites-tab := NavigationTab { x: 6px; y: 354px; width: parent.width - 12px; height: 42px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
         settings-tab := NavigationTab { x: 6px; y: parent.height - 54px; width: parent.width - 12px; height: 42px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.request-tab(2); } }
     }
 
@@ -801,6 +804,7 @@ export component AppWindow inherits Window {
         editor-open <=> root.inventory-editor-requested;
         show-map => { root.request-tab(7); }
         context <=> root.inventory-context; open-link(url) => { root.open-documentation(url); }
+        column-weights: root.inventory-column-weights;
         grid-rows: root.inventory-grid; grid-sort-mode: root.inventory-form.kind == 0 ? root.service-grid-sort : root.domain-grid-sort;
         grid-sort(mode) => { root.grid-sort(root.inventory-form.kind == 0 ? 1 : 2,mode); }
         host-details(id) => { root.inventory-host-details(id); }
@@ -856,10 +860,10 @@ export component AppWindow inherits Window {
         LineEdit { x: 0; y: 126px; width: parent.width; height: 32px; placeholder-text: "Search every field"; edited(value) => { root.search-changed(value); } }
         Rectangle {
             x: 0; y: 162px; width: parent.width; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
-            // Server headers stay above the scrolling rows.
+            // ScrollView content offsets are signed; headers follow the same horizontal offset.
             Rectangle {
                 x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
-                TableHeader { x: -root.server-table-scroll-x; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } resize(index, value) => { root.column-width-changed(index, value); } }
+                TableHeader { x: root.server-table-scroll-x; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } resize(index, value) => { root.column-width-changed(index, value); } }
             }
             server-table-scroll := ScrollView {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
@@ -936,7 +940,7 @@ export component AppWindow inherits Window {
             x: 0; y: 162px; width: parent.width; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
             Rectangle {
                 x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
-                SiteTableHeader { x: -root.site-table-scroll-x; column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } resize(index, value) => { root.site-column-width-changed(index, value); } }
+                SiteTableHeader { x: root.site-table-scroll-x; column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } resize(index, value) => { root.site-column-width-changed(index, value); } }
             }
             ScrollView {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
@@ -1272,7 +1276,7 @@ export component AppWindow inherits Window {
                 TouchArea { }
                 Rectangle {
                     x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
-                    width: min(760px, parent.width - 48px); height: min(600px, parent.height - 48px);
+                    width: min(760px, parent.width - 48px); height: min(380px, parent.height - 48px);
                     background: UiColors.surface; border-radius: 8px;
                     VerticalLayout { padding: 24px; spacing: 16px;
                         HorizontalLayout { spacing: 16px;
@@ -1282,10 +1286,8 @@ export component AppWindow inherits Window {
                         ScrollView { horizontal-stretch: 1; vertical-stretch: 1;
                             VerticalLayout { spacing: 18px;
                                 Text { text: "Keep the facts you need before a change. Add detail when it helps."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
-                                for step[index] in ["Record the machine", "Describe its services", "Connect domains and sites"]: VerticalLayout { spacing: 8px;
-                                    Text { text: (index + 1) + "  " + step; color: UiColors.text; font-size: UiColors.body-size + 2px; font-weight: 700; }
-                                    Text { text: ["Add an IP address, then manage each port separately with its transport, protocol and purpose. Use tags to find similar servers.", "Services records software, versions, access details and hosting servers. Add dependencies or primary / standby relationships when needed.", "Domains records hostnames, registrar, expiry, CDN and origin servers. Sites is your list of URLs to visit."][index]; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
-                                }
+                                Text { text: "Add a name and IP address. A pending SSH service on port 22 is created for you to check in Services."; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
+                                Text { text: "Already have a spreadsheet? Import it instead. Add domains, contacts and connections when you need them."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
                             }
                         }
                         HorizontalLayout { spacing: 12px;

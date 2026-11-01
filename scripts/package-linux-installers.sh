@@ -10,7 +10,7 @@ if [[ -z "${cargo_packager}" && -x "${user_home_directory}/.cargo/bin/cargo-pack
     cargo_packager="${user_home_directory}/.cargo/bin/cargo-packager"
 fi
 
-for required_command in cargo rpmbuild python3 sha256sum; do
+for required_command in cargo rpmbuild python3 sha256sum dpkg-deb dpkg-shlibdeps readelf; do
     if ! command -v "${required_command}" >/dev/null 2>&1; then
         echo "missing required command: ${required_command}" >&2
         exit 1
@@ -21,7 +21,9 @@ done
 version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; print(json.load(sys.stdin)["packages"][0]["version"])')"
 release_date="$(date -u '+%a %b %d %Y')"
 package_stem="itgla-v${version}-linux-x86_64"
-output_directory="${repository_root}/dist"
+output_directory="${ITGLA_PACKAGE_OUTPUT:-${repository_root}/dist}"
+mkdir -p "${output_directory}"
+output_directory="$(cd "${output_directory}" && pwd)"
 build_root="$(mktemp -d "${TMPDIR:-/tmp}/itgla-linux-installers.XXXXXX")"
 rpm_top="${build_root}/rpmbuild"
 package_output="${build_root}/packages"
@@ -32,7 +34,14 @@ cleanup() {
 trap cleanup EXIT
 
 mkdir -p "${output_directory}" "${package_output}"
-cargo build --release --locked
+if [[ -n "${ITGLA_LINUX_BINARY:-}" ]]; then
+    python3 scripts/check-linux-abi.py "${ITGLA_LINUX_BINARY}"
+    mkdir -p target/release
+    cp "${ITGLA_LINUX_BINARY}" target/release/itgla
+else
+    cargo build --release --locked
+fi
+python3 scripts/check-linux-abi.py target/release/itgla
 
 # cargo-packager supplies the native Debian and AppImage layouts.
 packager_status=0
@@ -50,6 +59,8 @@ if [[ ${packager_status} -ne 0 ]]; then
         echo "cargo-packager failed and no verified AppImage runtime is available" >&2
         exit "${packager_status}"
     fi
+    [[ -f "${previous_appimage}.sha256" ]] || { echo "Missing trusted AppImage checksum sidecar" >&2; exit 1; }
+    (cd "$(dirname "${previous_appimage}")" && sha256sum --check "$(basename "${previous_appimage}").sha256")
     runtime_offset="$("${previous_appimage}" --appimage-offset)"
     [[ "${runtime_offset}" =~ ^[0-9]+$ ]] || { echo "cannot read AppImage runtime offset" >&2; exit 1; }
     dd if="${previous_appimage}" of="${build_root}/runtime-x86_64" bs=1 count="${runtime_offset}" status=none
@@ -63,8 +74,21 @@ fi
 deb="$(find "${package_output}" -maxdepth 1 -type f -name '*.deb' -print -quit)"
 appimage="$(find "${package_output}" -maxdepth 1 -type f -iname '*.appimage' -print -quit)"
 [[ -n "${deb}" && -n "${appimage}" ]] || { echo "cargo-packager did not produce deb/AppImage" >&2; exit 1; }
-mv "${deb}" "${output_directory}/${package_stem}.deb"
+# Calculate dependencies from the actual ELF using Debian's shared-library database.
+# A blank Depends field is never acceptable for this dynamically linked program.
+deb_root="${build_root}/deb-root"
+dpkg-deb -R "${deb}" "${deb_root}"
+mkdir -p "${build_root}/debian"
+printf 'Source: itgla\nSection: utils\nPriority: optional\nMaintainer: ITGLA <service@itgla.com>\nStandards-Version: 4.6.0\n\nPackage: itgla\nArchitecture: amd64\nDescription: IT in a glance\n' > "${build_root}/debian/control"
+# Resolve the executable from the generated layout rather than assuming /usr/bin.
+deb_executable="$(find "${deb_root}/usr" -type f -name itgla -print -quit)"
+[[ -n "${deb_executable}" ]] || { echo "DEB executable is missing" >&2; exit 1; }
+dependencies="$(cd "${build_root}" && dpkg-shlibdeps -O -e"${deb_executable}" | sed -n 's/^shlibs:Depends=//p')"
+[[ -n "${dependencies}" ]] || { echo "Cannot determine DEB runtime dependencies" >&2; exit 1; }
+python3 scripts/fix-deb-control.py "${deb_root}/DEBIAN/control" "${dependencies}"
+dpkg-deb --build --root-owner-group "${deb_root}" "${output_directory}/${package_stem}.deb"
 mv "${appimage}" "${output_directory}/${package_stem}.AppImage"
+python3 scripts/check-linux-abi.py "${output_directory}/${package_stem}.AppImage" --appimage
 
 mkdir -p "${rpm_top}"/{BUILD,BUILDROOT,RPMS,SOURCES,SPECS,SRPMS}
 cp target/release/itgla "${rpm_top}/SOURCES/itgla"
@@ -78,6 +102,7 @@ License:        Proprietary
 URL:            https://itgla.com
 Source0:        itgla
 Source1:        itgla.png
+Requires:       libxkbcommon-x11.so.0()(64bit), libxkbcommon.so.0()(64bit), libX11.so.6()(64bit), libX11-xcb.so.1()(64bit), libxcb.so.1()(64bit), libXcursor.so.1()(64bit), libXi.so.6()(64bit), libXrandr.so.2()(64bit)
 
 %description
 ITGLA is a local-first desktop inventory for IT resources.

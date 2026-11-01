@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  adminCredentialRedirect,
   daysFromUrl,
   eventName,
   isMeaningfulVisitor,
@@ -10,6 +11,19 @@ import {
   safeEqual,
   sanitizeReferrer,
 } from "./lib.mjs";
+
+test("admin URLs discard credential queries without treating them as authentication", () => {
+  for (const path of [
+    "/admin?username=example&password=not-a-real-password",
+    "/admin/?password=not-a-real-password",
+    "/admin/api/login?USERNAME=example",
+    "/admin?%70assword=not-a-real-password",
+    "/admin?password=",
+  ]) assert.equal(adminCredentialRedirect(new URL(path, "https://itgla.com")), true, path);
+  for (const path of ["/admin", "/admin/", "/admin/api/overview?days=30", "/administrator?password=example", "/?username=example"]) {
+    assert.equal(adminCredentialRedirect(new URL(path, "https://itgla.com")), false, path);
+  }
+});
 
 test("parses request paths without query strings", () => {
   assert.deepEqual(parseRequestLine("GET /downloads.html?source=nav HTTP/2.0"), {

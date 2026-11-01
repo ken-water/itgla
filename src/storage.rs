@@ -2076,6 +2076,45 @@ impl Repository {
         self.server_records_by_visibility(false)
     }
 
+    /// Presentation labels recover imported names from the explicitly named Notes column.
+    /// Raw records remain available for editing/export; credentials and arbitrary custom fields are excluded.
+    pub(crate) fn display_server_records(
+        &self,
+        hidden: bool,
+    ) -> Result<Vec<ServerRecord>, StorageError> {
+        let columns = self.server_columns()?;
+        let mut records = self.server_records_by_visibility(hidden)?;
+        for record in &mut records {
+            if record.name.trim().is_empty()
+                || record.name.eq_ignore_ascii_case("imported")
+                || record.name == record.ip_address
+            {
+                let note = columns
+                    .iter()
+                    .zip(&record.custom_values)
+                    .find_map(|(column, value)| {
+                        matches!(
+                            column.name.trim().to_lowercase().as_str(),
+                            "notes" | "note" | "\u{5907}\u{6ce8}" | "\u{8bf4}\u{660e}"
+                        )
+                        .then_some(value.trim())
+                        .filter(|v| !v.is_empty())
+                    });
+                let purpose = record.purpose.trim();
+                record.name = note
+                    .or_else(|| {
+                        (!purpose.is_empty()
+                            && !purpose.eq_ignore_ascii_case("imported")
+                            && purpose != record.ip_address)
+                            .then_some(purpose)
+                    })
+                    .unwrap_or(&record.ip_address)
+                    .to_owned();
+            }
+        }
+        Ok(records)
+    }
+
     pub fn hidden_server_records(&self) -> Result<Vec<ServerRecord>, StorageError> {
         self.server_records_by_visibility(true)
     }

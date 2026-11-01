@@ -21,3 +21,9 @@
 
 # Release binaries are fetched from immutable GitHub release assets for CI/deploy.
 /website/downloads/v0.4.0/
+
+# Local build, browser and investigation evidence.
+/output/
+/.playwright-cli/
+__pycache__/
+/website/downloads/v0.6.2/

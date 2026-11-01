@@ -47,6 +47,31 @@ pub struct Entry {
     pub updated_at: String,
 }
 
+/// Resolve legacy auto-created placeholders without rewriting a user's service name or database.
+pub(crate) fn display_service_name(
+    entry: &Entry,
+    servers: &[crate::domain::ServerRecord],
+) -> String {
+    let d = &entry.details;
+    if entry.kind == 0
+        && d.pending_confirmation
+        && entry.hosts.len() == 1
+        && let Some(host) = servers.iter().find(|s| s.id == entry.hosts[0])
+    {
+        let suffix = if d.protocol.trim().is_empty() {
+            format!("Port {}", d.ports)
+        } else {
+            d.protocol.trim().to_ascii_uppercase()
+        };
+        if d.name.eq_ignore_ascii_case(&format!("imported - {suffix}"))
+            || d.name == format!("{} - {suffix}", host.ip_address)
+        {
+            return format!("{} - {suffix}", host.name);
+        }
+    }
+    d.name.clone()
+}
+
 fn invalid(message: &str) -> StorageError {
     StorageError::InvalidImport(message.into())
 }
@@ -325,6 +350,8 @@ impl Repository {
         let mut hosts = self.connection.prepare(
             "SELECT server_id FROM operational_hosts WHERE inventory_id=?1 ORDER BY server_id",
         )?;
+        let mut display_servers = self.display_server_records(false)?;
+        display_servers.extend(self.display_server_records(true)?);
         values
             .into_iter()
             .map(
@@ -338,7 +365,7 @@ impl Repository {
                     verification_due,
                     updated_at,
                 )| {
-                    Ok(Entry {
+                    let mut entry = Entry {
                         id,
                         kind,
                         details: serde_json::from_str(&json)?,
@@ -350,7 +377,9 @@ impl Repository {
                         hosts: hosts
                             .query_map([id], |row| row.get(0))?
                             .collect::<Result<Vec<_>, _>>()?,
-                    })
+                    };
+                    entry.details.name = display_service_name(&entry, &display_servers);
+                    Ok(entry)
                 },
             )
             .collect()
@@ -757,8 +786,8 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
     let kind = window.get_inventory_form().kind;
     let query = window.get_inventory_query().trim().to_lowercase();
     let host_filter = i64::from(window.get_inventory_server_filter());
-    let servers = repository.server_records()?;
-    let hidden_servers = repository.hidden_server_records()?;
+    let servers = repository.display_server_records(false)?;
+    let hidden_servers = repository.display_server_records(true)?;
     let contexts = repository.asset_contexts()?;
     let mut rows = Vec::new();
     let mut grid = Vec::new();
@@ -889,6 +918,7 @@ pub fn refresh(window: &AppWindow, repository: &Repository) -> Result<(), Storag
             });
         }
     }
+    window.set_inventory_column_weights(crate::tables::inventory_widths(&grid, kind));
     window.set_inventory_grid(crate::tables::sorted(
         grid,
         if kind == 0 {
@@ -1011,8 +1041,8 @@ pub fn setup(window: &AppWindow, repository: Rc<RefCell<Repository>>) {
             let repo = repo.borrow();
             let entries = repo.inventory_entries()?;
             let entry = entries.iter().find(|e| e.id == i64::from(id)).ok_or_else(|| invalid("Record no longer exists"))?;
-            let mut servers = repo.server_records()?;
-            servers.extend(repo.hidden_server_records()?);
+            let mut servers = repo.display_server_records(false)?;
+            servers.extend(repo.display_server_records(true)?);
             let mut sections = Vec::new();
             for host in &entry.hosts {
                 if let Some(server) = servers.iter().find(|s| s.id == *host) {
@@ -1317,6 +1347,92 @@ mod tests {
             name: name.into(),
             ..Details::default()
         }
+    }
+
+    #[test]
+    fn imported_host_names_and_seeded_services_use_notes_without_mutating_records()
+    -> Result<(), StorageError> {
+        i_slint_backend_testing::init_no_event_loop();
+        let mut repo = Repository::in_memory()?;
+        let server = repo.save_server(
+            None,
+            &crate::domain::ServerDraft {
+                name: "imported".into(),
+                tags: vec!["imported".into()],
+                ip_address: "192.0.2.10".into(),
+                ports: "22".into(),
+                environment: "production".into(),
+                status: "active".into(),
+                purpose: "imported".into(),
+            },
+        )?;
+        let column = repo.save_server_column(None, "Notes", "text", "")?;
+        repo.connection.execute("INSERT INTO server_custom_values(server_id,column_id,value) VALUES(?1,?2,'Customer database')", params![server,column])?;
+        let original: String = repo.connection.query_row(
+            "SELECT data FROM operational_inventory LIMIT 1",
+            [],
+            |r| r.get(0),
+        )?;
+        let w = AppWindow::new().expect("test window");
+        refresh(&w, &repo)?;
+        assert_eq!(
+            w.get_inventory_grid()
+                .row_data(0)
+                .unwrap()
+                .cells
+                .row_data(0)
+                .unwrap(),
+            "Customer database - SSH"
+        );
+        assert_eq!(
+            w.get_inventory_grid()
+                .row_data(0)
+                .unwrap()
+                .cells
+                .row_data(1)
+                .unwrap(),
+            "Customer database (192.0.2.10)"
+        );
+        crate::topology::refresh(&w, &repo)?;
+        assert!(
+            w.get_topology_nodes()
+                .iter()
+                .any(|n| n.kind == "server" && n.label == "Customer database")
+        );
+        assert!(
+            w.get_topology_nodes()
+                .iter()
+                .any(|n| n.kind == "service" && n.label == "Customer database - SSH")
+        );
+        assert_eq!(repo.server_records()?[0].name, "imported");
+        let unchanged: String = repo.connection.query_row(
+            "SELECT data FROM operational_inventory LIMIT 1",
+            [],
+            |r| r.get(0),
+        )?;
+        assert_eq!(original, unchanged);
+        repo.connection.execute(
+            "UPDATE server_custom_values SET value='Renamed database' WHERE server_id=?1",
+            [server],
+        )?;
+        assert_eq!(
+            repo.inventory_entries()?[0].details.name,
+            "Renamed database - SSH"
+        );
+        repo.connection.execute(
+            "UPDATE operational_inventory SET data=json_set(data,'$.name','Monitoring agent')",
+            [],
+        )?;
+        assert_eq!(
+            repo.inventory_entries()?[0].details.name,
+            "Monitoring agent"
+        );
+        repo.connection.execute(
+            "UPDATE server_custom_values SET value='' WHERE server_id=?1",
+            [server],
+        )?;
+        assert_eq!(repo.display_server_records(false)?[0].name, "192.0.2.10");
+        Ok(())
     }
 
     #[test]

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.6.2 - 2026-11-01
+
+- Simplify inventory navigation and actions; align table headers during horizontal scrolling.
+- Resolve imported host and pending service display names from retained notes, without rewriting stored records.
+- Align connection-map headings with nodes at each text size and viewport width.
+- Improve Windows installer upgrade/recovery, optional shortcuts and compression; retain user workspaces on uninstall.
+- Build Linux packages against glibc 2.35 and verify package contents and checksums.
+- Refresh the homepage and screenshots; serve accessible error pages with the original HTTP status.
+- Prevent credentials in admin URLs and logs; load charts after sign-in and bound API waits.
+
 ## 0.6.1 - 2026-10-31
 
 - Publish businesses, connection map, compact inventory tables, host details and appearance improvements in the desktop app.

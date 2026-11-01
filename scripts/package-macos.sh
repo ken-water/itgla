@@ -18,13 +18,17 @@ case "$(uname -m)" in
     *) echo "Unsupported macOS architecture" >&2; exit 1 ;;
 esac
 package_stem="itgla-v${version}-macos-${package_arch}"
-output_directory="${repository_root}/dist"
+output_directory="${ITGLA_PACKAGE_OUTPUT:-${repository_root}/dist}"
+mkdir -p "${output_directory}"
+output_directory="$(cd "${output_directory}" && pwd)"
+build_root="$(mktemp -d "${TMPDIR:-/tmp}/itgla-macos-package.XXXXXX")"
+trap 'rm -rf -- "${build_root}"' EXIT
 mkdir -p "${output_directory}"
 
 cargo build --release --locked
 lipo target/release/itgla -verify_arch "${package_arch}"
-cargo packager --release --formats dmg --out-dir "${output_directory}"
-dmg="$(find "${output_directory}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
+cargo packager --release --formats dmg --out-dir "${build_root}"
+dmg="$(find "${build_root}" -maxdepth 1 -type f -name '*.dmg' -print -quit)"
 [[ -n "${dmg}" ]] || { echo "cargo-packager did not produce a DMG" >&2; exit 1; }
 mv "${dmg}" "${output_directory}/${package_stem}.dmg"
 (

@@ -42,6 +42,11 @@ export function passwordDigest(password, salt) {
   return crypto.scryptSync(String(password), String(salt), 64).toString("hex");
 }
 
+export function adminCredentialRedirect(url) {
+  const adminPath = url.pathname === "/admin" || url.pathname.startsWith("/admin/");
+  return adminPath && [...url.searchParams.keys()].some((key) => /^(username|password)$/i.test(key));
+}
+
 export function parseRequestLine(requestLine) {
   const match = /^([A-Z]+)\s+(\S+)\s+HTTP\/\d(?:\.\d)?$/.exec(requestLine || "");
   if (!match) return null;

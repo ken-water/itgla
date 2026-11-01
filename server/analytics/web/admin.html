@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>ITGLA Site Analytics</title>
     <link rel="stylesheet" href="/admin/admin.css" />
-    <script src="/admin/chart.umd.min.js" defer></script>
-    <script src="/admin/admin.js" defer></script>
-    <script src="/admin/feedback.js" defer></script>
+    <script src="/admin/admin.js" type="module"></script>
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to main content</a>
@@ -17,14 +15,16 @@
         <p class="eyebrow">Administrator access</p>
         <h1 id="login-title">Site analytics</h1>
         <p class="login-copy">Review website traffic, downloads, and failed requests.</p>
-        <form id="login-form">
+        <form id="login-form" method="post" action="/admin/api/login">
           <label for="username">Username</label>
-          <input id="username" name="username" autocomplete="username" required />
+          <input id="username" autocomplete="username" required />
           <label for="password">Password</label>
-          <input id="password" name="password" type="password" autocomplete="current-password" required />
+          <input id="password" type="password" autocomplete="current-password" required />
           <p id="login-error" class="form-error" role="alert"></p>
-          <button id="login-button" type="submit">Sign in</button>
+          <button id="login-button" type="submit" disabled>Preparing sign-in…</button>
+          <p id="login-status" class="muted" role="status">Preparing secure sign-in. If this message remains, reload the page or check your connection.</p>
         </form>
+        <noscript><p class="login-copy">Enable JavaScript and reload this page to sign in.</p></noscript>
       </section>
 
       <section id="dashboard" hidden>

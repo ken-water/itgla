@@ -19,7 +19,8 @@ button, input, select { font: inherit; }
 button, select { min-height: 42px; }
 button { border: 1px solid var(--teal-dark); border-radius: var(--radius); padding: 9px 16px; background: var(--teal-dark); color: #fff; font-weight: 700; cursor: pointer; }
 button:hover { background: #0e2f28; }
-button:disabled { cursor: wait; opacity: .62; }
+button:disabled { cursor: not-allowed; opacity: .62; }
+button[aria-busy="true"] { cursor: progress; }
 input, select { width: 100%; border: 1px solid #bdcac6; border-radius: var(--radius); padding: 10px 12px; background: #fff; color: var(--ink); }
 :focus-visible { outline: 3px solid #f1b947; outline-offset: 2px; }
 .skip-link { position: fixed; top: 8px; left: 8px; z-index: 20; transform: translateY(-150%); background: #fff; padding: 8px 12px; color: #111; }

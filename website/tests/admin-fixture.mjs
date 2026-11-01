@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { adminCredentialRedirect } from "../../server/analytics/lib.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../server/analytics/web");
 const sessionCookie = "itgla_admin_session=test-session";
@@ -65,10 +66,16 @@ function json(response, status, body, headers = {}) {
 
 const server = http.createServer(async (request, response) => {
   const url = new URL(request.url, "http://127.0.0.1:4174");
+  if (adminCredentialRedirect(url)) {
+    response.writeHead(303, { Location: "/admin", "Cache-Control": "no-store" });
+    return response.end();
+  }
   if (request.method === "POST" && url.pathname === "/admin/api/login") {
     let body = "";
     for await (const chunk of request) body += chunk;
-    const credentials = JSON.parse(body || "{}");
+    let credentials;
+    try { credentials = JSON.parse(body || "{}"); }
+    catch { return json(response, 401, { message: "Incorrect username or password." }); }
     if (credentials.username !== "admin" || credentials.password !== "test-password") return json(response, 401, { message: "Incorrect username or password." });
     return json(response, 200, { status: "ok" }, { "Set-Cookie": `${sessionCookie}; Path=/admin; HttpOnly; SameSite=Strict` });
   }

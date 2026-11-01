@@ -163,7 +163,7 @@ fn resources(repo: &Repository) -> Result<Vec<Resource>, StorageError> {
             },
         });
     }
-    for s in repo.server_records()? {
+    for s in repo.display_server_records(false)? {
         out.push(Resource {
             id: s.id,
             kind: "server".into(),
@@ -1315,6 +1315,10 @@ mod tests {
             .invoke_accessible_default_action();
         assert_eq!(w.get_active_tab(), 7, "selection must stay on map");
         assert!(!w.get_inventory_editor_requested());
+        ElementHandle::find_by_accessible_label(&w, "Graph tools")
+            .next()
+            .expect("graph tools disclosure")
+            .invoke_accessible_default_action();
         for label in ["Page down", "Page up", "Top"] {
             ElementHandle::find_by_accessible_label(&w, label)
                 .next()
@@ -1322,9 +1326,9 @@ mod tests {
                 .invoke_accessible_default_action();
             assert_eq!(w.get_active_tab(), 7);
         }
-        ElementHandle::find_by_accessible_label(&w, "Edit record")
+        ElementHandle::find_by_accessible_label(&w, "View details")
             .next()
-            .expect("explicit edit action")
+            .expect("explicit view action")
             .invoke_accessible_default_action();
         assert_eq!(w.get_active_tab(), 4);
         assert_eq!(w.get_inventory_form().id, api.id as i32);

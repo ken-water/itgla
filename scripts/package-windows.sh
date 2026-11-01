@@ -15,7 +15,9 @@ cd "${repository_root}"
 version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json, sys; data = json.load(sys.stdin); print(data["packages"][0]["version"])')"
 package_name="itgla-v${version}-windows-x86_64"
 executable="target/${target}/release/itgla.exe"
-output_directory="dist"
+output_directory="${ITGLA_PACKAGE_OUTPUT:-${repository_root}/dist}"
+mkdir -p "${output_directory}"
+output_directory="$(cd "${output_directory}" && pwd)"
 archive="${output_directory}/${package_name}.zip"
 checksum="${archive}.sha256"
 installer="${output_directory}/${package_name}-setup.exe"
@@ -30,6 +32,32 @@ trap cleanup EXIT
 convert assets/itgla.png -define icon:auto-resize=256,128,64,48,32,16 "${temporary_root}/itgla.ico"
 cat > "${temporary_root}/itgla.rc" <<EOF
 1 ICON "${temporary_root}/itgla.ico"
+1 VERSIONINFO
+FILEVERSION ${version//./,},0
+PRODUCTVERSION ${version//./,},0
+FILEFLAGSMASK 0x3fL
+FILEFLAGS 0x0L
+FILEOS 0x40004L
+FILETYPE 0x1L
+BEGIN
+ BLOCK "StringFileInfo"
+ BEGIN
+  BLOCK "040904B0"
+  BEGIN
+   VALUE "CompanyName", "ITGLA\\0"
+   VALUE "FileDescription", "ITGLA - IT in a glance\\0"
+   VALUE "FileVersion", "${version}\\0"
+   VALUE "ProductName", "ITGLA\\0"
+   VALUE "ProductVersion", "${version}\\0"
+   VALUE "OriginalFilename", "itgla.exe\\0"
+   VALUE "LegalCopyright", "Copyright ITGLA\\0"
+  END
+ END
+ BLOCK "VarFileInfo"
+ BEGIN
+  VALUE "Translation", 0x0409, 1200
+ END
+END
 EOF
 x86_64-w64-mingw32-windres "${temporary_root}/itgla.rc" -O coff -o "${temporary_root}/itgla.res"
 RUSTFLAGS="-C link-arg=${temporary_root}/itgla.res" cargo build --release --locked --target "${target}"
@@ -46,6 +74,11 @@ cp README.md CHANGELOG.md "${temporary_root}/${package_name}/"
 cp docs/windows-package.md "${temporary_root}/${package_name}/WINDOWS-README.md"
 x86_64-w64-mingw32-strip "${temporary_root}/${package_name}/itgla.exe"
 
+# A configured signer must sign AND verify the supplied file, returning nonzero on failure.
+# Pass an executable path, never shell code. Signing happens before ZIP/NSIS compression.
+if [[ -n "${ITGLA_WINDOWS_SIGNER:-}" ]]; then
+    "${ITGLA_WINDOWS_SIGNER}" "${temporary_root}/${package_name}/itgla.exe"
+fi
 file "${temporary_root}/${package_name}/itgla.exe" | grep 'PE32+ executable.*x86-64' >/dev/null
 x86_64-w64-mingw32-objdump -p "${temporary_root}/${package_name}/itgla.exe" | grep 'Subsystem.*Windows GUI' >/dev/null
 
@@ -59,67 +92,15 @@ mv "${temporary_root}/${package_name}.zip" "${archive}"
     sha256sum "${package_name}.zip" > "${package_name}.zip.sha256"
 )
 
-cat > "${temporary_root}/itgla.nsi" <<EOF
-Unicode true
-!include MUI2.nsh
+python3 scripts/create-installer-art.py --output "${temporary_root}/art"
+version_quad="${version}.0"
+makensis -DVERSION="${version}" -DVERSION_QUAD="${version_quad}" \
+    -DPAYLOAD="${temporary_root}/${package_name}" -DART="${temporary_root}/art" \
+    -DOUTPUT="${installer}" packaging/windows/installer.nsi
 
-Name "ITGLA"
-OutFile "${repository_root}/${installer}"
-InstallDir "\$LOCALAPPDATA\\ITGLA"
-RequestExecutionLevel user
-ShowInstDetails show
-ShowUnInstDetails show
-
-!define MUI_ABORTWARNING
-!define MUI_FINISHPAGE_RUN "\$INSTDIR\\itgla.exe"
-!define MUI_FINISHPAGE_RUN_TEXT "Launch ITGLA"
-
-!insertmacro MUI_PAGE_WELCOME
-!insertmacro MUI_PAGE_DIRECTORY
-!insertmacro MUI_PAGE_INSTFILES
-!insertmacro MUI_PAGE_FINISH
-!insertmacro MUI_UNPAGE_CONFIRM
-!insertmacro MUI_UNPAGE_INSTFILES
-!insertmacro MUI_LANGUAGE "English"
-
-Section "ITGLA" SecMain
-  SetOutPath "\$INSTDIR"
-  File "${temporary_root}/${package_name}/itgla.exe"
-  File "${temporary_root}/${package_name}/itgla.ico"
-  File "${repository_root}/README.md"
-  File "${repository_root}/CHANGELOG.md"
-  WriteUninstaller "\$INSTDIR\\Uninstall.exe"
-
-  CreateDirectory "\$SMPROGRAMS\\ITGLA"
-  CreateShortcut "\$SMPROGRAMS\\ITGLA\\ITGLA.lnk" "\$INSTDIR\\itgla.exe" "" "\$INSTDIR\\itgla.ico" 0
-  CreateShortcut "\$SMPROGRAMS\\ITGLA\\Uninstall ITGLA.lnk" "\$INSTDIR\\Uninstall.exe"
-  CreateShortcut "\$DESKTOP\\ITGLA.lnk" "\$INSTDIR\\itgla.exe" "" "\$INSTDIR\\itgla.ico" 0
-
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "DisplayName" "ITGLA"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "DisplayVersion" "${version}"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "Publisher" "ITGLA"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "InstallLocation" "\$INSTDIR"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "DisplayIcon" "\$INSTDIR\\itgla.exe"
-  WriteRegStr HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "UninstallString" "\$INSTDIR\\Uninstall.exe"
-  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "NoModify" 1
-  WriteRegDWORD HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA" "NoRepair" 1
-SectionEnd
-
-Section "Uninstall"
-  Delete "\$DESKTOP\\ITGLA.lnk"
-  Delete "\$SMPROGRAMS\\ITGLA\\ITGLA.lnk"
-  Delete "\$SMPROGRAMS\\ITGLA\\Uninstall ITGLA.lnk"
-  RMDir "\$SMPROGRAMS\\ITGLA"
-  Delete "\$INSTDIR\\itgla.exe"
-  Delete "\$INSTDIR\\itgla.ico"
-  Delete "\$INSTDIR\\README.md"
-  Delete "\$INSTDIR\\CHANGELOG.md"
-  Delete "\$INSTDIR\\Uninstall.exe"
-  RMDir "\$INSTDIR"
-  DeleteRegKey HKCU "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\ITGLA"
-SectionEnd
-EOF
-makensis "${temporary_root}/itgla.nsi" >/dev/null
+if [[ -n "${ITGLA_WINDOWS_SIGNER:-}" ]]; then
+    "${ITGLA_WINDOWS_SIGNER}" "${installer}"
+fi
 (
     cd "${output_directory}"
     sha256sum "${package_name}-setup.exe" > "${package_name}-setup.exe.sha256"

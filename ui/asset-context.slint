@@ -11,6 +11,10 @@ export component AssetContextEditor inherits VerticalLayout {
     in-out property <AssetContextForm> form;
     in property <bool> show-environment: true;
     callback open-link(string);
+    private property <bool> expanded: false;
+    spacing: 8px;
+    Button { compact: true; quiet: true; checkable: true; checked <=> root.expanded; text: root.expanded ? "Hide responsibility & references" : "Responsibility & references (optional)"; }
+    if root.expanded: VerticalLayout {
     spacing: 8px;
     Text { text: "Responsibility & references"; color: UiColors.text; font-weight: 700; font-size: UiColors.body-size + 1px; }
     Text { text: "Optional. Blank means not recorded. Enter Unknown or Not applicable explicitly when appropriate."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
@@ -36,4 +40,5 @@ export component AssetContextEditor inherits VerticalLayout {
     CheckBox { text: "I checked this information"; checked <=> root.form.checked-now; }
     if root.form.checked-now: LineEdit { accessible-label: "Checked by"; placeholder-text: "Checked by (optional)"; text <=> root.form.reviewer; }
     Text { text: "Save applies this check. Edits require a new check. This is not live monitoring."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+    }
 }

@@ -20,14 +20,22 @@ for (const viewport of viewports) {
     await expect(page.locator(".hero-lead")).toHaveText("Know what you have. See how it connects.");
     await expect(page.getByRole("link", { name: "Download for Windows", exact: true }).first()).toBeVisible();
     await expect(page.getByRole("link", { name: /All platforms & checksums/ }).first()).toBeVisible();
-    await expect(page.locator(".hero-product img")).toHaveJSProperty("naturalWidth", 1400);
+    await expect(page.locator(".hero-product img")).toHaveJSProperty("naturalWidth", viewport.width <= 560 ? 700 : 1400);
     await expect(page.locator(".hero-product img")).toHaveAttribute("alt", /linked hosting servers/);
-    await expect(page.getByText("Desktop inventory · 0.6.1", { exact: false })).toBeVisible();
+    await expect(page.getByText("Desktop inventory · 0.6.2", { exact: false })).toBeVisible();
+    await expect(page.locator(".site-nav a[href='/signin.html']")).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: "Import your table" })).toBeHidden();
+    await page.getByText("Starting from a spreadsheet?", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Sort and filter" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Copy exactly" })).toBeVisible();
     await expect(page.locator(".manual-boundary")).toContainText("does not scan servers");
     await expect(page.locator(".coverage-list article")).toHaveCount(3);
+    await expect(page.locator(".coverage-list")).toBeHidden();
+    await page.getByText("Explore services, domains and relationships", { exact: true }).click();
+    await expect(page.locator(".coverage-list")).toBeVisible();
+    await expect(page.locator(".connection-example img")).toHaveJSProperty("naturalWidth", 1400);
+    await expect(page.locator(".tour-steps")).toContainText("Choose View");
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
@@ -39,11 +47,11 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.2" })).toBeVisible();
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
   await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
-    "https://itgla.com/downloads/v0.6.1/itgla-v0.6.1-windows-x86_64-setup.exe",
+    "https://itgla.com/downloads/v0.6.2/itgla-v0.6.2-windows-x86_64-setup.exe",
   );
 
   for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download Apple silicon DMG", "Download Intel DMG", "Download sha256sums"]) {
@@ -55,23 +63,23 @@ test("download page exposes current verified artifacts", async ({ page, request 
   );
   await page.goto("/release-notes.html");
   await expect(page.getByRole("heading", { name: "Release notes" })).toBeVisible();
-  await expect(page.getByText("v0.6.1 · October 31, 2026").first()).toBeVisible();
+  await expect(page.getByText("v0.6.2 · November 1, 2026").first()).toBeVisible();
   await expect(page.getByText("v0.3.29 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.3.28 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.0.1 · September 19, 2026")).toBeVisible();
 
   const artifacts = [
-    "itgla-v0.6.1-windows-x86_64-setup.exe",
-    "itgla-v0.6.1-windows-x86_64.zip",
-    "itgla-v0.6.1-linux-x86_64.deb",
-    "itgla-v0.6.1-linux-x86_64.rpm",
-    "itgla-v0.6.1-linux-x86_64.AppImage",
-    "itgla-v0.6.1-macos-arm64.dmg",
-    "itgla-v0.6.1-macos-x86_64.dmg",
+    "itgla-v0.6.2-windows-x86_64-setup.exe",
+    "itgla-v0.6.2-windows-x86_64.zip",
+    "itgla-v0.6.2-linux-x86_64.deb",
+    "itgla-v0.6.2-linux-x86_64.rpm",
+    "itgla-v0.6.2-linux-x86_64.AppImage",
+    "itgla-v0.6.2-macos-arm64.dmg",
+    "itgla-v0.6.2-macos-x86_64.dmg",
     "sha256sums",
   ];
   for (const artifact of artifacts) {
-    const response = await request.head(`${process.env.ITGLA_RELEASE_ORIGIN || ""}/downloads/v0.6.1/${artifact}`);
+    const response = await request.head(`${process.env.ITGLA_RELEASE_ORIGIN || ""}/downloads/v0.6.2/${artifact}`);
     expect(response.ok(), `${artifact} should be downloadable`).toBeTruthy();
     expect(Number(response.headers()["content-length"] ?? 0), `${artifact} should not be empty`).toBeGreaterThan(0);
   }
@@ -154,7 +162,7 @@ test("website account remains optional along the desktop download journey", asyn
   await page.getByRole("link", { name: "Website account (optional)" }).click();
   await expect(page.locator(".account-boundary")).toContainText("does not sync your desktop inventory");
   await page.getByRole("link", { name: "Download the desktop app" }).click();
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.1" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.2" })).toBeVisible();
 });
 
 test("download platform anchors and verification instructions are usable", async ({ page }) => {
@@ -208,7 +216,7 @@ for (const viewport of viewports) {
     await page.goto("/downloads.html");
     for (const [label, arch] of [["Apple silicon", "arm64"], ["Intel", "x86_64"]]) {
       await expect(page.getByRole("heading", { name: `macOS 14+ \u00b7 ${label}`, exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `https://itgla.com/downloads/v0.6.1/itgla-v0.6.1-macos-${arch}.dmg`);
+      await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `https://itgla.com/downloads/v0.6.2/itgla-v0.6.2-macos-${arch}.dmg`);
     }
     const downloads = page.locator(".download-actions a");
     await expect(downloads).toHaveCount(7);
