@@ -82,6 +82,10 @@ const server = http.createServer(async (request, response) => {
   if (request.method === "POST" && url.pathname === "/admin/api/logout") return json(response, 200, { status: "ok" }, { "Set-Cookie": "itgla_admin_session=; Path=/admin; Max-Age=0; HttpOnly; SameSite=Strict" });
   const authenticated = String(request.headers.cookie || "").includes(sessionCookie);
   if (url.pathname === "/admin/api/me") return json(response, 200, { authenticated, username: authenticated ? "admin" : null });
+  if (url.pathname === "/admin/api/download-events-page") {
+    const events = fixtures["/admin/api/downloads"].events.map((row, index) => ({ ...row, id: String(index + 1) }));
+    return authenticated ? json(response, 200, { events, next_cursor: null }) : json(response, 401, { message: "Administrator sign-in required." });
+  }
   if (url.pathname === "/admin/api/download-summary" || url.pathname === "/admin/api/download-events") {
     const data = fixtures["/admin/api/downloads"];
     return authenticated ? json(response, 200, url.pathname.endsWith("summary") ? data.summary : data.events) : json(response, 401, { message: "Administrator sign-in required." });

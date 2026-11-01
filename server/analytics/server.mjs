@@ -422,6 +422,22 @@ async function downloadEvents(days) {
   return result.rows;
 }
 
+async function downloadEventPage(days, cursor = null) {
+  const result = await pool.query(
+    `select id,event_name,path,method,status_code,bytes_sent,referrer,user_agent,country_code,country_name,occurred_at
+     from analytics_events
+     where occurred_at >= now() - ($1::int * interval '1 day')
+       and visitor_quality='meaningful'
+       and event_name in ('download_page_view','download_success','download_failure','download')
+       and ($2::bigint is null or (occurred_at,id) <
+         (select occurred_at,id from analytics_events where id=$2::bigint))
+     order by occurred_at desc,id desc limit 26`,
+    [days, cursor],
+  );
+  const events = result.rows.slice(0, 25);
+  return { events, next_cursor: result.rows.length > 25 ? String(events.at(-1).id) : null };
+}
+
 async function downloadSummary(days) {
   const summary = await pool.query(
     `with page_visits as (
@@ -680,6 +696,13 @@ async function handle(request, response) {
     if (pathname === "/admin/api/download-countries") return json(response, 200, await downloadCountries(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
+    if (pathname === "/admin/api/download-events-page") {
+      const cursor = url.searchParams.get("cursor");
+      if (cursor !== null && (!/^[1-9][0-9]{0,18}$/.test(cursor) || BigInt(cursor) > 9223372036854775807n)) {
+        return json(response, 400, { message: "Invalid download page cursor." });
+      }
+      return json(response, 200, await downloadEventPage(days, cursor));
+    }
     if (pathname === "/admin/api/download-summary") return json(response, 200, await downloadSummary(days));
     if (pathname === "/admin/api/download-events") return json(response, 200, await downloadEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));

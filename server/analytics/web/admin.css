@@ -121,3 +121,6 @@ td.numeric { font-variant-numeric: tabular-nums; }
 .feedback-entry-head span { margin-left: auto; color: #126a57; font-weight: 700; }
 .feedback-entry p { white-space: pre-wrap; margin: 14px 0; color: #18201d; line-height: 1.6; }
 .feedback-entry-foot button { border: 0; background: transparent; color: #126a57; cursor: pointer; font: inherit; font-weight: 700; }
+
+.download-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
+.download-pagination p { margin: 0; }

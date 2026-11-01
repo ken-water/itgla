@@ -33,15 +33,16 @@ test('all admin dates use full ISO date and 24 hour local time including midnigh
 
 test('stalled download details cannot hide funnel or charts; transient reads retry once',async({page})=>{
  await page.clock.install();let attempts=0;
- await page.route('**/admin/api/download-events?*',()=>{attempts++;});
+ await page.route('**/admin/api/download-events-page?*',()=>{attempts++;});
  await page.goto('http://127.0.0.1:4174/admin');
  await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
- const pending=page.waitForRequest('**/admin/api/download-events?*');await page.getByRole('tab',{name:'Downloads',exact:true}).click();await pending;
+ const pending=page.waitForRequest('**/admin/api/download-events-page?*');await page.getByRole('tab',{name:'Downloads',exact:true}).click();await pending;
  await expect(page.locator('#downloads-funnel')).toContainText('211');
  await expect(page.locator('#downloads-metrics .metric').nth(3)).toContainText('124');
  await expect(page.locator('#downloads-trend > svg')).toBeVisible();
- const retry=page.waitForRequest('**/admin/api/download-events?*');await page.clock.fastForward(15001);await retry;await page.clock.fastForward(15001);
- await expect(page.locator('#dashboard-error')).toContainText('Download activity:');
+ const retry=page.waitForRequest('**/admin/api/download-events-page?*');await page.clock.fastForward(15001);await retry;await page.clock.fastForward(15001);
+ await expect(page.locator('#download-page-status')).toContainText('Retry this batch');
+ await expect(page.locator('#dashboard-error')).toBeHidden();
  await expect(page.locator('#downloads-funnel')).toContainText('211');expect(attempts).toBe(2);
 });
 
@@ -52,4 +53,26 @@ test('one transient report failure recovers automatically',async({page})=>{
  await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
  await page.getByRole('tab',{name:'Downloads',exact:true}).click();await expect(page.locator('#downloads-funnel')).toContainText('211');expect(attempts).toBe(2);
  await expect(page.locator('#dashboard-error')).toBeHidden();
+});
+
+test('download pagination retains rows on failed batches and retries without duplicates',async({page})=>{
+ let secondAttempts=0;
+ const rows=(start)=>Array.from({length:25},(_,i)=>({id:String(start+i),occurred_at:'2026-09-25T14:25:00Z',event_name:'download_success',path:'/package-'+(start+i),status_code:200}));
+ await page.route('**/admin/api/download-events-page?*',route=>{
+  const cursor=new URL(route.request().url()).searchParams.get('cursor');
+  if(!cursor)return route.fulfill({json:{events:rows(1),next_cursor:'25'}});
+  if(++secondAttempts===1)return route.abort();
+  return route.fulfill({json:{events:rows(26),next_cursor:null}});
+ });
+ await page.goto('http://127.0.0.1:4174/admin');
+ await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await page.getByRole('tab',{name:'Downloads',exact:true}).click();await expect(page.locator('#downloads-events tbody tr')).toHaveCount(25);
+ await page.getByRole('button',{name:'Load more',exact:true}).click();
+ await expect(page.locator('#download-page-status')).toContainText('Existing requests are kept');
+ await expect(page.locator('#downloads-events tbody tr')).toHaveCount(25);
+ await page.getByRole('button',{name:'Retry this batch',exact:true}).click();
+ await expect(page.locator('#downloads-events tbody tr')).toHaveCount(50);
+ await expect(page.locator('#download-more')).toBeHidden();expect(secondAttempts).toBe(2);
+ await page.getByRole('button',{name:'Refresh',exact:true}).click();
+ await expect(page.locator('#downloads-events tbody tr')).toHaveCount(25);
 });

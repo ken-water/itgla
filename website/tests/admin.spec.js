@@ -47,7 +47,7 @@ for (const viewport of [
 }
 
 test("analytics API rejects unauthenticated metrics", async ({ request }) => {
-  for (const name of ["overview", "download-summary", "download-events"]) {
+  for (const name of ["overview", "download-summary", "download-events", "download-events-page"]) {
     const response = await request.get(`http://127.0.0.1:4174/admin/api/${name}`);
     expect(response.status()).toBe(401);
   }

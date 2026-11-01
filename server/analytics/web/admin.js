@@ -276,6 +276,43 @@ function renderErrors(target, rows) {
   ]);
 }
 
+let downloadPage = { days: null, rows: [], cursor: null, generation: 0, busy: false, loaded: false };
+function updateDownloadPage(page, append = false) {
+  const seen = new Set(append ? downloadPage.rows.map((row) => String(row.id)) : []);
+  const incoming = page.events.filter((row) => !seen.has(String(row.id)));
+  downloadPage.rows = append ? [...downloadPage.rows, ...incoming] : incoming;
+  downloadPage.cursor = page.next_cursor;
+  downloadPage.loaded = true;
+  renderDownloadEvents("downloads-events", downloadPage.rows);
+  element("download-page-status").textContent = `Showing ${downloadPage.rows.length} requests.${page.next_cursor ? " Load more to see older requests." : " All requests for this period are shown."}`;
+  element("download-more").hidden = !page.next_cursor;
+  element("download-more").textContent = "Load more";
+}
+
+element("download-more").addEventListener("click", async () => {
+  const state = downloadPage;
+  if (state.busy || state.generation !== dashboardGeneration) return;
+  state.busy = true;
+  const button = element("download-more");
+  button.disabled = true;
+  element("download-page-status").textContent = "Loading requests...";
+  try {
+    const suffix = state.loaded && state.cursor ? `&cursor=${encodeURIComponent(state.cursor)}` : "";
+    const page = await api(`/download-events-page?days=${state.days}${suffix}`);
+    if (state !== downloadPage || state.generation !== dashboardGeneration) return;
+    updateDownloadPage(page, state.loaded);
+  } catch (error) {
+    if (state !== downloadPage || state.generation !== dashboardGeneration) return;
+    if (error.status === 401) { showLogin(); return; }
+    element("download-page-status").textContent = `${error.message} Existing requests are kept. Retry this batch.`;
+    button.textContent = "Retry this batch";
+    button.hidden = false;
+  } finally {
+    state.busy = false;
+    if (state === downloadPage) button.disabled = false;
+  }
+});
+
 let dashboardGeneration = 0;
 async function loadDashboard() {
   const generation = ++dashboardGeneration;
@@ -292,7 +329,7 @@ async function loadDashboard() {
     error.hidden = false;
   }
   async function section(path, label, targets, render, chart) {
-    targets.forEach((id) => { element(id).innerHTML = empty(`Loading ${label.toLowerCase()}…`); });
+    targets.forEach((id) => { if (path === "/download-events-page" && downloadPage.rows.length) return; element(id).innerHTML = empty(`Loading ${label.toLowerCase()}…`); });
     try {
       let data;
       try { data = await api(`${path}?days=${days}`); }
@@ -300,7 +337,7 @@ async function loadDashboard() {
         if (generation !== dashboardGeneration) return;
         // Retry only idempotent reads and transient transport/server failures.
         if (requestError.status && ![502, 503, 504].includes(requestError.status)) throw requestError;
-        targets.forEach((id) => { element(id).innerHTML = empty(`Retrying ${label.toLowerCase()} after a connection problem...`); });
+        targets.forEach((id) => { if (path === "/download-events-page" && downloadPage.rows.length) return; element(id).innerHTML = empty(`Retrying ${label.toLowerCase()} after a connection problem...`); });
         data = await api(`${path}?days=${days}`);
       }
       if (generation !== dashboardGeneration) return;
@@ -308,8 +345,16 @@ async function loadDashboard() {
       if (chart) chart(data);
     } catch (requestError) {
       if (generation !== dashboardGeneration) return;
-      targets.forEach((id) => { element(id).innerHTML = empty(`${label} could not be loaded. Use Refresh to retry.`); });
-      report(label, requestError);
+      if (path === "/download-events-page") {
+        element("download-more").hidden = false;
+        element("download-more").textContent = "Retry this batch";
+        element("download-page-status").textContent = `${requestError.message} Retry this batch without refreshing the other reports.`;
+      }
+      targets.forEach((id) => {
+        if (path === "/download-events-page" && downloadPage.rows.length) return;
+        element(id).innerHTML = empty(`${label} could not be loaded. Use Refresh to retry.`);
+      });
+      if (path !== "/download-events-page" || requestError.status === 401) report(label, requestError);
     }
   }
   const tasks = [];
@@ -332,7 +377,11 @@ async function loadDashboard() {
   } else if (selected === "traffic") {
     tasks.push(section("/countries", "Countries", ["country-summary", "country-trend"], (data) => renderCountrySummary("country-summary", data.summary), (data) => renderCountryTrend("country-trend", data.daily)));
   } else if (selected === "downloads") {
-    tasks.push(section("/download-events", "Download activity", ["downloads-events"], (rows) => renderDownloadEvents("downloads-events", rows)));
+    downloadPage = { days, rows: downloadPage.days === days ? downloadPage.rows : [], cursor: null, generation, busy: false, loaded: false };
+    element("download-more").hidden = true;
+    element("download-more").disabled = false;
+    element("download-page-status").textContent = "Loading the latest 25 requests...";
+    tasks.push(section("/download-events-page", "Download activity", ["downloads-events"], (page) => updateDownloadPage(page)));
     tasks.push(section("/download-summary", "Download funnel", ["downloads-funnel", "downloads-metrics"], (summary) => {
       renderMetrics("downloads-metrics", [
         ["Download page visitors", summary.page_visitors],
