@@ -2,19 +2,14 @@ const element = (id) => document.getElementById(id);
 const charts = new Map();
 
 let chartLoading;
+let chartAttempt = 0;
 function loadCharts() {
+  if (typeof window.Chart === "function") return Promise.resolve(true);
   if (!chartLoading) {
-    chartLoading = new Promise((resolve) => {
-      const timer = setTimeout(() => resolve(false), 10000);
-      // Dynamic imports do not hold up the document load event or secure sign-in.
-      import("/admin/chart.umd.min.js").then(() => {
-        clearTimeout(timer);
-        resolve(true);
-      }, () => {
-        clearTimeout(timer);
-        resolve(false);
-      });
-    });
+    // Keep observing slow transfers so late success can still draw charts.
+    // A distinct URL on retry avoids the browser's cached failed module result.
+    const url = "/admin/chart.umd.min.js" + (chartAttempt++ ? `?retry=${chartAttempt}` : "");
+    chartLoading = import(url).then(() => typeof window.Chart === "function", () => false);
   }
   return chartLoading.then((loaded) => {
     if (!loaded) chartLoading = undefined;
@@ -369,8 +364,16 @@ async function loadDashboard() {
       if (generation !== dashboardGeneration) return;
       render(data);
       if (chart) {
-        await loadCharts();
-        if (generation === dashboardGeneration) chart(data);
+        const timer = setTimeout(() => {
+          if (generation !== dashboardGeneration) return;
+          targets.filter((id) => element(id).classList.contains("chart")).forEach((id) => {
+            element(id).innerHTML = empty("Charts are still loading. Tables are ready; charts will appear automatically.");
+          });
+        }, 10000);
+        void loadCharts().then(() => {
+          clearTimeout(timer);
+          if (generation === dashboardGeneration) chart(data);
+        });
       }
     } catch (requestError) {
       if (generation !== dashboardGeneration) return;

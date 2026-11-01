@@ -66,7 +66,7 @@ test("slow chart and feedback resources do not block document load or sign-in", 
   await chartRequest;
   await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
   await page.clock.fastForward(10001);
-  await expect(page.locator("#overview-trend")).toContainText("Chart unavailable");
+  await expect(page.locator("#overview-trend")).toContainText("Charts are still loading");
   await expect(page.locator("#dashboard-error")).toBeHidden();
   await page.getByRole("tab", { name: "Downloads", exact: true }).click();
   await expect(page.locator("#downloads-events tbody tr")).toHaveCount(1);
@@ -94,6 +94,41 @@ test("a stalled section preserves other data and hidden tabs are fetched on dema
   await page.getByRole("tab", { name: "Downloads", exact: true }).click();
   await expect(page.locator("#downloads-events tbody tr")).toHaveCount(1);
   await expect(page.locator("#dashboard-error")).toBeHidden();
+});
+
+test("charts draw automatically when the library arrives after the loading notice", async ({ page }) => {
+  await page.clock.install();
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  await page.route("**/admin/chart.umd.min.js", async (route) => { await gate; await route.continue(); });
+  await page.goto("http://127.0.0.1:4174/admin");
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill("test-password");
+  const request = page.waitForRequest("**/admin/chart.umd.min.js");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await request;
+  await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
+  await page.clock.fastForward(10001);
+  await expect(page.locator("#overview-trend")).toContainText("Charts are still loading");
+  release();
+  await expect(page.locator("#overview-trend canvas")).toBeVisible();
+  await expect(page.locator("#overview-trend")).not.toContainText("still loading");
+  await page.getByRole("tab", { name: "Traffic", exact: true }).click();
+  await expect(page.locator("#traffic-trend canvas")).toBeVisible();
+  await expect(page.locator("#country-trend canvas")).toBeVisible();
+  expect(await page.evaluate(() => window.Chart.getChart(document.querySelector("#traffic-trend canvas")).data.datasets.length)).toBe(2);
+});
+
+test("Refresh retries a failed chart library download", async ({ page }) => {
+  await page.route("**/admin/chart.umd.min.js", (route) => route.abort());
+  await page.goto("http://127.0.0.1:4174/admin");
+  await page.getByLabel("Username").fill("admin");
+  await page.getByLabel("Password").fill("test-password");
+  await page.getByRole("button", { name: "Sign in", exact: true }).click();
+  await expect(page.locator("#overview-trend")).toContainText("Chart unavailable");
+  await page.unroute("**/admin/chart.umd.min.js");
+  await page.getByRole("button", { name: "Refresh", exact: true }).click();
+  await expect(page.locator("#overview-trend canvas")).toBeVisible();
 });
 
 test("stalled login request times out and restores the sign-in button", async ({ page }) => {
