@@ -76,3 +76,16 @@ test('download pagination retains rows on failed batches and retries without dup
  await page.getByRole('button',{name:'Refresh',exact:true}).click();
  await expect(page.locator('#downloads-events tbody tr')).toHaveCount(25);
 });
+
+test('Downloads separates request counts from unique visitors and plots both units',async({page})=>{
+ await page.route('**/admin/api/download-summary?*',route=>route.fulfill({json:{page_visitors:211,successful_visitors:30,no_download_visitors:181,failures:3,failed_visitors:2}}));
+ await page.goto('http://127.0.0.1:4174/admin');await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await page.getByRole('tab',{name:'Downloads',exact:true}).click();
+ const counts=page.locator('#download-request-metrics');await expect(counts).toContainText('Successful download requests');await expect(counts.locator('strong').nth(1)).toHaveText('87');await expect(counts.locator('strong').nth(3)).toHaveText('90');
+ await expect(page.locator('#downloads-funnel')).toContainText('30 of 211');
+ await expect(page.locator('#downloads-funnel')).toContainText('14.2%');
+ const visitors=page.locator('#downloads-metrics');await expect(visitors.locator('strong').nth(1)).toHaveText('30');await expect(visitors.locator('strong').nth(2)).toHaveText('2');
+ await expect(page.locator('#downloads-trend .chart-series')).toHaveCount(3);await expect(page.locator('#download-visitors-trend .chart-series')).toHaveCount(2);
+ await page.locator('#downloads-trend summary').click();await expect(page.locator('#downloads-trend tbody tr').first().locator('td').nth(2)).toHaveText('18');
+ await page.locator('#download-visitors-trend summary').click();await expect(page.locator('#download-visitors-trend tbody tr').first().locator('td').nth(2)).toHaveText('10');
+});

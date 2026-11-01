@@ -7,11 +7,11 @@ import { adminCredentialRedirect } from "../../server/analytics/lib.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../server/analytics/web");
 const sessionCookie = "itgla_admin_session=test-session";
 const fixtures = {
-  "/admin/api/overview": { days: 30, page_views: 1284, unique_visitors: 462, downloads: 87, errors: 3, latest_event_at: "2026-09-23T14:25:00Z" },
+  "/admin/api/overview": { days: 30, page_views: 1284, unique_visitors: 462, downloads: 87, download_page_views: 381, download_failures: 3, errors: 3, latest_event_at: "2026-09-23T14:25:00Z" },
   "/admin/api/daily": [
-    { day: "2026-09-20", page_views: 318, unique_visitors: 126, downloads: 18, errors: 1 },
-    { day: "2026-09-21", page_views: 402, unique_visitors: 143, downloads: 24, errors: 0 },
-    { day: "2026-09-22", page_views: 564, unique_visitors: 193, downloads: 45, errors: 2 },
+    { day: "2026-09-20", page_views: 318, unique_visitors: 126, downloads: 18, download_page_views: 40, download_page_visitors: 25, successful_visitors: 10, download_failures: 2, errors: 1 },
+    { day: "2026-09-21", page_views: 402, unique_visitors: 143, downloads: 24, download_page_views: 45, download_page_visitors: 30, successful_visitors: 12, download_failures: 1, errors: 0 },
+    { day: "2026-09-22", page_views: 564, unique_visitors: 193, downloads: 45, download_page_views: 50, download_page_visitors: 35, successful_visitors: 20, download_failures: 0, errors: 2 },
   ],
   "/admin/api/countries": {
     summary: [
@@ -34,7 +34,7 @@ const fixtures = {
     { occurred_at: "2026-09-23T14:23:00Z", event_name: "page_view", path: "/", status_code: 200, referrer: "-" },
   ],
   "/admin/api/downloads": {
-    summary: { page_visitors: 211, successful_visitors: 87, no_download_visitors: 124, failures: 3 },
+    summary: { page_visitors: 211, successful_visitors: 87, no_download_visitors: 124, failures: 3, failed_visitors: 2 },
     events: [
       { occurred_at: "2026-09-25T14:25:00Z", event_name: "download_success", path: "/downloads/v0.2.2/itgla.zip", status_code: 200, bytes_sent: 1200, referrer: "https://itgla.com/downloads.html", user_agent: "Example Browser" },
     ],

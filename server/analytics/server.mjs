@@ -321,6 +321,8 @@ async function daily(days) {
        count(distinct visitor_key) filter (where event_name in ('page_view','download_page_view'))::int as unique_visitors,
        count(*) filter (where event_name in ('download_success','download'))::int as downloads,
        count(*) filter (where event_name='download_page_view')::int as download_page_views,
+       count(distinct visitor_key) filter (where event_name='download_page_view')::int as download_page_visitors,
+       count(distinct visitor_key) filter (where event_name in ('download_success','download'))::int as successful_visitors,
        count(*) filter (where event_name='download_failure')::int as download_failures,
        count(*) filter (where event_name='page_error')::int as errors
      from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
@@ -455,6 +457,7 @@ async function downloadSummary(days) {
        (select count(*)::int from page_visits) as page_visitors,
        (select count(*)::int from successful) as successful_visitors,
        (select count(*)::int from page_visits p where not exists (select 1 from successful s where s.visitor_key=p.visitor_key)) as no_download_visitors,
+       (select count(distinct visitor_key)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failed_visitors,
        (select count(*)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
     [days],
   );

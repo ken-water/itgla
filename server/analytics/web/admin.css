@@ -124,3 +124,5 @@ td.numeric { font-variant-numeric: tabular-nums; }
 
 .download-pagination { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 14px; }
 .download-pagination p { margin: 0; }
+
+.download-section-title { margin-top: 24px; }

@@ -92,6 +92,12 @@ function renderOverviewMetrics(overview) {
     ["Page errors", overview.errors],
   ]);
   renderMetrics("traffic-metrics", [["Page views (PV)", overview.page_views], ["Unique visitors (UV)", overview.unique_visitors]]);
+  renderMetrics("download-request-metrics", [
+    ["Download page views", overview.download_page_views],
+    ["Successful download requests", overview.downloads],
+    ["Failed download requests", overview.download_failures],
+    ["Total package requests", Number(overview.downloads || 0) + Number(overview.download_failures || 0)],
+  ]);
   renderMetrics("errors-metrics", [["Page errors", overview.errors]]);
   element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
 }
@@ -227,8 +233,8 @@ function renderDownloadCountryTrend(target, rows, summary) {
 function renderDownloadCountrySummary(target, rows) {
   element(target).innerHTML = table(rows, [
     ["Country", "country"],
-    ["Downloads", "downloads", formatNumber, "numeric"],
-    ["Failures", "failures", formatNumber, "numeric"],
+    ["Successful requests", "downloads", formatNumber, "numeric"],
+    ["Failed requests", "failures", formatNumber, "numeric"],
   ]);
 }
 
@@ -359,17 +365,23 @@ async function loadDashboard() {
   }
   const tasks = [];
   if (selected !== "feedback") {
-    tasks.push(section("/overview", "Summary", ["overview-metrics", "traffic-metrics", "errors-metrics"], renderOverviewMetrics));
+    tasks.push(section("/overview", "Summary", ["overview-metrics", "traffic-metrics", "errors-metrics", "download-request-metrics"], renderOverviewMetrics));
   }
   const trends = {
     overview: ["overview-trend", [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }]],
     traffic: ["traffic-trend", [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }]],
-    downloads: ["downloads-trend", [{ field: "downloads", className: "downloads", label: "Downloads" }]],
+    downloads: ["downloads-trend", [{ field: "download_page_views", className: "pv", label: "Download page views" }, { field: "downloads", className: "downloads", label: "Successful download requests" }, { field: "download_failures", className: "errors", label: "Failed download requests" }]],
     errors: ["errors-trend", [{ field: "errors", className: "errors", label: "Errors" }]],
   };
   if (trends[selected]) {
     const [target, series] = trends[selected];
-    tasks.push(section("/daily", "Daily trend", [target], () => {}, (rows) => renderTrend(target, rows, series, "Daily activity")));
+    tasks.push(section("/daily", "Daily trend", selected === "downloads" ? [target, "download-visitors-trend"] : [target], () => {}, (rows) => {
+      renderTrend(target, rows, series, selected === "downloads" ? "Daily download request counts" : "Daily activity");
+      if (selected === "downloads") renderTrend("download-visitors-trend", rows, [
+        { field: "download_page_visitors", className: "pv", label: "Download page visitors" },
+        { field: "successful_visitors", className: "downloads", label: "Successful download visitors" },
+      ], "Daily unique download visitors");
+    }));
   }
   if (selected === "overview") {
     tasks.push(section("/pages", "Top pages", ["overview-pages"], (rows) => renderPages("overview-pages", rows)));
@@ -386,15 +398,12 @@ async function loadDashboard() {
       renderMetrics("downloads-metrics", [
         ["Download page visitors", summary.page_visitors],
         ["Successful download visitors", summary.successful_visitors],
-        ["Failed requests", summary.failures],
+        ["Visitors with failed requests", summary.failed_visitors],
         ["No download after visit", summary.no_download_visitors],
       ]);
-      element("downloads-funnel").innerHTML = [
-        ["Download page visitors", summary.page_visitors],
-        ["Successful download visitors", summary.successful_visitors],
-        ["Failed requests", summary.failures],
-        ["No download after visiting", summary.no_download_visitors],
-      ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
+      const converted = summary.page_visitors - summary.no_download_visitors;
+      const rate = summary.page_visitors ? (converted / summary.page_visitors * 100).toFixed(1) : "0.0";
+      element("downloads-funnel").textContent = `${formatNumber(converted)} of ${formatNumber(summary.page_visitors)} download page visitors received a successful package response (${rate}%). ${formatNumber(summary.no_download_visitors)} had no successful response during this period.`;
     }));
     tasks.push(section("/download-countries", "Download countries", ["download-country-summary", "download-country-trend"], (data) => renderDownloadCountrySummary("download-country-summary", data.summary), (data) => renderDownloadCountryTrend("download-country-trend", data.daily, data.summary)));
   } else if (selected === "errors") {
