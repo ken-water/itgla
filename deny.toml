@@ -1,5 +1,8 @@
 [advisories]
 ignore = [
+    # Verified non-affected for Slint 1.18.1: only ENABLE_STRIKETHROUGH is set.
+    # Owner ken-water; reassess by 2026-11-24 and prefer pulldown-cmark >=0.13.5.
+    { id = "RUSTSEC-2026-0414", reason = "Slint i-slint-common 1.18.1 styled_text::parse_interpolated uses only Options::ENABLE_STRIKETHROUGH, not ENABLE_WIKILINKS or Options::all. ITGLA has no direct Markdown parser. The advisory explicitly excludes parsing without wikilinks. See docs/releases/v0.6.2.md." },
     # Scoped unmaintained advisories: Linux accessibility, no safe upgrade available.
     # Owner ken-water; reassess by 2026-11-24. See docs/releases/v0.4.0.md.
     { id = "RUSTSEC-2026-0370", reason = "Existing Slint/accesskit Linux accessibility requires zvariant; no safe fixed upgrade. Desktop local inventory has no network service; track upstream migration." },
