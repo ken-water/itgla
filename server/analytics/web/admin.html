@@ -11,7 +11,13 @@
   <body>
     <a class="skip-link" href="#main">Skip to main content</a>
     <main id="main" class="shell">
-      <section id="login" class="login-panel" aria-labelledby="login-title">
+      <noscript><p>Enable JavaScript and reload this page to restore your session or sign in.</p></noscript>
+      <section id="session-check" class="login-panel" aria-labelledby="session-title">
+        <h1 id="session-title">Restoring your session</h1>
+        <p id="session-message" role="status">Checking your existing session. If this message remains, reload the page or check your connection.</p>
+        <button id="session-retry" type="button" hidden>Retry session check</button>
+      </section>
+      <section id="login" class="login-panel" aria-labelledby="login-title" hidden>
         <a class="brand" href="/" aria-label="Back to ITGLA"><span class="brand-mark">I</span><span>ITGLA</span></a>
         <p class="eyebrow">Administrator access</p>
         <h1 id="login-title">Site analytics</h1>

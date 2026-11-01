@@ -60,7 +60,7 @@ const fixtures = {
 };
 
 function json(response, status, body, headers = {}) {
-  response.writeHead(status, { "Content-Type": "application/json", ...headers });
+  response.writeHead(status, { "Content-Type": "application/json", "Cache-Control": "no-store", ...headers });
   response.end(JSON.stringify(body));
 }
 
@@ -79,7 +79,7 @@ const server = http.createServer(async (request, response) => {
     if (credentials.username !== "admin" || credentials.password !== "test-password") return json(response, 401, { message: "Incorrect username or password." });
     return json(response, 200, { status: "ok" }, { "Set-Cookie": `${sessionCookie}; Path=/admin; HttpOnly; SameSite=Strict` });
   }
-  if (request.method === "POST" && url.pathname === "/admin/api/logout") return json(response, 200, { status: "ok" });
+  if (request.method === "POST" && url.pathname === "/admin/api/logout") return json(response, 200, { status: "ok" }, { "Set-Cookie": "itgla_admin_session=; Path=/admin; Max-Age=0; HttpOnly; SameSite=Strict" });
   const authenticated = String(request.headers.cookie || "").includes(sessionCookie);
   if (url.pathname === "/admin/api/me") return json(response, 200, { authenticated, username: authenticated ? "admin" : null });
   const fixtureKey = Object.keys(fixtures).find((key) => url.pathname === key);
@@ -95,7 +95,7 @@ const server = http.createServer(async (request, response) => {
   };
   const asset = assets[url.pathname];
   if (!asset) return json(response, 404, { message: "Not found." });
-  response.writeHead(200, { "Content-Type": asset[1] });
+  response.writeHead(200, { "Content-Type": asset[1], "Cache-Control": "no-store", "Content-Security-Policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" });
   response.end(await fs.readFile(path.join(root, asset[0])));
 });
 

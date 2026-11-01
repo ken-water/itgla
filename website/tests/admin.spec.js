@@ -23,17 +23,17 @@ for (const viewport of [
     await page.getByRole("button", { name: "Sign in" }).click();
     await expect(page.getByRole("heading", { name: "Site overview" })).toBeVisible();
     await expect(page.locator("#overview-metrics").getByText("1,284")).toBeVisible();
-    await expect(page.locator("#overview-trend canvas")).toBeVisible();
+    await expect(page.locator("#overview-trend > svg")).toBeVisible();
     await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
     await page.getByRole("tab", { name: "Traffic" }).click();
     await expect(page.getByRole("heading", { name: "Page views and unique visitors" })).toBeVisible();
-    await expect(page.locator("#traffic-trend canvas")).toBeVisible();
+    await expect(page.locator("#traffic-trend > svg")).toBeVisible();
     await page.getByRole("tab", { name: "Downloads" }).click();
     await expect(page.getByRole("heading", { name: "Package downloads by day" })).toBeVisible();
-    await expect(page.locator("#downloads-trend canvas")).toBeVisible();
+    await expect(page.locator("#downloads-trend > svg")).toBeVisible();
     await page.getByRole("tab", { name: "Errors" }).click();
     await expect(page.getByRole("heading", { name: "Failed requests by day" })).toBeVisible();
-    await expect(page.locator("#errors-trend canvas")).toBeVisible();
+    await expect(page.locator("#errors-trend > svg")).toBeVisible();
     await expect(page.locator("#errors-events tbody tr")).toHaveCount(1);
     await expect(page.locator("#errors-events")).toContainText("404 Not found");
     await page.getByRole("tab", { name: "Feedback" }).click();
@@ -61,12 +61,11 @@ test("slow chart and feedback resources do not block document load or sign-in", 
   expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("chart.umd")))).toBe(false);
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill("test-password");
-  const chartRequest = page.waitForRequest("**/admin/chart.umd.min.js");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await chartRequest;
   await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
-  await page.clock.fastForward(10001);
-  await expect(page.locator("#overview-trend")).toContainText("Charts are still loading");
+  await page.clock.fastForward(60001);
+  await expect(page.locator("#overview-trend > svg")).toBeVisible();
+  expect(await page.evaluate(() => performance.getEntriesByType("resource").some((entry) => entry.name.includes("chart.umd")))).toBe(false);
   await expect(page.locator("#dashboard-error")).toBeHidden();
   await page.getByRole("tab", { name: "Downloads", exact: true }).click();
   await expect(page.locator("#downloads-events tbody tr")).toHaveCount(1);
@@ -96,39 +95,65 @@ test("a stalled section preserves other data and hidden tabs are fetched on dema
   await expect(page.locator("#dashboard-error")).toBeHidden();
 });
 
-test("charts draw automatically when the library arrives after the loading notice", async ({ page }) => {
-  await page.clock.install();
-  let release;
-  const gate = new Promise((resolve) => { release = resolve; });
-  await page.route("**/admin/chart.umd.min.js", async (route) => { await gate; await route.continue(); });
+async function signIn(page) {
   await page.goto("http://127.0.0.1:4174/admin");
   await page.getByLabel("Username").fill("admin");
   await page.getByLabel("Password").fill("test-password");
-  const request = page.waitForRequest("**/admin/chart.umd.min.js");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await request;
-  await expect(page.locator("#overview-pages tbody tr")).toHaveCount(2);
-  await page.clock.fastForward(10001);
-  await expect(page.locator("#overview-trend")).toContainText("Charts are still loading");
-  release();
-  await expect(page.locator("#overview-trend canvas")).toBeVisible();
-  await expect(page.locator("#overview-trend")).not.toContainText("still loading");
+  await expect(page.locator("#overview-trend > svg")).toBeVisible();
+}
+
+test("native charts contain real series and accessible exact values", async ({ page }) => {
+  await signIn(page);
   await page.getByRole("tab", { name: "Traffic", exact: true }).click();
-  await expect(page.locator("#traffic-trend canvas")).toBeVisible();
-  await expect(page.locator("#country-trend canvas")).toBeVisible();
-  expect(await page.evaluate(() => window.Chart.getChart(document.querySelector("#traffic-trend canvas")).data.datasets.length)).toBe(2);
+  await expect(page.locator("#traffic-trend .chart-series")).toHaveCount(2);
+  await expect(page.locator("#country-trend > svg")).toBeVisible();
+  await page.locator("#traffic-trend summary").click();
+  await expect(page.locator("#traffic-trend table tbody tr")).toHaveCount(3);
+  await expect(page.locator("#traffic-trend table")).toContainText("Page views");
 });
 
-test("Refresh retries a failed chart library download", async ({ page }) => {
-  await page.route("**/admin/chart.umd.min.js", (route) => route.abort());
-  await page.goto("http://127.0.0.1:4174/admin");
-  await page.getByLabel("Username").fill("admin");
-  await page.getByLabel("Password").fill("test-password");
-  await page.getByRole("button", { name: "Sign in", exact: true }).click();
-  await expect(page.locator("#overview-trend")).toContainText("Chart unavailable");
-  await page.unroute("**/admin/chart.umd.min.js");
-  await page.getByRole("button", { name: "Refresh", exact: true }).click();
-  await expect(page.locator("#overview-trend canvas")).toBeVisible();
+test("valid session survives reload with browser cache disabled", async ({ page, context }) => {
+  await signIn(page);
+  const cdp = await context.newCDPSession(page);
+  await cdp.send("Network.enable");
+  await cdp.send("Network.setCacheDisabled", { cacheDisabled: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await page.reload();
+    await expect(page.locator("#overview-trend > svg")).toBeVisible();
+    await expect(page.locator("#login")).toBeHidden();
+  }
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.locator("#login")).toBeVisible();
+  await page.reload();
+  await expect(page.locator("#login")).toBeVisible();
+});
+
+test("session check timeout offers retry without asking for credentials", async ({ page }) => {
+  await signIn(page);
+  await page.clock.install();
+  await page.route("**/admin/api/me", () => {});
+  const pending = page.waitForRequest("**/admin/api/me");
+  await page.reload();
+  await pending;
+  await expect(page.locator("#login")).toBeHidden();
+  await page.clock.fastForward(15001);
+  await expect(page.locator("#session-message")).toContainText("session has not been cleared");
+  await expect(page.locator("#login")).toBeHidden();
+  await page.unroute("**/admin/api/me");
+  await page.getByRole("button", { name: "Retry session check" }).click();
+  await expect(page.locator("#overview-trend > svg")).toBeVisible();
+});
+
+test("expired session requires sign-in and sign-out failure stays visible", async ({ page, context }) => {
+  await signIn(page);
+  await page.route("**/admin/api/logout", (route) => route.abort());
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
+  await expect(page.locator("#dashboard-error")).toContainText("Sign out failed");
+  await expect(page.locator("#login")).toBeHidden();
+  await context.clearCookies();
+  await page.reload();
+  await expect(page.locator("#login")).toBeVisible();
 });
 
 test("stalled login request times out and restores the sign-in button", async ({ page }) => {
@@ -157,16 +182,19 @@ for (const failure of ["JavaScript disabled", "login script unavailable"]) {
         await page.route("**/admin/admin.js", (route) => route.abort());
       }
       await page.goto("http://127.0.0.1:4174/admin");
-      await page.getByLabel("Username").fill("example-user");
-      await page.getByLabel("Password").fill("not-a-real-password");
+      await expect(page.locator("#login")).toBeHidden();
       await expect(page.locator("#login-button")).toBeDisabled();
-      await expect(page.getByLabel("Username")).not.toHaveAttribute("name");
-      await expect(page.getByLabel("Password")).not.toHaveAttribute("name");
+      await expect(page.locator("#username")).not.toHaveAttribute("name");
+      await expect(page.locator("#password")).not.toHaveAttribute("name");
       const submitted = [];
       page.on("request", (request) => {
         if (request.url().includes("/admin/api/login")) submitted.push(request);
       });
-      await page.getByLabel("Password").press("Enter");
+      await page.evaluate(() => {
+        document.querySelector("#username").value = "example-user";
+        document.querySelector("#password").value = "not-a-real-password";
+        document.querySelector("#password").dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true }));
+      });
       await expect(page).toHaveURL("http://127.0.0.1:4174/admin");
       expect(submitted).toEqual([]);
     } finally {

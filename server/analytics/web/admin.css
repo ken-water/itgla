@@ -78,7 +78,10 @@ h2 { margin-bottom: 0; font-size: 17px; }
 .legend .errors { background: var(--red); }
 .legend .country { background: #2563a6; }
 .chart { min-height: 270px; position: relative; }
-.chart canvas { display: block; width: 100% !important; height: 270px !important; }
+.chart > svg { display: block; width: 100%; height: auto; }
+.chart-legend { flex-wrap: wrap; margin: 8px 0; }
+.chart details { margin-top: 12px; color: var(--muted); font-size: 13px; }
+.chart summary { cursor: pointer; }
 .empty { display: grid; min-height: 220px; place-items: center; color: var(--muted); text-align: center; }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-size: 13px; }

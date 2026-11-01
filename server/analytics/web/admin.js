@@ -1,28 +1,4 @@
 const element = (id) => document.getElementById(id);
-const charts = new Map();
-
-let chartLoading;
-let chartAttempt = 0;
-function loadCharts() {
-  if (typeof window.Chart === "function") return Promise.resolve(true);
-  if (!chartLoading) {
-    // Keep observing slow transfers so late success can still draw charts.
-    // A distinct URL on retry avoids the browser's cached failed module result.
-    const url = "/admin/chart.umd.min.js" + (chartAttempt++ ? `?retry=${chartAttempt}` : "");
-    chartLoading = import(url).then(() => typeof window.Chart === "function", () => false);
-  }
-  return chartLoading.then((loaded) => {
-    if (!loaded) chartLoading = undefined;
-    return loaded;
-  });
-}
-
-function chartUnavailable(container) {
-  if (typeof window.Chart === "function") return false;
-  container.innerHTML = empty("Chart unavailable. Your data is still available in the tables. Refresh to retry.");
-  return true;
-}
-
 async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -119,116 +95,52 @@ function renderOverviewMetrics(overview) {
   element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
 }
 
-function renderTrend(target, rows, series, ariaLabel) {
+// Render directly from report data; no external chart download can block display.
+function renderLineChart(target, labels, datasets, ariaLabel) {
   const container = element(target);
-  if (chartUnavailable(container)) return;
-  charts.get(target)?.destroy();
-  if (!rows.length) {
+  if (!labels.length || !datasets.length) {
     container.innerHTML = empty("No data for this period.");
     return;
   }
-  container.innerHTML = '<canvas role="img"></canvas>';
-  const canvas = container.querySelector("canvas");
-  canvas.setAttribute("aria-label", ariaLabel);
-  const palette = {
-    pv: { border: "#0f7664", background: "rgba(15, 118, 100, .12)" },
-    uv: { border: "#c17d11", background: "rgba(193, 125, 17, .12)" },
-    downloads: { border: "#2563a6", background: "rgba(37, 99, 166, .12)" },
-    errors: { border: "#b64141", background: "rgba(182, 65, 65, .12)" },
-  };
-  const chart = new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: rows.map((row) => String(row.day).slice(5)),
-      datasets: series.map((item) => {
-        const colors = palette[item.className];
-        return {
-          label: item.label,
-          data: rows.map((row) => Number(row[item.field] || 0)),
-          borderColor: colors.border,
-          backgroundColor: colors.background,
-          borderWidth: 2.5,
-          pointRadius: rows.length > 45 ? 0 : 3,
-          pointHoverRadius: 5,
-          pointBackgroundColor: colors.border,
-          tension: 0.35,
-          fill: series.length === 1,
-        };
-      }),
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          backgroundColor: "#173f36",
-          padding: 12,
-          displayColors: true,
-          callbacks: { title: (items) => `Date: ${items[0].label}` },
-        },
-      },
-      scales: {
-        x: {
-          grid: { display: false },
-          ticks: { color: "#65716e", maxTicksLimit: 7, maxRotation: 0 },
-        },
-        y: {
-          beginAtZero: true,
-          suggestedMax: 1,
-          grid: { color: "#e8eeec" },
-          ticks: { color: "#65716e", precision: 0, padding: 8 },
-        },
-      },
-    },
-  });
-  charts.set(target, chart);
+  const width = Math.max(300, container.clientWidth || 640);
+  const height = 250, left = 48, right = width - 16, top = 14, bottom = 218;
+  const rawMax = Math.max(1, ...datasets.flatMap((set) => set.values));
+  const step = Math.max(1, Math.ceil(rawMax / 4));
+  const max = step * 4;
+  const x = (index) => left + (right - left) * (labels.length === 1 ? 0.5 : index / (labels.length - 1));
+  const y = (value) => bottom - (bottom - top) * value / max;
+  const grid = Array.from({ length: 5 }, (_, index) => {
+    const value = index * step;
+    return `<line x1="${left}" x2="${right}" y1="${y(value)}" y2="${y(value)}" stroke="#e8eeec"/><text x="${left - 8}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text>`;
+  }).join("");
+  const tickCount = Math.min(labels.length, width < 450 ? 3 : 6);
+  const tickIndices = new Set(Array.from({ length: tickCount }, (_, index) => Math.round(index * (labels.length - 1) / Math.max(1, tickCount - 1))));
+  const ticks = labels.map((label, index) => tickIndices.has(index)
+    ? `<text x="${x(index)}" y="240" text-anchor="middle">${escapeHtml(label)}</text>` : "").join("");
+  const lines = datasets.map((set) => `<g class="chart-series" data-label="${escapeHtml(set.label)}"><polyline fill="none" stroke="${set.color}" stroke-width="2.5" points="${set.values.map((value, index) => `${x(index)},${y(value)}`).join(" ")}"/>${set.values.map((value, index) => `<circle cx="${x(index)}" cy="${y(value)}" r="3" fill="${set.color}"><title>${escapeHtml(labels[index])}: ${escapeHtml(set.label)} ${formatNumber(value)}</title></circle>`).join("")}</g>`).join("");
+  container.innerHTML = `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" font-size="12" font-family="system-ui" fill="#65716e"><title>${escapeHtml(ariaLabel)}</title>${grid}${ticks}${lines}</svg><div class="legend chart-legend">${datasets.map((set) => `<span><svg width="18" height="3" aria-hidden="true"><path d="M0 1.5H18" stroke="${set.color}" stroke-width="3"/></svg>${escapeHtml(set.label)}</span>`).join("")}</div><details><summary>View chart data</summary><div class="table-wrap">${table(labels.map((label, index) => ({ day: label, ...Object.fromEntries(datasets.map((set, id) => [id, set.values[index]])) })), [["Date", "day"], ...datasets.map((set, id) => [set.label, id, formatNumber, "numeric"])])}</div></details>`;
+}
+
+function renderTrend(target, rows, series, ariaLabel) {
+  const palette = { pv: "#0f7664", uv: "#c17d11", downloads: "#2563a6", errors: "#b64141" };
+  renderLineChart(target, rows.map((row) => String(row.day).slice(5)), series.map((item) => ({
+    label: item.label, color: palette[item.className], values: rows.map((row) => Number(row[item.field] || 0)),
+  })), ariaLabel);
+}
+
+function renderCountryLines(target, rows, countries, field, label) {
+  const days = [...new Set(rows.map((row) => row.day))].sort();
+  const byDay = new Map(days.map((day) => [day, new Map()]));
+  rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row[field] || 0)));
+  const colors = ["#0f7664", "#c17d11", "#2563a6", "#b64141", "#6d4c9b", "#2f855a"];
+  renderLineChart(target, days.map((day) => day.slice(5)), countries.map((country, index) => ({
+    label: country, color: colors[index], values: days.map((day) => byDay.get(day)?.get(country) || 0),
+  })), label);
 }
 
 function renderCountryTrend(target, rows) {
-  if (chartUnavailable(element(target))) return;
   const countries = [...new Set(rows.map((row) => row.country))].slice(0, 6);
-  const days = [...new Set(rows.map((row) => row.day))];
-  const byDay = new Map(days.map((day) => [day, new Map()]));
-  rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row.unique_visitors || 0)));
-  const colors = ["#0f7664", "#c17d11", "#2563a6", "#b64141", "#6d4c9b", "#2f855a"];
-  const container = element(target);
-  charts.get(target)?.destroy();
-  if (!countries.length) {
-    container.innerHTML = empty("No country data for this period.");
-    return;
-  }
-  container.innerHTML = '<canvas role="img" aria-label="Daily unique visitors by country"></canvas>';
-  const canvas = container.querySelector("canvas");
-  charts.set(target, new Chart(canvas, {
-    type: "line",
-    data: {
-      labels: days.map((day) => day.slice(5)),
-      datasets: countries.map((country, index) => ({
-        label: country,
-        data: days.map((day) => byDay.get(day)?.get(country) || 0),
-        borderColor: colors[index % colors.length],
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        pointRadius: days.length > 45 ? 0 : 2,
-        tension: 0.3,
-      })),
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { display: true, position: "bottom", labels: { color: "#65716e", boxWidth: 18, usePointStyle: true } },
-        tooltip: { backgroundColor: "#173f36", padding: 12, callbacks: { title: (items) => `Date: ${items[0].label}` } },
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#65716e", maxTicksLimit: 7, maxRotation: 0 } },
-        y: { beginAtZero: true, suggestedMax: 1, grid: { color: "#e8eeec" }, ticks: { color: "#65716e", precision: 0, padding: 8 } },
-      },
-    },
-  }));
+  renderCountryLines(target, rows, countries, "unique_visitors", "Daily unique visitors by country");
 }
 
 function renderCountrySummary(target, rows) {
@@ -240,7 +152,6 @@ function renderCountrySummary(target, rows) {
 }
 
 function renderDownloadCountryTrend(target, rows, summary) {
-  if (chartUnavailable(element(target))) return;
   // Pick countries by their total downloads for the selected period. The daily
   // result is ordered by date, so taking its first rows can show unrelated
   // countries with zero downloads on the day being inspected.
@@ -249,45 +160,7 @@ function renderDownloadCountryTrend(target, rows, summary) {
     .sort((left, right) => Number(right.downloads || 0) - Number(left.downloads || 0) || left.country.localeCompare(right.country))
     .slice(0, 6)
     .map((row) => row.country);
-  const days = [...new Set(rows.map((row) => row.day))];
-  const byDay = new Map(days.map((day) => [day, new Map()]));
-  rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row.downloads || 0)));
-  const colors = ["#2563a6", "#0f7664", "#c17d11", "#b64141", "#6d4c9b", "#2f855a"];
-  const container = element(target);
-  charts.get(target)?.destroy();
-  if (!countries.length) {
-    container.innerHTML = empty("No download country data for this period.");
-    return;
-  }
-  container.innerHTML = '<canvas role="img" aria-label="Daily package downloads by country"></canvas>';
-  charts.set(target, new Chart(container.querySelector("canvas"), {
-    type: "line",
-    data: {
-      labels: days.map((day) => day.slice(5)),
-      datasets: countries.map((country, index) => ({
-        label: country,
-        data: days.map((day) => byDay.get(day)?.get(country) || 0),
-        borderColor: colors[index % colors.length],
-        backgroundColor: "transparent",
-        borderWidth: 2,
-        pointRadius: days.length > 45 ? 0 : 2,
-        tension: 0.3,
-      })),
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      interaction: { mode: "index", intersect: false },
-      plugins: {
-        legend: { display: true, position: "bottom", labels: { color: "#65716e", boxWidth: 18, usePointStyle: true } },
-        tooltip: { backgroundColor: "#173f36", padding: 12, callbacks: { title: (items) => `Date: ${items[0].label}` } },
-      },
-      scales: {
-        x: { grid: { display: false }, ticks: { color: "#65716e", maxTicksLimit: 7, maxRotation: 0 } },
-        y: { beginAtZero: true, suggestedMax: 1, grid: { color: "#e8eeec" }, ticks: { color: "#65716e", precision: 0, padding: 8 } },
-      },
-    },
-  }));
+  renderCountryLines(target, rows, countries, "downloads", "Daily package downloads by country");
 }
 
 function renderDownloadCountrySummary(target, rows) {
@@ -363,18 +236,7 @@ async function loadDashboard() {
       const data = await api(`${path}?days=${days}`);
       if (generation !== dashboardGeneration) return;
       render(data);
-      if (chart) {
-        const timer = setTimeout(() => {
-          if (generation !== dashboardGeneration) return;
-          targets.filter((id) => element(id).classList.contains("chart")).forEach((id) => {
-            element(id).innerHTML = empty("Charts are still loading. Tables are ready; charts will appear automatically.");
-          });
-        }, 10000);
-        void loadCharts().then(() => {
-          clearTimeout(timer);
-          if (generation === dashboardGeneration) chart(data);
-        });
-      }
+      if (chart) chart(data);
     } catch (requestError) {
       if (generation !== dashboardGeneration) return;
       targets.forEach((id) => { element(id).innerHTML = empty(`${label} could not be loaded. Use Refresh to retry.`); });
@@ -424,12 +286,14 @@ async function loadDashboard() {
 
 function showLogin() {
   dashboardGeneration++;
+  element("session-check").hidden = true;
   element("dashboard").hidden = true;
   element("login").hidden = false;
   element("username").focus();
 }
 
 async function showDashboard() {
+  element("session-check").hidden = true;
   element("login").hidden = true;
   element("dashboard").hidden = false;
   await loadDashboard();
@@ -476,13 +340,36 @@ document.querySelectorAll("[data-tab]").forEach((tab) => {
   });
 });
 element("logout").addEventListener("click", async () => {
-  await api("/logout", { method: "POST" }).catch(() => {});
-  showLogin();
+  dashboardGeneration++;
+  try {
+    await api("/logout", { method: "POST" });
+    showLogin();
+  } catch (error) {
+    element("dashboard-error").textContent = `Sign out failed: ${error.message} Try again.`;
+    element("dashboard-error").hidden = false;
+  }
 });
+
+async function restoreSession() {
+  element("login").hidden = true;
+  element("session-check").hidden = false;
+  element("session-message").textContent = "Checking your existing session...";
+  element("session-retry").hidden = true;
+  try {
+    const session = await api("/me");
+    if (session.authenticated === true) await showDashboard();
+    else if (session.authenticated === false) showLogin();
+    else throw new Error("Invalid session response.");
+  } catch (error) {
+    if (error.status === 401) { showLogin(); return; }
+    element("session-message").textContent = `Could not check your session. ${error.message} Your session has not been cleared.`;
+    element("session-retry").hidden = false;
+  }
+}
+element("session-retry").addEventListener("click", () => void restoreSession());
 
 // Enable submission only after the JSON POST handler has been registered.
 element("login-button").disabled = false;
 element("login-button").textContent = "Sign in";
 element("login-status").hidden = true;
-void import("/admin/feedback.js").catch(() => {});
-api("/me").then((session) => session.authenticated ? showDashboard() : showLogin()).catch(showLogin);
+void restoreSession();
