@@ -20,7 +20,7 @@ async function api(path, options = {}) {
     }
     return body;
   } catch (error) {
-    if (controller.signal.aborted) throw new Error("The request timed out. Check your connection and try again.");
+    if (controller.signal.aborted) throw new Error("The request timed out after 15 seconds. Try again.");
     throw error;
   } finally {
     clearTimeout(timer);
@@ -38,8 +38,15 @@ function formatNumber(value) {
 }
 
 function formatTime(value) {
-  return value ? new Date(value).toLocaleString("en-US", { hour12: false }) : "None";
+  if (!value) return "None";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "None";
+  const pad = (number) => String(number).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
+
+// Feedback uses the same local-time display contract as all report tables.
+window.formatAdminTime = formatTime;
 
 function formatStatus(value) {
   const code = Number(value || 0);
@@ -85,14 +92,24 @@ function renderOverviewMetrics(overview) {
     ["Page errors", overview.errors],
   ]);
   renderMetrics("traffic-metrics", [["Page views (PV)", overview.page_views], ["Unique visitors (UV)", overview.unique_visitors]]);
-  renderMetrics("downloads-metrics", [
-    ["Download page visitors", overview.download_page_visitors],
-    ["Successful requests", overview.downloads],
-    ["Failed requests", overview.download_failures],
-    ["No download after visit", Math.max(0, Number(overview.download_page_visitors || 0) - Number(overview.downloads || 0))],
-  ]);
   renderMetrics("errors-metrics", [["Page errors", overview.errors]]);
   element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
+}
+
+// Monotone cubic curves keep each segment inside its data range.
+function smoothPath(points) {
+  if (points.length < 2) return `M${points[0].join(",")}`;
+  const slopes = points.slice(1).map((point, index) => (point[1] - points[index][1]) / (point[0] - points[index][0]));
+  const tangents = points.map((_, index) => {
+    if (!index) return slopes[0];
+    if (index === points.length - 1) return slopes[index - 1];
+    const before = slopes[index - 1], after = slopes[index];
+    return before * after <= 0 ? 0 : 2 * before * after / (before + after);
+  });
+  return `M${points[0].join(",")}` + points.slice(1).map((point, index) => {
+    const previous = points[index], third = (point[0] - previous[0]) / 3;
+    return `C${previous[0] + third},${previous[1] + third * tangents[index]} ${point[0] - third},${point[1] - third * tangents[index + 1]} ${point.join(",")}`;
+  }).join("");
 }
 
 // Render directly from report data; no external chart download can block display.
@@ -103,7 +120,7 @@ function renderLineChart(target, labels, datasets, ariaLabel) {
     return;
   }
   const width = Math.max(300, container.clientWidth || 640);
-  const height = 250, left = 48, right = width - 16, top = 14, bottom = 218;
+  const height = 250, left = 48, right = width - 42, top = 14, bottom = 218;
   const rawMax = Math.max(1, ...datasets.flatMap((set) => set.values));
   const step = Math.max(1, Math.ceil(rawMax / 4));
   const max = step * 4;
@@ -113,17 +130,61 @@ function renderLineChart(target, labels, datasets, ariaLabel) {
     const value = index * step;
     return `<line x1="${left}" x2="${right}" y1="${y(value)}" y2="${y(value)}" stroke="#e8eeec"/><text x="${left - 8}" y="${y(value) + 4}" text-anchor="end">${formatNumber(value)}</text>`;
   }).join("");
-  const tickCount = Math.min(labels.length, width < 450 ? 3 : 6);
+  const tickCount = Math.min(labels.length, width < 450 ? 2 : Math.min(6, Math.floor(width / 100)));
   const tickIndices = new Set(Array.from({ length: tickCount }, (_, index) => Math.round(index * (labels.length - 1) / Math.max(1, tickCount - 1))));
   const ticks = labels.map((label, index) => tickIndices.has(index)
     ? `<text x="${x(index)}" y="240" text-anchor="middle">${escapeHtml(label)}</text>` : "").join("");
-  const lines = datasets.map((set) => `<g class="chart-series" data-label="${escapeHtml(set.label)}"><polyline fill="none" stroke="${set.color}" stroke-width="2.5" points="${set.values.map((value, index) => `${x(index)},${y(value)}`).join(" ")}"/>${set.values.map((value, index) => `<circle cx="${x(index)}" cy="${y(value)}" r="3" fill="${set.color}"><title>${escapeHtml(labels[index])}: ${escapeHtml(set.label)} ${formatNumber(value)}</title></circle>`).join("")}</g>`).join("");
-  container.innerHTML = `<svg role="img" aria-label="${escapeHtml(ariaLabel)}" viewBox="0 0 ${width} ${height}" font-size="12" font-family="system-ui" fill="#65716e"><title>${escapeHtml(ariaLabel)}</title>${grid}${ticks}${lines}</svg><div class="legend chart-legend">${datasets.map((set) => `<span><svg width="18" height="3" aria-hidden="true"><path d="M0 1.5H18" stroke="${set.color}" stroke-width="3"/></svg>${escapeHtml(set.label)}</span>`).join("")}</div><details><summary>View chart data</summary><div class="table-wrap">${table(labels.map((label, index) => ({ day: label, ...Object.fromEntries(datasets.map((set, id) => [id, set.values[index]])) })), [["Date", "day"], ...datasets.map((set, id) => [set.label, id, formatNumber, "numeric"])])}</div></details>`;
+  const lines = datasets.map((set) => {
+    const points = set.values.map((value, index) => [x(index), y(value)]);
+    const path = smoothPath(points);
+    return `<g class="chart-series" data-label="${escapeHtml(set.label)}">${datasets.length === 1 ? `<path d="${path}L${x(labels.length - 1)},${bottom}L${x(0)},${bottom}Z" fill="${set.color}" opacity=".07"/>` : ""}<path d="${path}" fill="none" stroke="${set.color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>${points.map((point) => `<circle cx="${point[0]}" cy="${point[1]}" r="${labels.length > 45 ? 0 : 2.5}" fill="${set.color}"/>`).join("")}</g>`;
+  }).join("");
+  container.innerHTML = `<svg role="img" tabindex="0" aria-label="${escapeHtml(ariaLabel)}. Use Left and Right arrow keys to inspect dates." viewBox="0 0 ${width} ${height}" font-size="12" font-family="system-ui" fill="#65716e"><title>${escapeHtml(ariaLabel)}</title>${grid}${ticks}${lines}<g class="chart-cursor" visibility="hidden" pointer-events="none"></g><g class="chart-tooltip" role="tooltip" visibility="hidden" pointer-events="none"></g></svg><div class="legend chart-legend">${datasets.map((set) => `<span><svg width="18" height="3" aria-hidden="true"><path d="M0 1.5H18" stroke="${set.color}" stroke-width="3"/></svg>${escapeHtml(set.label)}</span>`).join("")}</div><details><summary>View chart data</summary><div class="table-wrap">${table(labels.map((label, index) => ({ day: label, ...Object.fromEntries(datasets.map((set, id) => [id, set.values[index]])) })), [["Date", "day"], ...datasets.map((set, id) => [set.label, id, formatNumber, "numeric"])])}</div></details>`;
+  const svg = container.querySelector(":scope > svg");
+  const cursor = svg.querySelector(".chart-cursor"), tooltip = svg.querySelector(".chart-tooltip");
+  let selected = -1;
+  function inspect(index) {
+    index = Math.max(0, Math.min(labels.length - 1, index));
+    if (index === selected && tooltip.getAttribute("visibility") === "visible") return;
+    selected = index;
+    const boxWidth = Math.min(width - 16, Math.max(200, ...datasets.map((set) => (set.label.length + formatNumber(set.values[index]).length) * 7.5 + 44)));
+    const boxHeight = 42 + datasets.length * 23;
+    const boxX = Math.max(8, Math.min(width - boxWidth - 8, x(index) + 14));
+    cursor.innerHTML = `<line x1="${x(index)}" x2="${x(index)}" y1="${top}" y2="${bottom}" stroke="#91a9a2" stroke-dasharray="4 4"/>${datasets.map((set) => `<circle cx="${x(index)}" cy="${y(set.values[index])}" r="4.5" fill="${set.color}" stroke="white" stroke-width="2"/>`).join("")}`;
+    tooltip.setAttribute("transform", `translate(${boxX},${top + 6})`);
+    tooltip.dataset.index = String(index);
+    tooltip.innerHTML = `<rect width="${boxWidth}" height="${boxHeight}" rx="8" fill="#173f36"/><text x="14" y="25" fill="white" font-weight="700">${escapeHtml(labels[index])}</text>${datasets.map((set, row) => `<circle cx="17" cy="${47 + row * 23}" r="3.5" fill="${set.color}"/><text x="29" y="${51 + row * 23}" fill="#edf5f2">${escapeHtml(set.label)}</text><text x="${boxWidth - 14}" y="${51 + row * 23}" text-anchor="end" fill="white" font-weight="700">${formatNumber(set.values[index])}</text>`).join("")}`;
+    cursor.setAttribute("visibility", "visible");
+    tooltip.setAttribute("visibility", "visible");
+    svg.setAttribute("aria-label", `${ariaLabel}. ${labels[index]}. ${datasets.map((set) => `${set.label}: ${formatNumber(set.values[index])}`).join(". ")}`);
+  }
+  function hide() {
+    cursor.setAttribute("visibility", "hidden");
+    tooltip.setAttribute("visibility", "hidden");
+  }
+  function point(event) {
+    const bounds = svg.getBoundingClientRect();
+    const px = (event.clientX - bounds.left) * width / bounds.width;
+    const py = (event.clientY - bounds.top) * height / bounds.height;
+    if (px < left || px > right || py < top || py > bottom) { hide(); return; }
+    inspect(labels.length === 1 ? 0 : Math.round((px - left) / (right - left) * (labels.length - 1)));
+  }
+  svg.addEventListener("pointermove", point);
+  svg.addEventListener("pointerdown", point);
+  svg.addEventListener("pointerleave", hide);
+  svg.addEventListener("focus", () => inspect(0));
+  svg.addEventListener("blur", hide);
+  svg.addEventListener("keydown", (event) => {
+    if (!["ArrowLeft", "ArrowRight", "Home", "End", "Escape"].includes(event.key)) return;
+    event.preventDefault();
+    if (event.key === "Escape") hide();
+    else inspect(event.key === "Home" ? 0 : event.key === "End" ? labels.length - 1 : selected + (event.key === "ArrowRight" ? 1 : -1));
+  });
 }
 
 function renderTrend(target, rows, series, ariaLabel) {
   const palette = { pv: "#0f7664", uv: "#c17d11", downloads: "#2563a6", errors: "#b64141" };
-  renderLineChart(target, rows.map((row) => String(row.day).slice(5)), series.map((item) => ({
+  renderLineChart(target, rows.map((row) => String(row.day).slice(0, 10)), series.map((item) => ({
     label: item.label, color: palette[item.className], values: rows.map((row) => Number(row[item.field] || 0)),
   })), ariaLabel);
 }
@@ -133,7 +194,7 @@ function renderCountryLines(target, rows, countries, field, label) {
   const byDay = new Map(days.map((day) => [day, new Map()]));
   rows.forEach((row) => byDay.get(row.day)?.set(row.country, Number(row[field] || 0)));
   const colors = ["#0f7664", "#c17d11", "#2563a6", "#b64141", "#6d4c9b", "#2f855a"];
-  renderLineChart(target, days.map((day) => day.slice(5)), countries.map((country, index) => ({
+  renderLineChart(target, days.map((day) => day.slice(0, 10)), countries.map((country, index) => ({
     label: country, color: colors[index], values: days.map((day) => byDay.get(day)?.get(country) || 0),
   })), label);
 }
@@ -233,7 +294,15 @@ async function loadDashboard() {
   async function section(path, label, targets, render, chart) {
     targets.forEach((id) => { element(id).innerHTML = empty(`Loading ${label.toLowerCase()}…`); });
     try {
-      const data = await api(`${path}?days=${days}`);
+      let data;
+      try { data = await api(`${path}?days=${days}`); }
+      catch (requestError) {
+        if (generation !== dashboardGeneration) return;
+        // Retry only idempotent reads and transient transport/server failures.
+        if (requestError.status && ![502, 503, 504].includes(requestError.status)) throw requestError;
+        targets.forEach((id) => { element(id).innerHTML = empty(`Retrying ${label.toLowerCase()} after a connection problem...`); });
+        data = await api(`${path}?days=${days}`);
+      }
       if (generation !== dashboardGeneration) return;
       render(data);
       if (chart) chart(data);
@@ -245,7 +314,7 @@ async function loadDashboard() {
   }
   const tasks = [];
   if (selected !== "feedback") {
-    tasks.push(section("/overview", "Summary", ["overview-metrics", "traffic-metrics", "downloads-metrics", "errors-metrics"], renderOverviewMetrics));
+    tasks.push(section("/overview", "Summary", ["overview-metrics", "traffic-metrics", "errors-metrics"], renderOverviewMetrics));
   }
   const trends = {
     overview: ["overview-trend", [{ field: "page_views", className: "pv", label: "Page views" }, { field: "unique_visitors", className: "uv", label: "Unique visitors" }]],
@@ -263,13 +332,19 @@ async function loadDashboard() {
   } else if (selected === "traffic") {
     tasks.push(section("/countries", "Countries", ["country-summary", "country-trend"], (data) => renderCountrySummary("country-summary", data.summary), (data) => renderCountryTrend("country-trend", data.daily)));
   } else if (selected === "downloads") {
-    tasks.push(section("/downloads", "Download activity", ["downloads-events", "downloads-funnel"], (data) => {
-      renderDownloadEvents("downloads-events", data.events);
+    tasks.push(section("/download-events", "Download activity", ["downloads-events"], (rows) => renderDownloadEvents("downloads-events", rows)));
+    tasks.push(section("/download-summary", "Download funnel", ["downloads-funnel", "downloads-metrics"], (summary) => {
+      renderMetrics("downloads-metrics", [
+        ["Download page visitors", summary.page_visitors],
+        ["Successful download visitors", summary.successful_visitors],
+        ["Failed requests", summary.failures],
+        ["No download after visit", summary.no_download_visitors],
+      ]);
       element("downloads-funnel").innerHTML = [
-        ["Download page visitors", data.summary.page_visitors],
-        ["Successful download visitors", data.summary.successful_visitors],
-        ["Failed requests", data.summary.failures],
-        ["No download after visiting", data.summary.no_download_visitors],
+        ["Download page visitors", summary.page_visitors],
+        ["Successful download visitors", summary.successful_visitors],
+        ["Failed requests", summary.failures],
+        ["No download after visiting", summary.no_download_visitors],
       ].map(([label, value]) => `<div class="funnel-item"><span>${escapeHtml(label)}</span><strong>${formatNumber(value)}</strong></div>`).join("");
     }));
     tasks.push(section("/download-countries", "Download countries", ["download-country-summary", "download-country-trend"], (data) => renderDownloadCountrySummary("download-country-summary", data.summary), (data) => renderDownloadCountryTrend("download-country-trend", data.daily, data.summary)));

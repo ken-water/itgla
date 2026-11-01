@@ -79,6 +79,8 @@ h2 { margin-bottom: 0; font-size: 17px; }
 .legend .country { background: #2563a6; }
 .chart { min-height: 270px; position: relative; }
 .chart > svg { display: block; width: 100%; height: auto; }
+.chart > svg:focus-visible { outline: 2px solid var(--teal); outline-offset: 3px; border-radius: 4px; }
+.chart-tooltip { filter: drop-shadow(0 3px 5px rgb(23 63 54 / 16%)); }
 .chart-legend { flex-wrap: wrap; margin: 8px 0; }
 .chart details { margin-top: 12px; color: var(--muted); font-size: 13px; }
 .chart summary { cursor: pointer; }

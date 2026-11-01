@@ -13,7 +13,7 @@ async function loadFeedback() {
   const rows = await response.json();
   feedbackTarget.innerHTML = rows.length
     ? rows.map((row) => `<article class="feedback-entry ${row.read_at ? "is-read" : ""}" data-id="${row.id}">
-      <div class="feedback-entry-head"><strong>#${row.id}</strong><time>${new Date(row.created_at).toLocaleString("en-US", { hour12: false })}</time><span>${feedbackEscape(row.email_status)}</span></div>
+      <div class="feedback-entry-head"><strong>#${row.id}</strong><time>${window.formatAdminTime(row.created_at)}</time><span>${feedbackEscape(row.email_status)}</span></div>
       <p>${feedbackEscape(row.message)}</p>
       <div class="feedback-entry-foot">${row.reply_email ? `<a href="mailto:${feedbackEscape(row.reply_email)}">${feedbackEscape(row.reply_email)}</a>` : "<span>No reply email</span>"}${row.read_at ? "<span>Read</span>" : `<button type="button" data-read="${row.id}">Mark read</button>`}</div>
     </article>`).join("")

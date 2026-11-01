@@ -47,8 +47,10 @@ for (const viewport of [
 }
 
 test("analytics API rejects unauthenticated metrics", async ({ request }) => {
-  const response = await request.get("http://127.0.0.1:4174/admin/api/overview");
-  expect(response.status()).toBe(401);
+  for (const name of ["overview", "download-summary", "download-events"]) {
+    const response = await request.get(`http://127.0.0.1:4174/admin/api/${name}`);
+    expect(response.status()).toBe(401);
+  }
 });
 
 test("slow chart and feedback resources do not block document load or sign-in", async ({ page }) => {
@@ -87,6 +89,9 @@ test("a stalled section preserves other data and hidden tabs are fetched on dema
   expect(paths).not.toContain("/admin/api/downloads");
   expect(paths).not.toContain("/admin/api/countries");
   expect(paths).not.toContain("/admin/api/download-countries");
+  const retry = page.waitForRequest("**/admin/api/events?*");
+  await page.clock.fastForward(15001);
+  await retry;
   await page.clock.fastForward(15001);
   await expect(page.locator("#dashboard-error")).toContainText("Recent events:");
   await expect(page.locator("#overview-metrics")).toContainText("1,284");

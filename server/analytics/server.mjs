@@ -47,6 +47,9 @@ function securityHeaders(contentType) {
 }
 
 function json(response, status, body, extraHeaders = {}) {
+  if (response.adminStartedAt !== undefined) {
+    response.setHeader("Server-Timing", `app;dur=${(performance.now() - response.adminStartedAt).toFixed(1)}`);
+  }
   response.writeHead(status, { ...securityHeaders("application/json; charset=utf-8"), ...extraHeaders });
   response.end(JSON.stringify(body));
 }
@@ -406,7 +409,7 @@ async function recentEvents(days) {
   return result.rows;
 }
 
-async function downloadDetails(days) {
+async function downloadEvents(days) {
   const result = await pool.query(
     `select event_name,path,method,status_code,bytes_sent,referrer,user_agent,country_code,country_name,occurred_at
      from analytics_events
@@ -416,6 +419,10 @@ async function downloadDetails(days) {
      order by occurred_at desc limit 200`,
     [days],
   );
+  return result.rows;
+}
+
+async function downloadSummary(days) {
   const summary = await pool.query(
     `with page_visits as (
        select distinct visitor_key
@@ -435,7 +442,13 @@ async function downloadDetails(days) {
        (select count(*)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
     [days],
   );
-  return { events: result.rows, summary: summary.rows[0] };
+  return summary.rows[0];
+}
+
+// Retain the existing endpoint for compatibility with already-open admin pages.
+async function downloadDetails(days) {
+  const [events, summary] = await Promise.all([downloadEvents(days), downloadSummary(days)]);
+  return { events, summary };
 }
 
 async function recentErrors(days) {
@@ -667,6 +680,8 @@ async function handle(request, response) {
     if (pathname === "/admin/api/download-countries") return json(response, 200, await downloadCountries(days));
     if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
     if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
+    if (pathname === "/admin/api/download-summary") return json(response, 200, await downloadSummary(days));
+    if (pathname === "/admin/api/download-events") return json(response, 200, await downloadEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));
     if (pathname === "/admin/api/errors") return json(response, 200, await recentErrors(days));
     if (pathname === "/admin/api/feedback" && request.method === "GET") {
@@ -723,6 +738,15 @@ setInterval(() => {
 }, 60 * 60 * 1000).unref();
 
 const server = http.createServer((request, response) => {
+  if (request.url.startsWith("/admin/api/")) {
+    response.adminStartedAt = performance.now();
+    response.once("close", () => {
+      const durationMs = Math.round(performance.now() - response.adminStartedAt);
+      if (durationMs >= 1000 || !response.writableFinished) {
+        console.warn(JSON.stringify({ event: "admin_request_timing", path: request.url.split("?")[0].slice(0, 100), status: response.statusCode, durationMs, completed: response.writableFinished, poolWaiting: pool.waitingCount, poolTotal: pool.totalCount }));
+      }
+    });
+  }
   handle(request, response).catch((error) => {
     console.error("request failed", error);
     if (!response.headersSent) json(response, 500, { message: "Internal server error." });
