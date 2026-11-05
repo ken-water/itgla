@@ -65,6 +65,14 @@ create index if not exists idx_itgla_events_name_time
 create index if not exists idx_itgla_events_path_time
     on analytics_events (path, occurred_at desc);
 
+create table if not exists analytics_report_snapshots (
+    report_name text not null,
+    days integer not null check (days in (7, 30, 90, 365)),
+    payload jsonb not null,
+    computed_at timestamptz not null,
+    primary key (report_name, days)
+);
+
 create table if not exists analytics_log_offsets (
     source_path text primary key,
     byte_offset bigint not null default 0,

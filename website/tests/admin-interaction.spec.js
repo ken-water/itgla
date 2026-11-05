@@ -23,12 +23,36 @@ test('chart hover responds immediately across the plot, keyboard and touch work'
 test('all admin dates use full ISO date and 24 hour local time including midnight and feedback',async({page})=>{
  await page.goto('http://127.0.0.1:4174/admin');
  await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
- await expect(page.locator('#freshness')).toHaveText(/^Latest data: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+ await expect(page.locator('#freshness')).toHaveText(/^Latest event: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} · Statistics updated: \d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
  await expect(page.locator('#overview-events tbody tr').first().locator('td').first()).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
  const svg=page.locator('#overview-trend > svg');await expect(svg.locator('text').filter({hasText:/2026-09-20/})).toBeVisible();
  await page.locator('#overview-trend summary').click();await expect(page.locator('#overview-trend tbody tr').first().locator('td').first()).toHaveText('2026-09-20');
  expect(await page.evaluate(()=>window.formatAdminTime('2026-11-01T00:00:00'))).toBe('2026-11-01 00:00:00');
  await page.getByRole('tab',{name:'Feedback',exact:true}).click();await expect(page.locator('#feedback-list time').first()).toHaveText(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+});
+
+test('visible dashboard checks cached statistics automatically every minute', async ({page})=>{
+ await page.clock.install();
+ await page.goto('http://127.0.0.1:4174/admin');
+ await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ await expect(page.locator('#freshness')).toContainText('Statistics updated:');
+ let overviewRequests=0;page.on('request',request=>{if(request.url().includes('/admin/api/overview?'))overviewRequests++;});
+ const refresh=page.waitForRequest('**/admin/api/overview?*');
+ await page.clock.fastForward(60001);
+ await refresh;
+ const expectedEventTime=await page.evaluate(()=>window.formatAdminTime('2026-09-23T14:25:00Z'));
+ await expect(page.locator('#freshness')).toContainText(`Latest event: ${expectedEventTime}`);
+ await expect(page.locator('#freshness')).toContainText('Statistics updated:');
+ expect(overviewRequests).toBeGreaterThanOrEqual(1);
+});
+
+test('Refresh button rebuilds the shared statistics snapshot immediately',async({page})=>{
+ const calls=[];await page.route('**/admin/api/refresh',async route=>{calls.push(route.request().method());await route.fulfill({json:{status:'ok',computed_at:'2026-11-05T00:01:00Z'}});});
+ await page.goto('http://127.0.0.1:4174/admin');await page.getByLabel('Username').fill('admin');await page.getByLabel('Password').fill('test-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+ const refresh=page.waitForRequest('**/admin/api/refresh');const overview=page.waitForRequest('**/admin/api/overview?*');
+ await page.getByRole('button',{name:'Refresh',exact:true}).click();await refresh;await overview;
+ await expect(page.getByRole('button',{name:'Refresh',exact:true})).toBeEnabled();expect(calls).toEqual(['POST']);
+ await expect(page.locator('#freshness')).toContainText('Statistics updated:');
 });
 
 test('stalled download details cannot hide funnel or charts; transient reads retry once',async({page})=>{

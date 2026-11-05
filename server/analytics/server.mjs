@@ -209,7 +209,13 @@ function allowLogin(request) {
   return true;
 }
 
-async function ingestAccessLog() {
+let ingestionRun;
+function ingestAccessLog() {
+  if (!ingestionRun) ingestionRun = ingestAccessLogBatch().finally(() => { ingestionRun = undefined; });
+  return ingestionRun;
+}
+
+async function ingestAccessLogBatch() {
   let handle;
   try {
     handle = await fs.open(config.logPath, "r");
@@ -290,7 +296,8 @@ async function ingestAccessLog() {
       [config.logPath, consumed],
     );
   } catch (error) {
-    if (error.code !== "ENOENT") console.error("analytics log ingestion failed", error);
+    console.error("analytics log ingestion failed", error);
+    throw error;
   } finally {
     await handle?.close();
   }
@@ -299,15 +306,15 @@ async function ingestAccessLog() {
 async function overview(days) {
   const result = await pool.query(
     `select
-       count(*) filter (where event_name in ('page_view','download_page_view'))::int as page_views,
+       coalesce(sum(event_count) filter (where event_name in ('page_view','download_page_view')),0)::int as page_views,
        count(distinct visitor_key) filter (where event_name in ('page_view','download_page_view'))::int as unique_visitors,
-       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
-       count(*) filter (where event_name='download_page_view')::int as download_page_views,
+       coalesce(sum(event_count) filter (where event_name in ('download_success','download')),0)::int as downloads,
+       coalesce(sum(event_count) filter (where event_name='download_page_view'),0)::int as download_page_views,
        count(distinct visitor_key) filter (where event_name='download_page_view')::int as download_page_visitors,
-       count(*) filter (where event_name='download_failure')::int as download_failures,
-       count(*) filter (where event_name='page_error')::int as errors,
+       coalesce(sum(event_count) filter (where event_name='download_failure'),0)::int as download_failures,
+       coalesce(sum(event_count) filter (where event_name='page_error'),0)::int as errors,
        max(occurred_at) as latest_event_at
-     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+     from itgla_report_events($1) where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'`,
     [days],
   );
@@ -317,15 +324,15 @@ async function overview(days) {
 async function daily(days) {
   const result = await pool.query(
     `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
-       count(*) filter (where event_name in ('page_view','download_page_view'))::int as page_views,
+       coalesce(sum(event_count) filter (where event_name in ('page_view','download_page_view')),0)::int as page_views,
        count(distinct visitor_key) filter (where event_name in ('page_view','download_page_view'))::int as unique_visitors,
-       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
-       count(*) filter (where event_name='download_page_view')::int as download_page_views,
+       coalesce(sum(event_count) filter (where event_name in ('download_success','download')),0)::int as downloads,
+       coalesce(sum(event_count) filter (where event_name='download_page_view'),0)::int as download_page_views,
        count(distinct visitor_key) filter (where event_name='download_page_view')::int as download_page_visitors,
        count(distinct visitor_key) filter (where event_name in ('download_success','download'))::int as successful_visitors,
-       count(*) filter (where event_name='download_failure')::int as download_failures,
-       count(*) filter (where event_name='page_error')::int as errors
-     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+       coalesce(sum(event_count) filter (where event_name='download_failure'),0)::int as download_failures,
+       coalesce(sum(event_count) filter (where event_name='page_error'),0)::int as errors
+     from itgla_report_events($1) where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
      group by 1 order by 1`,
     [days],
@@ -336,9 +343,9 @@ async function daily(days) {
 async function countries(days) {
   const summary = await pool.query(
     `select coalesce(country_name,country_code,'Unknown') as country,
-       count(*)::int as page_views,
+       coalesce(sum(event_count),0)::int as page_views,
        count(distinct visitor_key)::int as unique_visitors
-     from analytics_events
+     from itgla_report_events($1)
      where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
@@ -348,9 +355,9 @@ async function countries(days) {
   const dailyResult = await pool.query(
     `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
        coalesce(country_name,country_code,'Unknown') as country,
-       count(*)::int as page_views,
+       coalesce(sum(event_count),0)::int as page_views,
        count(distinct visitor_key)::int as unique_visitors
-     from analytics_events
+     from itgla_report_events($1)
      where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
@@ -363,9 +370,9 @@ async function countries(days) {
 async function downloadCountries(days) {
   const summary = await pool.query(
     `select coalesce(country_name,country_code,'Unknown') as country,
-       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
-       count(*) filter (where event_name='download_failure')::int as failures
-     from analytics_events
+       coalesce(sum(event_count) filter (where event_name in ('download_success','download')),0)::int as downloads,
+       coalesce(sum(event_count) filter (where event_name='download_failure'),0)::int as failures
+     from itgla_report_events($1)
      where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
        and event_name in ('download_success','download_failure','download')
@@ -375,9 +382,9 @@ async function downloadCountries(days) {
   const dailyResult = await pool.query(
     `select to_char(date_trunc('day',occurred_at),'YYYY-MM-DD') as day,
        coalesce(country_name,country_code,'Unknown') as country,
-       count(*) filter (where event_name in ('download_success','download'))::int as downloads,
-       count(*) filter (where event_name='download_failure')::int as failures
-     from analytics_events
+       coalesce(sum(event_count) filter (where event_name in ('download_success','download')),0)::int as downloads,
+       coalesce(sum(event_count) filter (where event_name='download_failure'),0)::int as failures
+     from itgla_report_events($1)
      where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
        and event_name in ('download_success','download_failure','download')
@@ -389,9 +396,9 @@ async function downloadCountries(days) {
 
 async function pages(days) {
   const result = await pool.query(
-    `select path,count(*)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
+    `select path,coalesce(sum(event_count),0)::int as page_views,count(distinct visitor_key)::int as unique_visitors,
        max(occurred_at) as last_seen_at
-     from analytics_events where occurred_at >= now() - ($1::int * interval '1 day')
+     from itgla_report_events($1) where occurred_at >= now() - ($1::int * interval '1 day')
        and visitor_quality='meaningful'
        and event_name in ('page_view','download_page_view')
      group by path order by page_views desc,last_seen_at desc limit 100`,
@@ -444,12 +451,12 @@ async function downloadSummary(days) {
   const summary = await pool.query(
     `with page_visits as (
        select distinct visitor_key
-       from analytics_events
+       from itgla_report_events($1)
        where event_name='download_page_view' and visitor_quality='meaningful'
          and occurred_at >= now() - ($1::int * interval '1 day')
      ), successful as (
        select distinct visitor_key
-       from analytics_events
+       from itgla_report_events($1)
        where event_name in ('download_success','download') and visitor_quality='meaningful'
          and occurred_at >= now() - ($1::int * interval '1 day')
      )
@@ -457,8 +464,8 @@ async function downloadSummary(days) {
        (select count(*)::int from page_visits) as page_visitors,
        (select count(*)::int from successful) as successful_visitors,
        (select count(*)::int from page_visits p where not exists (select 1 from successful s where s.visitor_key=p.visitor_key)) as no_download_visitors,
-       (select count(distinct visitor_key)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failed_visitors,
-       (select count(*)::int from analytics_events where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
+       (select count(distinct visitor_key)::int from itgla_report_events($1) where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failed_visitors,
+       (select coalesce(sum(event_count),0)::int from itgla_report_events($1) where event_name='download_failure' and visitor_quality='meaningful' and occurred_at >= now() - ($1::int * interval '1 day')) as failures`,
     [days],
   );
   return summary.rows[0];
@@ -480,6 +487,99 @@ async function recentErrors(days) {
     [days],
   );
   return result.rows;
+}
+
+const reportWindows = [7, 30, 90, 365];
+let reportRefresh;
+
+async function refreshDailyFacts() {
+  const client = await pool.connect();
+  try {
+    await client.query("begin");
+    // Claim dirty dates atomically. Concurrent event writes leave a new dirty
+    // marker after this transaction commits, so late events cannot be lost.
+    const { rows } = await client.query("delete from analytics_dirty_days returning day::text");
+    const dates = new Set(rows.map((row) => row.day));
+    dates.add(new Date().toISOString().slice(0, 10));
+    for (const day of dates) {
+      await client.query("delete from analytics_daily_facts where day=$1::date", [day]);
+      await client.query(
+        `insert into analytics_daily_facts(day,event_name,path,visitor_key,country,event_count,occurred_at)
+         select $1::date,event_name,path,visitor_key,coalesce(country_name,country_code,'Unknown'),count(*),max(occurred_at)
+         from analytics_events
+         where occurred_at >= ($1::date::timestamp at time zone 'UTC')
+           and occurred_at < (($1::date + 1)::timestamp at time zone 'UTC')
+           and visitor_quality='meaningful'
+         group by event_name,path,visitor_key,coalesce(country_name,country_code,'Unknown')`,
+        [day],
+      );
+    }
+    await client.query("commit");
+    return [...dates].sort();
+  } catch (error) {
+    await client.query("rollback");
+    throw error;
+  } finally { client.release(); }
+}
+
+async function refreshReportSnapshots() {
+  if (reportRefresh) return reportRefresh;
+  reportRefresh = (async () => {
+    await ingestAccessLog();
+    const refreshedDays = await refreshDailyFacts();
+    const snapshots = [];
+    for (const days of reportWindows) {
+      const reports = await Promise.all([
+        ["overview", overview(days)],
+        ["daily", daily(days)],
+        ["countries", countries(days)],
+        ["download-countries", downloadCountries(days)],
+        ["pages", pages(days)],
+        ["events", recentEvents(days)],
+        ["download-summary", downloadSummary(days)],
+        ["errors", recentErrors(days)],
+      ].map(async ([name, result]) => [name, await result]));
+      for (const [name, payload] of reports) snapshots.push({ name, days, payload });
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      for (const snapshot of snapshots) {
+        await client.query(
+          `insert into analytics_report_snapshots(report_name,days,payload,computed_at)
+           values($1,$2,$3::jsonb,transaction_timestamp())
+           on conflict(report_name,days) do update
+             set payload=excluded.payload,computed_at=excluded.computed_at`,
+          [snapshot.name, snapshot.days, JSON.stringify(snapshot.payload)],
+        );
+      }
+      const { rows } = await client.query("select transaction_timestamp() as computed_at");
+      await client.query("commit");
+      console.info(JSON.stringify({ event: "analytics_reports_refreshed", refreshedDays, windows: reportWindows, reports: snapshots.length, computedAt: rows[0].computed_at }));
+      return rows[0].computed_at;
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally {
+      client.release();
+    }
+  })().finally(() => { reportRefresh = undefined; });
+  return reportRefresh;
+}
+
+async function readReportSnapshot(reportName, days) {
+  const { rows } = await pool.query(
+    "select payload,computed_at from analytics_report_snapshots where report_name=$1 and days=$2",
+    [reportName, days],
+  );
+  if (!rows.length) throw Object.assign(new Error("Statistics are being prepared. Try again shortly."), { status: 503 });
+  return rows[0];
+}
+
+async function sendReportSnapshot(response, reportName, days) {
+  const snapshot = await readReportSnapshot(reportName, days);
+  return json(response, 200, snapshot.payload, { "X-Analytics-Computed-At": new Date(snapshot.computed_at).toISOString() });
 }
 
 async function handle(request, response) {
@@ -692,13 +792,19 @@ async function handle(request, response) {
 
   if (pathname.startsWith("/admin/api/")) {
     if (!(await authenticated(request))) return json(response, 401, { message: "Administrator sign-in required." });
+    if (request.method === "POST" && pathname === "/admin/api/refresh") {
+      const computedAt = await refreshReportSnapshots();
+      return json(response, 200, { status: "ok", computed_at: computedAt });
+    }
     const days = daysFromUrl(url);
-    if (pathname === "/admin/api/overview") return json(response, 200, await overview(days));
-    if (pathname === "/admin/api/daily") return json(response, 200, await daily(days));
-    if (pathname === "/admin/api/countries") return json(response, 200, await countries(days));
-    if (pathname === "/admin/api/download-countries") return json(response, 200, await downloadCountries(days));
-    if (pathname === "/admin/api/pages") return json(response, 200, await pages(days));
-    if (pathname === "/admin/api/events") return json(response, 200, await recentEvents(days));
+    if (pathname === "/admin/api/overview") return sendReportSnapshot(response, "overview", days);
+    if (pathname === "/admin/api/daily") return sendReportSnapshot(response, "daily", days);
+    if (pathname === "/admin/api/countries") return sendReportSnapshot(response, "countries", days);
+    if (pathname === "/admin/api/download-countries") return sendReportSnapshot(response, "download-countries", days);
+    if (pathname === "/admin/api/pages") return sendReportSnapshot(response, "pages", days);
+    if (pathname === "/admin/api/events") return sendReportSnapshot(response, "events", days);
+    if (pathname === "/admin/api/download-summary") return sendReportSnapshot(response, "download-summary", days);
+    if (pathname === "/admin/api/errors") return sendReportSnapshot(response, "errors", days);
     if (pathname === "/admin/api/download-events-page") {
       const cursor = url.searchParams.get("cursor");
       if (cursor !== null && (!/^[1-9][0-9]{0,18}$/.test(cursor) || BigInt(cursor) > 9223372036854775807n)) {
@@ -706,10 +812,8 @@ async function handle(request, response) {
       }
       return json(response, 200, await downloadEventPage(days, cursor));
     }
-    if (pathname === "/admin/api/download-summary") return json(response, 200, await downloadSummary(days));
     if (pathname === "/admin/api/download-events") return json(response, 200, await downloadEvents(days));
     if (pathname === "/admin/api/downloads") return json(response, 200, await downloadDetails(days));
-    if (pathname === "/admin/api/errors") return json(response, 200, await recentErrors(days));
     if (pathname === "/admin/api/feedback" && request.method === "GET") {
       const result = await pool.query(
         `select id,message,reply_email,email_status,created_at,read_at
@@ -731,9 +835,13 @@ async function handle(request, response) {
 }
 
 await pool.query(await fs.readFile(path.join(root, "schema.sql"), "utf8"));
+await pool.query(await fs.readFile(path.join(root, "rollups.sql"), "utf8"));
 await pool.query(
   `update analytics_events set ip_address=null, region=null, city=null, latitude=null,
-     longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null`,
+     longitude=null, timezone=null, asn=null, organization=null, isp=null, geo_source=null
+   where ip_address is not null or region is not null or city is not null or latitude is not null
+      or longitude is not null or timezone is not null or asn is not null or organization is not null
+      or isp is not null or geo_source is not null`,
 );
 await pool.query(
   "delete from analytics_events where event_name in ('page_view','page_error') and not (path = any($1::text[]))",
@@ -741,15 +849,21 @@ await pool.query(
 );
 await pool.query(
   `update analytics_events set visitor_quality='probe'
-   where user_agent is null or btrim(user_agent) = ''`,
+   where visitor_quality <> 'probe' and (user_agent is null or btrim(user_agent) = '')`,
 );
 await pool.query(
   `update analytics_events set visitor_quality='probe'
-   where lower(user_agent) ~ '(curl|wget|go-http-client|python|node([./ -]|$)|java|okhttp|opsprobe|bot|crawler|spider|scraper|ahrefs|semrush|dataforseo|seranking|gptbot|chatgpt-user|claudebot|anthropic-ai|amazonbot|censys|nutch|cms[- ]checker|webapp[- ]mapper)'`,
+   where visitor_quality <> 'probe' and lower(user_agent) ~ '(curl|wget|go-http-client|python|node([./ -]|$)|java|okhttp|opsprobe|bot|crawler|spider|scraper|ahrefs|semrush|dataforseo|seranking|gptbot|chatgpt-user|claudebot|anthropic-ai|amazonbot|censys|nutch|cms[- ]checker|webapp[- ]mapper)'`,
 );
 await pool.query("delete from admin_sessions where expires_at <= now()");
 await ingestAccessLog();
-setInterval(() => void ingestAccessLog(), 10_000).unref();
+await refreshReportSnapshots();
+setInterval(() => {
+  void ingestAccessLog().catch(() => {}); // The ingestion function logs failure; keep the last good snapshot.
+}, 10_000).unref();
+setInterval(() => {
+  void refreshReportSnapshots().catch((error) => console.error("analytics report refresh failed", error));
+}, 60_000).unref();
 setInterval(() => {
   void pool.query("delete from admin_sessions where expires_at <= now()");
   void pool.query(

@@ -79,6 +79,10 @@ const server = http.createServer(async (request, response) => {
     if (credentials.username !== "admin" || credentials.password !== "test-password") return json(response, 401, { message: "Incorrect username or password." });
     return json(response, 200, { status: "ok" }, { "Set-Cookie": `${sessionCookie}; Path=/admin; HttpOnly; SameSite=Strict` });
   }
+  if (request.method === "POST" && url.pathname === "/admin/api/refresh") {
+    const authenticated = String(request.headers.cookie || "").includes(sessionCookie);
+    return json(response, authenticated ? 200 : 401, authenticated ? { status: "ok", computed_at: new Date().toISOString() } : { message: "Administrator sign-in required." });
+  }
   if (request.method === "POST" && url.pathname === "/admin/api/logout") return json(response, 200, { status: "ok" }, { "Set-Cookie": "itgla_admin_session=; Path=/admin; Max-Age=0; HttpOnly; SameSite=Strict" });
   const authenticated = String(request.headers.cookie || "").includes(sessionCookie);
   if (url.pathname === "/admin/api/me") return json(response, 200, { authenticated, username: authenticated ? "admin" : null });
@@ -91,7 +95,11 @@ const server = http.createServer(async (request, response) => {
     return authenticated ? json(response, 200, url.pathname.endsWith("summary") ? data.summary : data.events) : json(response, 401, { message: "Administrator sign-in required." });
   }
   const fixtureKey = Object.keys(fixtures).find((key) => url.pathname === key);
-  if (fixtureKey) return authenticated ? json(response, 200, fixtures[fixtureKey]) : json(response, 401, { message: "Administrator sign-in required." });
+  if (fixtureKey) {
+    const headers = ["overview", "daily", "countries", "download-countries", "pages", "events", "download-summary", "errors"].includes(url.pathname.split("/").at(-1))
+      ? { "X-Analytics-Computed-At": new Date().toISOString() } : {};
+    return authenticated ? json(response, 200, fixtures[fixtureKey], headers) : json(response, 401, { message: "Administrator sign-in required." });
+  }
 
   const assets = {
     "/admin": ["admin.html", "text/html; charset=utf-8"],

@@ -1,4 +1,17 @@
 const element = (id) => document.getElementById(id);
+let lastDashboardAttemptAt = 0;
+let lastSnapshotComputedAt = null;
+let snapshotRefreshInProgress = false;
+let dashboardRefreshTimer;
+
+function refreshDashboardIfStale() {
+  if (snapshotRefreshInProgress || document.hidden || element("dashboard").hidden || Date.now() - lastDashboardAttemptAt < 60000) return;
+  if (document.querySelector('[data-tab].is-active')?.dataset.tab === "feedback") return;
+  void loadDashboard();
+}
+
+document.addEventListener("visibilitychange", refreshDashboardIfStale);
+
 async function api(path, options = {}) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 15000);
@@ -18,6 +31,8 @@ async function api(path, options = {}) {
       error.status = response.status;
       throw error;
     }
+    const computedAt = response.headers.get("X-Analytics-Computed-At");
+    if (computedAt) lastSnapshotComputedAt = new Date(computedAt);
     return body;
   } catch (error) {
     if (controller.signal.aborted) throw new Error("The request timed out after 15 seconds. Try again.");
@@ -99,7 +114,10 @@ function renderOverviewMetrics(overview) {
     ["Total package requests", Number(overview.downloads || 0) + Number(overview.download_failures || 0)],
   ]);
   renderMetrics("errors-metrics", [["Page errors", overview.errors]]);
-  element("freshness").textContent = overview.latest_event_at ? `Latest data: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
+  const eventTime = overview.latest_event_at ? `Latest event: ${formatTime(overview.latest_event_at)}` : "No traffic recorded yet";
+  const updated = lastSnapshotComputedAt ? `Statistics updated: ${formatTime(lastSnapshotComputedAt)}` : "Statistics update time unavailable";
+  const delayed = lastSnapshotComputedAt && Date.now() - lastSnapshotComputedAt.getTime() > 120000;
+  element("freshness").textContent = `${eventTime} · ${updated}${delayed ? " · Update delayed; use Refresh to retry." : ""}`;
 }
 
 // Monotone cubic curves keep each segment inside its data range.
@@ -321,6 +339,9 @@ element("download-more").addEventListener("click", async () => {
 
 let dashboardGeneration = 0;
 async function loadDashboard() {
+  lastDashboardAttemptAt = Date.now();
+  clearTimeout(dashboardRefreshTimer);
+  dashboardRefreshTimer = setTimeout(refreshDashboardIfStale, 60000);
   const generation = ++dashboardGeneration;
   const selected = document.querySelector('[data-tab].is-active')?.dataset.tab || "overview";
   const error = element("dashboard-error");
@@ -455,7 +476,25 @@ element("login-form").addEventListener("submit", async (event) => {
 });
 
 element("days").addEventListener("change", () => void loadDashboard());
-element("refresh").addEventListener("click", () => void loadDashboard());
+element("refresh").addEventListener("click", async () => {
+  const button = element("refresh");
+  snapshotRefreshInProgress = true;
+  button.disabled = true;
+  button.textContent = "Updating...";
+  button.setAttribute("aria-busy", "true");
+  try {
+    await api("/refresh", { method: "POST" });
+    await loadDashboard();
+  } catch (error) {
+    element("dashboard-error").textContent = `Statistics refresh failed: ${error.message}`;
+    element("dashboard-error").hidden = false;
+  } finally {
+    button.disabled = false;
+    snapshotRefreshInProgress = false;
+    button.textContent = "Refresh";
+    button.removeAttribute("aria-busy");
+  }
+});
 document.querySelectorAll("[data-tab]").forEach((tab) => {
   tab.addEventListener("click", () => {
     const selected = tab.dataset.tab;
