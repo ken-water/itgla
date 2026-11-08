@@ -53,6 +53,10 @@ test("download page exposes current verified artifacts", async ({ page, request 
 
   await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.3" })).toBeVisible();
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
+  await expect(page.locator('link[href^="/marketing.css?v="]')).toHaveAttribute(
+    "href",
+    "/marketing.css?v=20261108-download-polish",
+  );
   await expect(page.locator(".platform-card")).toHaveCount(3);
   await expect(page.locator("#macos")).toContainText("Apple silicon");
   await expect(page.locator("#macos")).toContainText("Intel");

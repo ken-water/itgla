@@ -184,9 +184,9 @@
 .verify-guides details[open] summary::after { content: "−"; }
 .verify-guides pre { background: #fff; }
 .upgrade-note { margin-top: 44px; border: 1px solid var(--line); background: #fff; }
-.marketing-site .release-notes { margin-top: 44px; padding: 32px; border: 1px solid var(--line); background: #f5f7f3; }
-.marketing-site .release-notes ul { padding-left: 22px; color: var(--muted); }
-.marketing-site .release-notes li + li { margin-top: 8px; }
+.marketing-site .downloads-main .release-notes { margin-top: 44px; padding: 32px; border: 1px solid var(--line); background: #f5f7f3; }
+.marketing-site .downloads-main .release-notes ul { padding-left: 22px; color: var(--muted); }
+.marketing-site .downloads-main .release-notes li + li { margin-top: 8px; }
 .downloads-main .account-boundary { margin-top: 28px; }
 .marketing-site .downloads-main { padding-bottom: 32px; }
 .marketing-site .downloads-main .release-notes { width: 100%; max-width: none; }
@@ -203,5 +203,5 @@
   .marketing-site .platform-card .platform-description { min-height: 0; margin: 0 0 12px; }
   .mac-packages { grid-template-columns: 1fr; }
   .download-verification { width: calc(100% + 32px); margin: 32px -16px 0; padding: 30px 16px; }
-  .marketing-site .release-notes { padding: 22px 18px; }
+  .marketing-site .downloads-main .release-notes { padding: 22px 18px; }
 }
