@@ -116,7 +116,7 @@ for (const viewport of [
     });
     expect(Math.abs(geometry.notesWidth - geometry.mainWidth)).toBeLessThanOrEqual(1);
     expect(geometry.gap).toBeLessThanOrEqual(40);
-    await expect(page.locator(".site-footer")).toContainText("A clear place for the server details you use every day.");
+    await expect(page.locator(".site-footer .footer-slogan")).toHaveText("IT in a glance.");
     expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   });
 }
@@ -135,7 +135,7 @@ test("shared footer geometry stays consistent across the site", async ({ page })
     await page.goto(path);
     await expect(page.locator('link[href^="/styles.css?v="]')).toHaveAttribute(
       "href",
-      "/styles.css?v=20261108-footer-spacing",
+      "/styles.css?v=20261108-footer-clean",
     );
     const style = await page.locator(".site-footer").evaluate((footer) => {
       const computed = getComputedStyle(footer);
@@ -159,6 +159,26 @@ test("plan comparison cards share one aligned grid", async ({ page }) => {
     const widths = await page.locator(".plan-value").evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().width));
     expect(widths).toHaveLength(3);
     expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+  }
+});
+
+test("footer slogan sits beside the brand and platform icons render cleanly", async ({ page }) => {
+  for (const width of [390, 768, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto("/downloads.html");
+    const geometry = await page.locator(".site-footer").evaluate((footer) => {
+      const box = (selector) => { const r = footer.querySelector(selector).getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, center: r.top + r.height / 2 }; };
+      return { brand: box(".footer-brand"), slogan: box(".footer-slogan"), nav: box("nav") };
+    });
+    expect(geometry.slogan.left).toBeGreaterThanOrEqual(geometry.brand.right);
+    expect(Math.abs(geometry.slogan.center - geometry.brand.center)).toBeLessThanOrEqual(1);
+    await expect(page.locator(".site-footer .copyright")).toHaveCount(0);
+    if (width > 820) expect(geometry.nav.left).toBeGreaterThanOrEqual(geometry.slogan.right);
+    for (const icon of await page.locator(".platform-icon").all()) {
+      await expect.poll(() => icon.evaluate((image) => image.naturalWidth)).toBeGreaterThan(0);
+      await expect(icon).toHaveAttribute("alt", "");
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   }
 });
 
@@ -271,7 +291,7 @@ test("compliance disclosures match current behavior", async ({ page }) => {
 test("email sign-in does not fall through to a 404", async ({ page }) => {
   await page.goto("/signin.html");
   await expect(page.locator("#email-signin-form")).toBeVisible();
-  await expect(page.locator('a[href="/auth/google/start"]')).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", "/auth/google/start");
   await expect(page.locator("#email-signin-form")).toHaveAttribute("id", "email-signin-form");
 });
 

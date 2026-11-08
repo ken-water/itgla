@@ -9,6 +9,7 @@ const files = (await readdir(root))
   .map((file) => resolve(root, file))
   .sort();
 const pattern = /<footer class="site-footer compact-footer">[\s\S]*?<\/footer>/;
+files.push(resolve(root, "../server/analytics/web/account.html"));
 const hashes = new Map();
 const failures = [];
 
@@ -19,6 +20,7 @@ for (const file of files) {
     failures.push(`${file}: missing unified footer`);
     continue;
   }
+  if (/copyright|\u00a9|<hr\b/.test(match[0])) failures.push(`${file}: obsolete copyright or divider`);
   hashes.set(file, crypto.createHash("sha256").update(match[0]).digest("hex"));
 }
 

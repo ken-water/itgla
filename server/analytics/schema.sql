@@ -141,6 +141,12 @@ create table if not exists user_sessions (
     created_at timestamptz not null default now()
 );
 
+create table if not exists google_identities (
+    subject text primary key,
+    email text not null references users(email) on delete cascade,
+    created_at timestamptz not null default now()
+);
+
 create table if not exists user_servers (
     id bigserial primary key,
     email text not null references users(email) on delete cascade,

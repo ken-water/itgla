@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { Pool } from "pg";
 import { adminCredentialRedirect, daysFromUrl, hash, isMeaningfulVisitor, parseLogLine, passwordDigest, publicPagePaths, safeEqual } from "./lib.mjs";
 import { lookupGeo } from "./geo.mjs";
+import { createGoogleAuth } from "./google-auth.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const config = {
@@ -30,6 +31,7 @@ for (const [name, value] of Object.entries(config).filter(([name]) => name !== "
 }
 
 const pool = new Pool({ connectionString: config.databaseUrl, max: 5 });
+const googleAuth = createGoogleAuth({ clientId: process.env.ITGLA_GOOGLE_CLIENT_ID, clientSecret: process.env.ITGLA_GOOGLE_CLIENT_SECRET, publicBaseUrl: config.publicBaseUrl });
 const sessionTtlSeconds = 8 * 60 * 60;
 const loginAttempts = new Map();
 
@@ -596,6 +598,39 @@ async function handle(request, response) {
   if (request.method === "GET" && pathname === "/feedback.js") return asset(response, "feedback.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/auth.js") return asset(response, "auth.js", "text/javascript; charset=utf-8");
   if (request.method === "GET" && pathname === "/account.js") return asset(response, "account.js", "text/javascript; charset=utf-8");
+  if (request.method === "GET" && pathname === "/auth/google/start") {
+    if (!googleAuth.enabled) return json(response, 503, { message: "Google sign-in is not configured. Please use email." });
+    if (!allowLogin(request)) return json(response, 429, { message: "Too many sign-in attempts. Please try again later." });
+    const start = googleAuth.start();
+    response.writeHead(302, { ...securityHeaders("text/plain; charset=utf-8"), Location: start.location, "Set-Cookie": start.cookie });
+    return response.end();
+  }
+  if (request.method === "GET" && pathname === "/auth/google/callback") {
+    let identity;
+    try {
+      identity = await googleAuth.finish({ state: url.searchParams.get("state"), cookieState: cookieValue(request, "__Host-itgla_google_state"), code: url.searchParams.get("code"), error: url.searchParams.get("error") });
+    } catch {
+      response.writeHead(303, { ...securityHeaders("text/plain; charset=utf-8"), Location: "/signin.html?google_error=1", "Set-Cookie": googleAuth.clearCookie });
+      return response.end();
+    }
+    const client = await pool.connect();
+    const session = crypto.randomBytes(32).toString("hex");
+    try {
+      await client.query("begin");
+      await client.query("select pg_advisory_xact_lock(hashtext($1))", [`google:${identity.subject}`]);
+      const existing = await client.query("select email from google_identities where subject=$1", [identity.subject]);
+      const email = existing.rows[0]?.email || identity.email;
+      await client.query("insert into users (email) values ($1) on conflict (email) do update set last_sign_in_at=now()", [email]);
+      await client.query("insert into google_identities (subject,email) values ($1,$2) on conflict (subject) do nothing", [identity.subject, email]);
+      await client.query("insert into user_sessions (token_hash,email,expires_at) values ($1,$2,now()+interval '30 days')", [hash(session), email]);
+      await client.query("commit");
+    } catch (error) {
+      await client.query("rollback");
+      throw error;
+    } finally { client.release(); }
+    response.writeHead(303, { ...securityHeaders("text/plain; charset=utf-8"), Location: "/account.html", "Set-Cookie": [googleAuth.clearCookie, `itgla_user_session=${session}; Path=/; Max-Age=2592000; HttpOnly; Secure; SameSite=Lax`] });
+    return response.end();
+  }
   if (request.method === "GET" && pathname === "/auth/email/verify") {
     const token = url.searchParams.get("token") || "";
     if (!/^[a-f0-9]{64}$/.test(token)) return asset(response, "auth-invalid.html", "text/html; charset=utf-8");

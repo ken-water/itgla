@@ -1,5 +1,8 @@
 const emailForm = document.getElementById("email-signin-form");
 const authStatus = document.getElementById("auth-status");
+if (new URLSearchParams(location.search).get("google_error") === "1") {
+  authStatus.textContent = "Google sign-in could not be completed. Try again or use an email link.";
+}
 const pendingKey = "itgla_login_attempt";
 let pollTimer;
 function watchAttempt(requestId) {
