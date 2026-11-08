@@ -667,7 +667,6 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .page-heading h1, .simple-message h1 { font-size: 36px; }
   .download-list article { align-items: stretch; flex-direction: column; gap: 20px; }
   .download-list .button, .download-list .text-link, .unavailable { width: 100%; min-width: 0; }
-  .compact-footer { margin-top: 64px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

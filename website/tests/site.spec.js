@@ -53,6 +53,11 @@ test("download page exposes current verified artifacts", async ({ page, request 
 
   await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.3" })).toBeVisible();
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
+  await expect(page.locator(".platform-card")).toHaveCount(3);
+  await expect(page.locator("#macos")).toContainText("Apple silicon");
+  await expect(page.locator("#macos")).toContainText("Intel");
+  await expect(page.locator("#windows")).toContainText("EXE · 9.3 MB");
+  await expect(page.locator(".verify-guides details[open]")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
     "https://itgla.com/downloads/v0.6.3/itgla-v0.6.3-windows-x86_64-setup.exe",
@@ -90,6 +95,63 @@ test("download page exposes current verified artifacts", async ({ page, request 
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+});
+
+for (const viewport of [
+  { name: "mobile", width: 390, height: 844 },
+  { name: "desktop", width: 1440, height: 900 },
+]) {
+  test(`download page sections and shared footer align at ${viewport.name}`, async ({ page }) => {
+    await page.setViewportSize(viewport);
+    await page.goto("/downloads.html");
+    const geometry = await page.evaluate(() => {
+      const main = document.querySelector(".downloads-main").getBoundingClientRect();
+      const notes = document.querySelector(".release-notes").getBoundingClientRect();
+      const footer = document.querySelector(".site-footer").getBoundingClientRect();
+      return { mainWidth: main.width, notesWidth: notes.width, gap: footer.top - notes.bottom };
+    });
+    expect(Math.abs(geometry.notesWidth - geometry.mainWidth)).toBeLessThanOrEqual(1);
+    expect(geometry.gap).toBeLessThanOrEqual(40);
+    await expect(page.locator(".site-footer")).toContainText("A clear place for the server details you use every day.");
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
+  });
+}
+
+test("shared footer geometry stays consistent across the site", async ({ page }) => {
+  const pages = [
+    "/", "/400.html", "/403.html", "/404.html", "/500.html", "/502.html", "/503.html", "/504.html",
+    "/account.html", "/cookies.html", "/custom-server-fields.html", "/downloads.html", "/feedback.html",
+    "/getting-started.html", "/import-server-inventory.html", "/legal.html", "/local-first-server-inventory.html",
+    "/plans.html", "/privacy.html", "/refund.html", "/release-notes.html", "/server-inventory-example.html",
+    "/server-inventory.html", "/server-spreadsheet-alternative.html", "/signin.html",
+  ];
+  await page.setViewportSize({ width: 390, height: 844 });
+  let sharedStyle;
+  for (const path of pages) {
+    await page.goto(path);
+    const style = await page.locator(".site-footer").evaluate((footer) => {
+      const computed = getComputedStyle(footer);
+      return {
+        padding: computed.padding,
+        marginTop: computed.marginTop,
+        backgroundColor: computed.backgroundColor,
+        gridTemplateColumns: computed.gridTemplateColumns,
+      };
+    });
+    expect(style.marginTop, `${path} footer top gap`).toBe("0px");
+    if (!sharedStyle) sharedStyle = style;
+    expect(style, `${path} footer style`).toEqual(sharedStyle);
+  }
+});
+
+test("plan comparison cards share one aligned grid", async ({ page }) => {
+  for (const viewport of [{ width: 390, height: 844 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto("/plans.html");
+    const widths = await page.locator(".plan-value").evaluateAll((cards) => cards.map((card) => card.getBoundingClientRect().width));
+    expect(widths).toHaveLength(3);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeLessThanOrEqual(1);
+  }
 });
 
 test("secondary documents render", async ({ page }) => {
@@ -174,10 +236,11 @@ test("website account remains optional along the desktop download journey", asyn
 test("download platform anchors and verification instructions are usable", async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
   await page.goto("/downloads.html");
-  await page.getByRole("link", { name: "Mac · Intel", exact: true }).click();
-  await expect(page).toHaveURL(/#mac-intel$/);
-  await expect(page.locator("#mac-intel")).toContainText("Unsigned and not notarized");
+  await page.getByRole("link", { name: "macOS", exact: true }).click();
+  await expect(page).toHaveURL(/#macos$/);
+  await expect(page.locator("#mac-intel")).toContainText("Intel processor");
   await page.locator("#windows .inline-guide").click();
+  await expect(page.locator("#verify-windows")).toHaveAttribute("open", "");
   await expect(page.locator("#verify-windows code").first()).toContainText("Get-FileHash");
   await expect(page.locator("#verify-linux pre")).toContainText("--ignore-missing");
   await expect(page.locator("#verify-macos pre")).toContainText("shasum -a 256");
@@ -224,14 +287,13 @@ for (const viewport of viewports) {
       await expect(page.getByRole("heading", { name: `macOS 14+ \u00b7 ${label}`, exact: true })).toBeVisible();
       await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `https://itgla.com/downloads/v0.6.3/itgla-v0.6.3-macos-${arch}.dmg`);
     }
-    const downloads = page.locator(".download-actions a");
+    const downloads = page.locator(".package-row a");
     await expect(downloads).toHaveCount(7);
     const firstSize = await downloads.first().boundingBox();
     for (const link of await downloads.all()) {
-      await expect(link).toHaveClass("button button-dark");
+      await expect(link).toHaveClass(/button (button-dark|button-light)/);
       const size = await link.boundingBox();
       expect(size.height).toBeGreaterThanOrEqual(44);
-      expect(Math.abs(size.width - firstSize.width)).toBeLessThanOrEqual(1);
       expect(Math.abs(size.height - firstSize.height)).toBeLessThanOrEqual(1);
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth)).toBeLessThanOrEqual(0);
