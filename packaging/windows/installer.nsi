@@ -11,6 +11,9 @@ SetCompressor /SOLID lzma
 !ifndef SHORTCUT_NAME
 !define SHORTCUT_NAME "ITGLA"
 !endif
+!ifndef SETUP_MUTEX
+!define SETUP_MUTEX "Local\ITGLA.Setup"
+!endif
 Var BackupDir
 Name "ITGLA"
 OutFile "${OUTPUT}"
@@ -31,11 +34,7 @@ VIAddVersionKey /LANG=1033 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1033 "LegalCopyright" "Copyright ITGLA"
 !define MUI_ICON "${PAYLOAD}/itgla.ico"
 !define MUI_UNICON "${PAYLOAD}/itgla.ico"
-!define MUI_HEADERIMAGE
-!define MUI_HEADERIMAGE_RIGHT
-!define MUI_HEADERIMAGE_BITMAP "${ART}/header.bmp"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "${ART}/sidebar.bmp"
-!define MUI_HEADERIMAGE_BITMAP_STRETCH FitControl
 !define MUI_WELCOMEFINISHPAGE_BITMAP_STRETCH FitControl
 !define MUI_BGCOLOR "F4F6F1"
 !define MUI_TEXTCOLOR "203C30"
@@ -77,7 +76,7 @@ FunctionEnd
 
 Function .onInit
   SetShellVarContext current
-  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "Local\ITGLA.Setup") p.r0 ?e'
+  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "${SETUP_MUTEX}") p.r0 ?e'
   Pop $1
   ${If} $1 == 183
     SetErrorLevel 3
@@ -97,7 +96,7 @@ FunctionEnd
 
 Function un.onInit
   SetShellVarContext current
-  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "Local\ITGLA.Setup") p.r0 ?e'
+  System::Call 'kernel32::CreateMutexW(p 0, i 0, w "${SETUP_MUTEX}") p.r0 ?e'
   Pop $1
   ${If} $1 == 183
     SetErrorLevel 3
