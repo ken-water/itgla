@@ -30,7 +30,7 @@ Rollback is an atomic Nginx config/root switch back to the recorded backup, foll
 - `/llm.txt` permanently redirects to `/llms.txt`.
 - `/downloads/v0.3.30/SHA256SUMS` permanently redirects to the canonical lowercase `sha256sums` manifest. Use the exact Nginx location rather than case-colliding files, so Windows checkouts preserve compatibility.
 - Validate both redirects through candidate Nginx and production HTTPS, following each to a 200 response. Run `sha256sum -c sha256sums` against all six release packages.
-- Offer only implemented sign-in providers. The website currently supports email verification links.
+- Offer only implemented sign-in providers. The website supports email verification links and configured Google website sign-in. See `docs/google-signin.md` for the provider configuration and acceptance checks.
 
 ## v0.4.0 publishing
 
