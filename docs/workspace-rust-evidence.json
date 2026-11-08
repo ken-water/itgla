@@ -1,0 +1,121 @@
+{
+  "version": "2.0",
+  "task_id": "workspace-native-20261105",
+  "target_revision": "e6c5808 + local workspace implementation (2026-11-05)",
+  "gates": {
+    "format": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-format.log"
+      ]
+    },
+    "check": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/workspace-clippy.log"
+      ],
+      "command": "cargo +1.92.0 clippy --config output/workspace-cargo-network.toml --offline --all-targets --all-features --locked -j2 -- -D warnings"
+    },
+    "clippy": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/workspace-clippy.log"
+      ],
+      "command": "cargo +1.92.0 clippy --config output/workspace-cargo-network.toml --offline --all-targets --all-features --locked -j2 -- -D warnings"
+    },
+    "tests": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-final-tests.log"
+      ]
+    },
+    "contract": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-final-tests.log",
+        "migrations/022_reminder_reviews.sql",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ]
+    },
+    "compatibility": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-final-tests.log",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ],
+      "reason": "Synthetic isolated schema21 fixture, failed migration, restart and fullrestore tests; actual old-executable installer rollback pending."
+    },
+    "performance": {
+      "status": "fail",
+      "evidence": [
+        "output/workspace-performance.log",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ],
+      "reason": "Synthetic10k pure-search measurement only. Native map frames and end-to-end search latency remain unmeasured."
+    },
+    "dependency_audit": {
+      "status": "fail",
+      "evidence": [
+        "output/workspace-advisories-final.log",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ],
+      "reason": "Windows target passes with scoped documented exceptions. Full cross-platform graph audit remains pending."
+    },
+    "locked_build": {
+      "status": "pass",
+      "exit_code": 0,
+      "command": "cargo +1.92.0 --config output/workspace-cargo-network.toml build --release --locked --offline -j2",
+      "evidence": [
+        "output/workspace-release-build.log"
+      ]
+    }
+  },
+  "diff": {
+    "paths": [
+      "Cargo.lock",
+      "Cargo.toml",
+      "deny.toml",
+      "docs/design/workspace-20261105/README.md",
+      "docs/design/workspace-20261105/brand.png",
+      "docs/design/workspace-20261105/index.html",
+      "docs/design/workspace-20261105/workspace.css",
+      "docs/design/workspace-20261105/workspace.js",
+      "docs/testing/workspace-acceptance-20261105.md",
+      "docs/testing/workspace-implementation-evidence-20261105.md",
+      "docs/workspace-development-backlog-20261105.json",
+      "docs/workspace-development-plan-20261105.md",
+      "docs/workspace-implementation-task.json",
+      "docs/workspace-rust-evidence.json",
+      "docs/workspace-rust-task.json",
+      "docs/workspace-ui-evidence.json",
+      "migrations/022_reminder_reviews.sql",
+      "scripts/preview-workspace.ps1",
+      "scripts/run-test-plan.py",
+      "scripts/test_test_plan_runner.py",
+      "src/import_data.rs",
+      "src/main.rs",
+      "src/operational.rs",
+      "src/reminders.rs",
+      "src/storage.rs",
+      "src/topology.rs",
+      "src/workspace.rs",
+      "tests/fixtures/workspace-import.xlsx",
+      "ui/app.slint",
+      "ui/appearance.slint",
+      "ui/data-table.slint",
+      "ui/topology.slint",
+      "ui/workspace.slint"
+    ],
+    "files_changed": 33,
+    "lines_added": 3099,
+    "lines_deleted": 140,
+    "new_files": 19,
+    "dependencies_added": [
+      "quick-xml 0.42.0 (transitive calamine upgrade)",
+      "tokio 1.54.1 (transitive wasm dependency; inactive on native Windows)"
+    ],
+    "public_api_changed": false
+  }
+}

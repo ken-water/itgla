@@ -1,0 +1,334 @@
+{
+  "id": "itgla-workspace-20261105",
+  "status": "implemented_local_candidate_ready_pending_acceptance",
+  "date": "2026-11-05",
+  "plan": "docs/workspace-development-plan-20261105.md",
+  "design": "docs/design/workspace-20261105/README.md",
+  "acceptance": "docs/testing/workspace-acceptance-20261105.md",
+  "current_schema_version": 22,
+  "execution_order": [
+    "S1",
+    "S2",
+    "S3",
+    "S4",
+    "S5",
+    "S6"
+  ],
+  "items": [
+    {
+      "id": "W01",
+      "stage": "S1",
+      "title": "Typed read-only live inventory projection",
+      "depends_on": [],
+      "touchpoints": [
+        "src/workspace.rs",
+        "src/operational.rs"
+      ],
+      "acceptance": [
+        "WS-01",
+        "WS-02",
+        "WS-03"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W02",
+      "stage": "S1",
+      "title": "Global search and keyboard focus",
+      "depends_on": [
+        "W01"
+      ],
+      "touchpoints": [
+        "ui/app.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-02",
+        "WS-03",
+        "WS-04",
+        "WS-05"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W03",
+      "stage": "S1",
+      "title": "Shared read-only details, relations and history",
+      "depends_on": [
+        "W01"
+      ],
+      "touchpoints": [
+        "ui/workspace.slint",
+        "ui/app.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-06",
+        "WS-07",
+        "WS-29"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W04",
+      "stage": "S1",
+      "title": "Projection invalidation, test entry and search measurement",
+      "depends_on": [
+        "W02",
+        "W03"
+      ],
+      "touchpoints": [
+        "src/workspace.rs",
+        "scripts/run-test-plan.py",
+        "scripts/test_test_plan_runner.py"
+      ],
+      "acceptance": [
+        "WS-04",
+        "WS-29",
+        "WS-30"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W05",
+      "stage": "S2",
+      "title": "Cross-type directory and shared table",
+      "depends_on": [
+        "W04"
+      ],
+      "touchpoints": [
+        "ui/workspace.slint",
+        "ui/data-table.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-08",
+        "WS-09"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W06",
+      "stage": "S2",
+      "title": "Actionable overview and empty state",
+      "depends_on": [
+        "W05"
+      ],
+      "touchpoints": [
+        "ui/workspace.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-08",
+        "WS-10",
+        "WS-19"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W07",
+      "stage": "S3",
+      "title": "Type-specific validated add and transactional links",
+      "depends_on": [
+        "W05",
+        "W06"
+      ],
+      "touchpoints": [
+        "ui/app.slint",
+        "src/workspace.rs",
+        "src/storage.rs"
+      ],
+      "acceptance": [
+        "WS-07",
+        "WS-11",
+        "WS-12",
+        "WS-13",
+        "WS-29"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W08",
+      "stage": "S3",
+      "title": "Scoped import and backup entry integration",
+      "depends_on": [
+        "W07"
+      ],
+      "touchpoints": [
+        "ui/workspace.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-14",
+        "WS-30"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W09",
+      "stage": "S4",
+      "title": "Focused map, expansion, hide/restore and shared details",
+      "depends_on": [
+        "W08"
+      ],
+      "touchpoints": [
+        "src/topology.rs",
+        "ui/topology.slint",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-15",
+        "WS-16",
+        "WS-17",
+        "WS-18"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W10",
+      "stage": "S5",
+      "title": "Reminder sources, expiry cycles and isolated migration",
+      "depends_on": [
+        "W09"
+      ],
+      "touchpoints": [
+        "src/reminders.rs",
+        "src/storage.rs",
+        "migrations/022_reminder_reviews.sql"
+      ],
+      "acceptance": [
+        "WS-19",
+        "WS-20",
+        "WS-21",
+        "WS-22",
+        "WS-23",
+        "WS-24",
+        "WS-25"
+      ],
+      "migration": true,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W11",
+      "stage": "S5",
+      "title": "Reminder review, postponement and overview integration",
+      "depends_on": [
+        "W10"
+      ],
+      "touchpoints": [
+        "ui/workspace.slint",
+        "ui/app.slint",
+        "src/reminders.rs",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-19",
+        "WS-20",
+        "WS-21",
+        "WS-22",
+        "WS-23",
+        "WS-24"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W12",
+      "stage": "S6",
+      "title": "Stable page identifiers and navigation compatibility",
+      "depends_on": [
+        "W11"
+      ],
+      "touchpoints": [
+        "ui/app.slint",
+        "src/main.rs",
+        "src/workspace.rs"
+      ],
+      "acceptance": [
+        "WS-26",
+        "WS-29",
+        "WS-30"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W13",
+      "stage": "S6",
+      "title": "Themes, three text sizes and accessibility regression",
+      "depends_on": [
+        "W12"
+      ],
+      "touchpoints": [
+        "ui/appearance.slint",
+        "ui/workspace.slint",
+        "ui/app.slint"
+      ],
+      "acceptance": [
+        "WS-09",
+        "WS-27",
+        "WS-28"
+      ],
+      "migration": false,
+      "status": "implemented_pending_acceptance"
+    },
+    {
+      "id": "W14",
+      "stage": "S6",
+      "title": "Native candidate, platform validation and user tasks",
+      "depends_on": [
+        "W13"
+      ],
+      "touchpoints": [
+        "docs/testing/workspace-acceptance-20261105.md",
+        "docs/testing/workspace-implementation-evidence-20261105.md",
+        "src/main.rs"
+      ],
+      "acceptance": [
+        "WS-01",
+        "WS-02",
+        "WS-03",
+        "WS-04",
+        "WS-05",
+        "WS-06",
+        "WS-07",
+        "WS-08",
+        "WS-09",
+        "WS-10",
+        "WS-11",
+        "WS-12",
+        "WS-13",
+        "WS-14",
+        "WS-15",
+        "WS-16",
+        "WS-17",
+        "WS-18",
+        "WS-19",
+        "WS-20",
+        "WS-21",
+        "WS-22",
+        "WS-23",
+        "WS-24",
+        "WS-25",
+        "WS-26",
+        "WS-27",
+        "WS-28",
+        "WS-29",
+        "WS-30",
+        "WS-31"
+      ],
+      "migration": false,
+      "status": "local_candidate_ready_platform_and_user_acceptance_pending"
+    }
+  ],
+  "evidence": "docs/testing/workspace-implementation-evidence-20261105.md"
+}

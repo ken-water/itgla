@@ -20,9 +20,9 @@ export component DataTable inherits Rectangle {
     callback open(int);
     callback cell-link(int, int);
     callback sort(int);
-    private property <[length]> widths: [180px, 150px, 130px, 140px, 130px, 120px, 140px, 140px, 140px];
+    in-out property <[length]> widths: [180px, 150px, 130px, 140px, 130px, 120px, 140px, 140px, 140px];
     private property <length> scroll-x;
-    private property <bool> fitted: true;
+    in-out property <bool> fitted: true;
     private property <length> data-width: root.column-width(0) + root.column-width(1) + root.column-width(2) + root.column-width(3) + root.column-width(4) + root.column-width(5) + root.column-width(6) + root.column-width(7) + root.column-width(8);
     pure function column-width(index: int) -> length { return index >= root.headers.length || !root.shown-columns[index] ? 0px : root.fitted ? max(72px, (root.width - 106px) * root.weight(index) / root.total-weight) : root.widths[index]; }
     public function fit() { root.fitted = true; root.scroll-x = 0px; }

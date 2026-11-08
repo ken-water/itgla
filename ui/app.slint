@@ -1,4 +1,5 @@
 import { DataTable, GridRow } from "data-table.slint";
+import { WorkspacePanel, WorkspaceDetail, WorkspaceItem } from "workspace.slint";
 import { AssetContextForm, AssetContextEditor } from "asset-context.slint";
 import { TopologyPanel, TopologyNode, TopologyEdge, BusinessItem } from "topology.slint";
 import { InventoryPanel, InventoryForm, InventoryRow, InventoryChoice } from "inventory.slint";
@@ -455,6 +456,8 @@ export component AppWindow inherits Window {
     in property <[BusinessItem]> business-rows;
     in property <[string]> topology-choices;
     in property <[string]> topology-node-choices;
+    in property <[string]> topology-node-choice-keys;
+    in-out property <string> topology-query;
     in property <[string]> topology-business-choices;
     in property <float> topology-height: 400;
     in-out property <bool> inventory-editor-requested: false;
@@ -471,6 +474,7 @@ export component AppWindow inherits Window {
     in-out property <string> topology-notes;
     in-out property <string> topology-status;
     in-out property <string> topology-view-hidden;
+    in-out property <string> topology-view-expanded;
     in-out property <string> topology-view-collapsed;
     in-out property <string> topology-view-focus;
     in property <[string]> topology-recovery-choices;
@@ -493,7 +497,58 @@ export component AppWindow inherits Window {
     callback topology-view-action(int,string);
     callback topology-refresh(); callback business-select(int); callback business-save(); callback business-hide();
     callback topology-open(string,int); callback topology-save-link(); callback topology-select-link(int); callback topology-remove-link();
-    in-out property <int> active-tab: 0;
+    in-out property <int> active-tab: 8;
+    in-out property <string> workspace-query;
+    in-out property <int> workspace-type;
+    in-out property <[length]> workspace-column-widths: [180px, 180px, 100px, 160px, 120px, 120px, 140px, 100px, 100px];
+    in-out property <bool> workspace-fitted: true;
+    private property <bool> workspace-layout-pending;
+    callback workspace-save-layout();
+    changed workspace-column-widths => { root.workspace-layout-pending = true; }
+    changed workspace-fitted => { root.workspace-layout-pending = true; }
+    Timer { interval: 500ms; running: root.workspace-layout-pending; triggered => { root.workspace-layout-pending = false; root.workspace-save-layout(); } }
+    in-out property <int> workspace-sort: -1;
+    in-out property <int> workspace-search-index;
+    in-out property <bool> business-editor-open;
+    in property <[WorkspaceItem]> workspace-businesses;
+    in property <[WorkspaceItem]> workspace-recent;
+    in property <string> workspace-detail-history;
+    callback workspace-sync();
+    in property <[GridRow]> workspace-rows;
+    in property <[string]> workspace-keys;
+    in property <string> workspace-count;
+    in property <bool> workspace-has-assets;
+    in property <string> workspace-result-status;
+    in-out property <string> workspace-error;
+    in-out property <bool> workspace-detail-open;
+    in-out property <string> workspace-detail-key;
+    in property <bool> workspace-can-back;
+    callback workspace-back();
+    in property <string> workspace-detail-text;
+    in property <[WorkspaceItem]> workspace-related;
+    in property <[WorkspaceItem]> workspace-reminders;
+    in property <int> workspace-attention-count;
+    in-out property <int> workspace-reminder-filter;
+    in-out property <bool> workspace-search-open;
+    in-out property <string> workspace-search-query;
+    in property <string> workspace-search-status;
+    in property <[WorkspaceItem]> workspace-search-results;
+    in-out property <string> workspace-reminder-key;
+    private property <bool> workspace-query-pending;
+    Timer { interval: 150ms; running: root.workspace-query-pending; triggered => { root.workspace-query-pending = false; root.workspace-refresh(); } }
+    Timer { interval: 1s; running: true; triggered => { root.workspace-sync(); } }
+    Timer { interval: 30s; running: root.active-tab == 8 || root.active-tab == 9 || root.active-tab == 13; triggered => { if !root.workspace-query-pending && !root.workspace-search-open && !root.workspace-detail-open { root.workspace-refresh(); } } }
+    changed workspace-reminder-key => { if root.workspace-reminder-key != "" { workspace-review-popup.show(); } else { workspace-review-popup.close(); } }
+
+    callback workspace-refresh();
+    callback workspace-open(string);
+    callback workspace-edit(string);
+    callback workspace-map(string);
+    callback workspace-new(int);
+    callback workspace-reminder-action(string,int);
+    callback workspace-review(string);
+    changed workspace-search-open => { if root.workspace-search-open { workspace-search-popup.show(); } else { workspace-search-popup.close(); workspace-search-trigger.focus(); } }
+    public function open-workspace-search() { if !root.restore-confirm-open && !root.onboarding-open && !root.appearance-open && !root.server-editor-open && !root.inventory-editor-requested && !root.import-dialog-open && !root.endpoints-open && !root.site-editor-open && !root.business-editor-open { root.workspace-search-index = 0; root.workspace-search-open = true; root.workspace-refresh(); } }
     in-out property <int> selected-work-id: 0;
     in-out property <string> work-title;
     in-out property <string> work-kind: "change";
@@ -663,6 +718,7 @@ export component AppWindow inherits Window {
     callback inventory-export();
     callback inventory-connect();
     callback open-server-inventory(int);
+    Timer { interval: 1s; running: true; triggered => { root.workspace-sync(); } }
     Timer { interval: 30s; running: root.inventory-reveal; triggered => { root.inventory-reveal = false; } }
     callback search-changed(string);
     callback tag-selected(string);
@@ -683,13 +739,15 @@ export component AppWindow inherits Window {
     callback auto-fit-site-columns;
     callback copy-value(string, string);
     callback choose-import-file;
+    callback open-server-import;
+    open-server-import => { root.request-table-import(false); }
     callback save-import-template;
     callback load-import(string);
     callback import-mapping-changed(int, int);
     callback auto-map-import;
     callback confirm-import;
     callback tab-selected(int);
-    function request-tab(tab: int) { if !root.onboarding-open && !root.endpoints-open && !root.appearance-open { root.tab-selected(tab); } }
+    function request-tab(tab: int) { if !root.restore-confirm-open && !root.onboarding-open && !root.endpoints-open && !root.appearance-open && !root.workspace-search-open && root.workspace-reminder-key == "" { root.workspace-detail-open = false; root.tab-selected(tab); } }
     callback work-selected(int);
     callback save-work(int, string, string, string, string, string, string, string, string);
     callback new-work;
@@ -737,6 +795,14 @@ export component AppWindow inherits Window {
     callback add-managed-tag(string);
     callback add-custom-field(string, int);
     callback create-managed-backup;
+    callback save-full-backup;
+    callback choose-restore;
+    callback confirm-restore;
+    callback export-handover;
+    in-out property <bool> restore-confirm-open: false;
+    in-out property <string> restore-source;
+    in-out property <length> settings-scroll-y: 0px;
+    changed restore-confirm-open => { if root.restore-confirm-open { restore-popup.show(); } else { restore-popup.close(); } }
     callback enter-demo;
     callback reset-demo;
     callback exit-demo;
@@ -754,12 +820,20 @@ export component AppWindow inherits Window {
     callback reset-work-view;
     reset-work-view => { root.work-page-scroll-y = 0px; root.work-view-reset-counter += 1; root.work-view-reset-pending = true; servers-tab.focus(); }
 
+    workspace-shortcuts := FocusScope {
+        width: parent.width; height: parent.height;
+        key-pressed(event) => {
+            if event.modifiers.control && (event.text == "k" || event.text == "K") { root.open-workspace-search(); return accept; }
+            if event.text == Key.Escape && root.workspace-detail-open { root.workspace-detail-open = false; workspace-search-trigger.focus(); return accept; }
+            return reject;
+        }
     Rectangle {
         x: 0; y: 0; width: parent.width; height: 56px; background: UiColors.header;
         Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.success; }
         Text { x: 28px; y: 12px; text: "ITGLA"; color: #d7ee9d; font-size: UiColors.body-size + 7px; font-weight: 800; letter-spacing: 1px; }
-        if root.demo-mode: Text { x: 240px; y: 22px; width: 210px; text: "DEMO WORKSPACE"; color: #dceee8; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
-        Text { x: parent.width - 370px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "SERVICES" : root.active-tab == 5 ? "DOMAINS" : root.active-tab == 6 ? "BUSINESSES" : root.active-tab == 7 ? "CONNECTIONS" : "SETTINGS"; color: #dceee8; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
+        workspace-search-trigger := Button { x: 140px; y: 10px; width: max(180px, parent.width - 540px); height: 36px; text: "Search all assets"; clicked => { root.open-workspace-search(); } }
+        if root.demo-mode: Text { x: 24px; y: 42px; width: 110px; text: "DEMO"; color: #dceee8; font-size: root.caption-font-size; font-weight: 800; horizontal-alignment: center; }
+        Text { x: parent.width - 370px; y: 22px; width: 114px; text: root.active-tab == 0 ? root.server-count + (root.server-count == 1 ? " SERVER" : " SERVERS") : root.active-tab == 1 ? root.site-count + (root.site-count == 1 ? " SITE" : " SITES") : root.active-tab == 4 ? "SERVICES" : root.active-tab == 5 ? "DOMAINS" : root.active-tab == 6 ? "BUSINESSES" : root.active-tab == 7 ? "CONNECTIONS" : root.active-tab == 8 ? "OVERVIEW" : root.active-tab == 9 ? "ASSETS" : root.active-tab == 13 ? "REMINDERS" : "SETTINGS"; color: #dceee8; font-size: root.caption-font-size; font-weight: 700; horizontal-alignment: right; }
         guide-trigger := Button { x: parent.width - 246px; y: 10px; width: 76px; height: 36px; text: "Guide"; clicked => { root.onboarding-open = true; } }
         appearance-trigger := Button { x: parent.width - 150px; y: 10px; width: 122px; height: 36px; text: "Appearance"; clicked => { root.open-appearance(); } }
     }
@@ -767,16 +841,32 @@ export component AppWindow inherits Window {
     Rectangle {
         x: 12px; y: 72px; width: 152px; height: parent.height - 88px;
         background: UiColors.surface; border-radius: 8px;
-        Text { x: 14px; y: 18px; text: "Inventory"; color: UiColors.muted; font-size: root.caption-font-size; }
-        servers-tab := NavigationTab { x: 6px; y: 48px; width: parent.width - 12px; height: 42px; label: "Servers"; selected: root.active-tab == 0; label-font-size: root.control-font-size; activated => { root.request-tab(0); } }
-        NavigationTab { x: 6px; y: 94px; width: parent.width - 12px; height: 42px; label: "Services"; selected: root.active-tab == 4; label-font-size: root.control-font-size; activated => { root.request-tab(4); } }
-        NavigationTab { x: 6px; y: 140px; width: parent.width - 12px; height: 42px; label: "Domains"; selected: root.active-tab == 5; label-font-size: root.control-font-size; activated => { root.request-tab(5); } }
-        Text { x: 14px; y: 196px; text: "Relationships"; color: UiColors.muted; font-size: root.caption-font-size; }
-        NavigationTab { x: 6px; y: 224px; width: parent.width - 12px; height: 42px; label: "Businesses"; selected: root.active-tab == 6; label-font-size: root.control-font-size; activated => { root.request-tab(6); } }
-        NavigationTab { x: 6px; y: 270px; width: parent.width - 12px; height: 42px; label: "Connections"; selected: root.active-tab == 7; label-font-size: root.control-font-size; activated => { root.request-tab(7); } }
-        Text { x: 14px; y: 326px; text: "Bookmarks"; color: UiColors.muted; font-size: root.caption-font-size; }
-        sites-tab := NavigationTab { x: 6px; y: 354px; width: parent.width - 12px; height: 42px; label: "Sites"; selected: root.active-tab == 1; label-font-size: root.control-font-size; activated => { root.request-tab(1); } }
-        settings-tab := NavigationTab { x: 6px; y: parent.height - 54px; width: parent.width - 12px; height: 42px; label: "Settings"; selected: root.active-tab == 2; label-font-size: root.control-font-size; activated => { root.request-tab(2); } }
+        NavigationTab { x: 6px; y: 12px; width: parent.width - 12px; height: 40px; label: "Overview"; selected: root.active-tab == 8; activated => { root.request-tab(8); } }
+        NavigationTab { x: 6px; y: 56px; width: parent.width - 12px; height: 40px; label: "Assets"; selected: root.active-tab == 9; activated => { root.request-tab(9); } }
+        servers-tab := NavigationTab { x: 16px; y: 104px; width: parent.width - 22px; height: 34px; label: "Servers"; selected: root.active-tab == 0; activated => { root.request-tab(0); } }
+        NavigationTab { x: 16px; y: 142px; width: parent.width - 22px; height: 34px; label: "Services"; selected: root.active-tab == 4; activated => { root.request-tab(4); } }
+        NavigationTab { x: 16px; y: 180px; width: parent.width - 22px; height: 34px; label: "Domains"; selected: root.active-tab == 5; activated => { root.request-tab(5); } }
+        NavigationTab { x: 16px; y: 218px; width: parent.width - 22px; height: 34px; label: "Businesses"; selected: root.active-tab == 6; activated => { root.request-tab(6); } }
+        sites-tab := NavigationTab { x: 16px; y: 256px; width: parent.width - 22px; height: 34px; label: "Sites"; selected: root.active-tab == 1; activated => { root.request-tab(1); } }
+        NavigationTab { x: 6px; y: 308px; width: parent.width - 12px; height: 40px; label: "Asset map"; selected: root.active-tab == 7; activated => { root.request-tab(7); } }
+        NavigationTab { x: 6px; y: 352px; width: parent.width - 12px; height: 40px; label: "Reminders"; selected: root.active-tab == 13; activated => { root.request-tab(13); } }
+        settings-tab := NavigationTab { x: 6px; y: parent.height - 54px; width: parent.width - 12px; height: 42px; label: "Settings"; selected: root.active-tab == 2; activated => { root.request-tab(2); } }
+    }
+
+    if root.active-tab == 8 || root.active-tab == 9 || root.active-tab == 13: WorkspacePanel {
+        x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px;
+        column-widths <=> root.workspace-column-widths; fitted <=> root.workspace-fitted; sort-mode <=> root.workspace-sort;
+        businesses: root.workspace-businesses; recent: root.workspace-recent;
+        page: root.active-tab; rows: root.workspace-rows; keys: root.workspace-keys;
+        query <=> root.workspace-query; type-index <=> root.workspace-type; reminder-filter <=> root.workspace-reminder-filter;
+        count: root.workspace-count; result-status: root.workspace-result-status; reminders: root.workspace-reminders; attention-count: root.workspace-attention-count; error: root.workspace-error; demo: root.demo-mode; has-assets: root.workspace-has-assets;
+        sample => { if root.demo-mode { root.exit-demo(); } else { root.enter-demo(); } }
+        search => { root.open-workspace-search(); }
+        handover => { root.export-handover(); }
+        status: root.status-message; status-error: root.status-is-error;
+        refresh => { root.workspace-query-pending = true; } open(key) => { root.workspace-open(key); }
+        add(kind) => { root.workspace-new(kind); } navigate(tab) => { root.request-tab(tab); if tab == 2 { root.settings-scroll-y = -620px; } }
+        review(key) => { root.workspace-review(key); }
     }
 
     if root.active-tab == 6 || root.active-tab == 7: TopologyPanel {
@@ -784,8 +874,8 @@ export component AppWindow inherits Window {
         view-hidden-count: root.topology-hidden-count; recovery-choices: root.topology-recovery-choices; recovery-keys: root.topology-recovery-keys;
         focus-key: root.topology-view-focus; view-action(action,key) => { root.topology-view-action(action,key); }
         grid-rows: root.business-grid; grid-sort-mode: root.business-grid-sort; grid-sort(mode) => { root.grid-sort(0,mode); }
-        business-mode: root.active-tab == 6; businesses: root.business-rows;
-        nodes: root.topology-nodes; node-choices: root.topology-node-choices; edges: root.topology-edges; choices: root.topology-choices;
+        editing <=> root.business-editor-open; business-mode: root.active-tab == 6; businesses: root.business-rows;
+        nodes: root.topology-nodes; node-choices: root.topology-node-choices; node-choice-keys: root.topology-node-choice-keys; resource-query <=> root.topology-query; edges: root.topology-edges; choices: root.topology-choices;
         business-choices: root.topology-business-choices; canvas-height: root.topology-height;
         filter-index <=> root.topology-filter; hidden <=> root.business-hidden;
         business-query <=> root.business-query; context <=> root.business-context; open-link(url) => { root.open-documentation(url); }
@@ -794,7 +884,7 @@ export component AppWindow inherits Window {
         link-notes <=> root.topology-notes; link-id <=> root.topology-link; status: root.topology-status;
         refresh => { root.topology-refresh(); } select-business(id) => { root.business-select(id); }
         save-business => { root.business-save(); } hide-business => { root.business-hide(); }
-        open-resource(kind,id) => { root.topology-open(kind,id); }
+        open-resource(kind,id) => { root.workspace-open(kind + ":" + id); }
         save-link => { root.topology-save-link(); } select-link(id) => { root.topology-select-link(id); } remove-link => { root.topology-remove-link(); }
         new-resource(tab) => { root.request-tab(tab); }
     }
@@ -993,10 +1083,11 @@ export component AppWindow inherits Window {
         PageHeader { x: 0; y: 0; text: "Settings"; token-size: root.page-title-font-size; }
         SectionLabel { x: 0; y: 40px; text: "DISPLAY / CUSTOM FIELDS / BACKUPS"; token-size: root.caption-font-size; }
         ScrollView {
+            content-y <=> root.settings-scroll-y;
             x: 0; y: 74px; width: parent.width; height: parent.height - 144px;
-            content-width: self.width; content-height: 920px + (UiColors.body-size - 11px) * 10;
+            content-width: self.width; content-height: 1080px + (UiColors.body-size - 11px) * 10;
             Rectangle {
-                x: 0; y: 0; width: parent.width; height: 920px + (UiColors.body-size - 11px) * 10; background: transparent;
+                x: 0; y: 0; width: parent.width; height: 1080px + (UiColors.body-size - 11px) * 10; background: transparent;
                 Rectangle { x: 0; y: 0; width: parent.width; height: 396px + (UiColors.body-size - 11px) * 10; background: UiColors.surface;
                     VerticalLayout {
                         padding: 20px; spacing: 12px;
@@ -1031,7 +1122,7 @@ export component AppWindow inherits Window {
                     field-type := ComboBox { x: parent.width - 180px; y: 104px; width: 160px; height: 34px; model: ["Text", "Number", "Date", "URL", "Boolean"]; current-index <=> root.settings-field-type; }
                     Button { x: 20px; y: 152px; width: 184px; height: 36px; text: "Add custom field"; clicked => { root.add-custom-field(root.settings-field-input, root.settings-field-type); } }
                 }
-                Rectangle { x: 0; y: 652px + (UiColors.body-size - 11px) * 10; width: parent.width; height: 206px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+                Rectangle { x: 0; y: 652px + (UiColors.body-size - 11px) * 10; width: parent.width; height: 360px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
                     PanelTitle { x: 20px; y: 16px; text: "Import, backup, and demo"; token-size: root.panel-title-font-size; }
                     FieldLabel { x: 20px; y: 58px; text: "DUPLICATE IMPORTS"; token-size: root.caption-font-size; }
                     duplicate-box := ComboBox { x: 20px; y: 78px; width: 200px; height: 34px; model: ["Create new", "Skip existing", "Update existing"]; current-index <=> root.import-duplicate-policy; }
@@ -1039,10 +1130,17 @@ export component AppWindow inherits Window {
                     retention-box := ComboBox { x: 244px; y: 78px; width: 140px; height: 34px; model: ["1", "3", "7", "14", "30"]; current-index: root.backup-retention == 1 ? 0 : root.backup-retention == 3 ? 1 : root.backup-retention == 7 ? 2 : root.backup-retention == 14 ? 3 : 4; selected(value) => { root.backup-retention = retention-box.current-index == 0 ? 1 : retention-box.current-index == 1 ? 3 : retention-box.current-index == 2 ? 7 : retention-box.current-index == 3 ? 14 : 30; } }
                     Button { x: 408px; y: 78px; width: 174px; height: 34px; text: "Create backup now"; enabled: !root.demo-mode; clicked => { root.create-managed-backup(); } }
                     Rectangle { x: 20px; y: 132px; width: parent.width - 40px; height: 1px; background: UiColors.raised; }
-                    Text { x: 20px; y: 148px; width: 480px; text: root.demo-mode ? "You are editing fictional local demo data. Your real workspace is untouched." : "Try a complete fictional workspace without changing your records."; color: root.demo-mode ? UiColors.warning : UiColors.muted; font-size: root.body-font-size; }
+                    Text { x: 20px; y: 148px; width: parent.width - (root.demo-mode ? 390px : 220px); height: 42px; text: root.demo-mode ? "Fictional demo. Your real data is unchanged." : "Try a fictional workspace without changing your data."; color: root.demo-mode ? UiColors.warning : UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; }
                     if !root.demo-mode: Button { x: parent.width - 180px; y: 146px; width: 160px; height: 36px; text: "Open demo"; clicked => { root.enter-demo(); } }
                     if root.demo-mode: Button { x: parent.width - 350px; y: 146px; width: 160px; height: 36px; text: "Reset demo"; clicked => { root.reset-demo(); } }
                     if root.demo-mode: Button { x: parent.width - 180px; y: 146px; width: 160px; height: 36px; text: "Exit demo"; clicked => { root.exit-demo(); } }
+                    HorizontalLayout { x: 20px; y: 204px; width: parent.width - 40px; height: 36px; spacing: 12px;
+                        Button { compact: true; text: "Save full backup"; enabled: !root.demo-mode; clicked => { root.save-full-backup(); } }
+                        Button { compact: true; text: "Restore backup"; enabled: !root.demo-mode; clicked => { root.choose-restore(); } }
+                        Button { compact: true; text: "Export handover"; clicked => { root.export-handover(); } }
+                        Rectangle { horizontal-stretch: 1; background: transparent; }
+                    }
+                    Text { x: 20px; y: 256px; width: parent.width - 40px; height: 84px; text: "Full backups include sensitive data; store them securely. Windows credentials remain tied to your Windows profile. Handover exports omit credential fields and notes; review names, addresses and contacts before sharing."; color: UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; }
                 }
             }
         }
@@ -1217,6 +1315,61 @@ export component AppWindow inherits Window {
         }
     }
 
+    workspace-search-popup := PopupWindow {
+        x: 0px; y: 0px; width: root.width; height: root.height; close-policy: no-auto-close; forward-focus: workspace-search-input;
+        FocusScope { key-pressed(event) => {
+            if event.text == Key.Escape { root.workspace-search-open = false; return accept; }
+            if event.text == Key.DownArrow { root.workspace-search-index = min(root.workspace-search-results.length - 1, root.workspace-search-index + 1); return accept; }
+            if event.text == Key.UpArrow { root.workspace-search-index = max(0, root.workspace-search-index - 1); return accept; }
+            return reject;
+        }
+            Rectangle { width: parent.width; height: parent.height; background: #00000066; TouchArea { }
+                Rectangle { x: 60px; y: 72px; width: parent.width - 120px; height: parent.height - 144px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 8px;
+                    VerticalLayout { padding: 22px; spacing: 14px;
+                        HorizontalLayout { Text { text: "Search your IT environment"; color: UiColors.text; font-size: UiColors.body-size + 6px; font-weight: 700; } Button { compact: true; text: "Close search"; clicked => { root.workspace-search-open = false; } } }
+                        workspace-search-input := LineEdit { key-pressed(event) => {
+                            if event.text == Key.DownArrow { root.workspace-search-index = min(root.workspace-search-results.length - 1, root.workspace-search-index + 1); return accept; }
+                            if event.text == Key.UpArrow { root.workspace-search-index = max(0, root.workspace-search-index - 1); return accept; }
+                            return reject;
+                        } accessible-label: "Search all assets"; placeholder-text: "Name, IP, domain, purpose or contact"; text <=> root.workspace-search-query; edited => { root.workspace-search-index = 0; root.workspace-query-pending = true; } accepted => { root.workspace-refresh(); if root.workspace-search-results.length > 0 { root.workspace-search-open = false; root.workspace-open(root.workspace-search-results[max(0, min(root.workspace-search-results.length - 1, root.workspace-search-index))].key); } } }
+                        Text { text: root.workspace-search-status; color: UiColors.muted; font-size: UiColors.body-size; }
+                        if root.workspace-error != "": Text { text: root.workspace-error; color: UiColors.error; wrap: word-wrap; }
+                        ScrollView { VerticalLayout { spacing: 8px;
+                            for item[index] in root.workspace-search-results: Button { height: 64px; checked: root.workspace-search-index == index; accessible-checkable: true; text: item.title + "\n" + item.subtitle; clicked => { root.workspace-search-open = false; root.workspace-open(item.key); } }
+                            Rectangle { vertical-stretch: 1; background: transparent; }
+                        } }
+                    }
+                }
+            }
+        }
+    }
+    if root.workspace-detail-open: WorkspaceDetail {
+        x: max(root.workspace-left, parent.width - 530px); y: 64px; width: min(530px, parent.width - root.workspace-left); height: parent.height - 72px;
+        text: root.workspace-detail-text; history: root.workspace-detail-history; related: root.workspace-related;
+        can-back: root.workspace-can-back; back => { root.workspace-back(); }
+        close => { root.workspace-detail-open = false; workspace-search-trigger.focus(); }
+        open(key) => { root.workspace-open(key); }
+        edit => { root.workspace-edit(root.workspace-detail-key); }
+        map => { root.workspace-map(root.workspace-detail-key); }
+    }
+    workspace-review-popup := PopupWindow {
+        x: 0px; y: 0px; width: root.width; height: root.height; close-policy: no-auto-close; forward-focus: workspace-review-cancel;
+        FocusScope { key-pressed(event) => { if event.text == Key.Escape { root.workspace-reminder-key = ""; return accept; } return reject; }
+        Rectangle { width: parent.width; height: parent.height; background: #00000066; TouchArea { }
+        Rectangle { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: min(680px,parent.width - 48px); height: 300px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+            VerticalLayout { padding: 24px; spacing: 16px;
+                Text { text: "Review recorded expiry"; color: UiColors.text; font-size: UiColors.body-size + 6px; font-weight: 700; }
+                Text { text: "Verify the renewal outside ITGLA. Mark reviewed acknowledges this recorded expiry. It does not change the expiry date or confirm a successful renewal."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                if root.workspace-error != "": Text { text: root.workspace-error; color: UiColors.error; font-size: UiColors.body-size; wrap: word-wrap; }
+                HorizontalLayout { spacing: 8px;
+                    Button { compact: true; text: "Reviewed"; clicked => { root.workspace-reminder-action(root.workspace-reminder-key,0); if root.workspace-error == "" { root.workspace-reminder-key = ""; } } }
+                    Button { compact: true; text: "Tomorrow"; clicked => { root.workspace-reminder-action(root.workspace-reminder-key,1); if root.workspace-error == "" { root.workspace-reminder-key = ""; } } }
+                    Button { compact: true; text: "Reopen"; clicked => { root.workspace-reminder-action(root.workspace-reminder-key,2); if root.workspace-error == "" { root.workspace-reminder-key = ""; } } }
+                    workspace-review-cancel := Button { compact: true; text: "Cancel review"; clicked => { root.workspace-reminder-key = ""; } }
+                }
+            }
+        } } }
+    }
     appearance-popup := PopupWindow {
         x: 0px; y: 0px; width: root.width; height: root.height;
         close-policy: no-auto-close;
@@ -1280,19 +1433,45 @@ export component AppWindow inherits Window {
                     background: UiColors.surface; border-radius: 8px;
                     VerticalLayout { padding: 24px; spacing: 16px;
                         HorizontalLayout { spacing: 16px;
-                            Text { text: "Start with one server"; color: UiColors.text; font-size: UiColors.body-size + 9px; font-weight: 750; }
+                            Text { text: "Your IT, at a glance"; color: UiColors.text; font-size: UiColors.body-size + 9px; font-weight: 750; }
                             guide-close := Button { width: 90px; horizontal-stretch: 0; height: 38px; text: "Close"; accessible-label: "Close guide"; clicked => { root.onboarding-open = false; } }
                         }
                         ScrollView { horizontal-stretch: 1; vertical-stretch: 1;
                             VerticalLayout { spacing: 18px;
-                                Text { text: "Keep the facts you need before a change. Add detail when it helps."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                Text { text: "Free local workspace. No account needed. Try fictional sample data, add your own server, or import a table."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
                                 Text { text: "Add a name and IP address. A pending SSH service on port 22 is created for you to check in Services."; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
                                 Text { text: "Already have a spreadsheet? Import it instead. Add domains, contacts and connections when you need them."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
                             }
                         }
                         HorizontalLayout { spacing: 12px;
-                            Button { text: "Add first server"; primary: true; height: 40px; clicked => { root.active-tab = 0; root.server-editor-open = true; root.onboarding-open = false; } }
-                            Button { text: "Import a table"; height: 40px; clicked => { root.active-tab = 0; root.importing-sites = false; root.onboarding-open = false; root.import-error = ""; root.import-dialog-open = true; } }
+                            Button { compact: true; text: "Try sample data"; height: 40px; clicked => { root.onboarding-open = false; root.enter-demo(); } }
+                            Button { compact: true; text: "Add first server"; primary: true; height: 40px; clicked => { root.onboarding-open = false; root.workspace-new(0); } }
+                            Button { compact: true; text: "Import a table"; height: 40px; clicked => { root.onboarding-open = false; root.request-tab(0); root.request-table-import(false); } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    restore-popup := PopupWindow {
+        forward-focus: restore-cancel;
+        x: 0; y: 0; width: root.width; height: root.height;
+        close-policy: no-auto-close;
+        FocusScope {
+            key-pressed(event) => { if event.text == Key.Escape { root.restore-confirm-open = false; root.restore-source = ""; return accept; } return reject; }
+            Rectangle { width: parent.width; height: parent.height; background: #00000066;
+                TouchArea {}
+                Rectangle { x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2; width: min(660px, parent.width - 48px); height: min(430px, parent.height - 48px); background: UiColors.surface; border-radius: 8px;
+                    VerticalLayout { padding: 24px; spacing: 16px;
+                        Text { text: "Replace this workspace?"; color: UiColors.text; font-size: root.panel-title-font-size; font-weight: 700; }
+                        ScrollView { VerticalLayout { spacing: 12px;
+                            Text { text: "All current workspace data and settings will be replaced. A recovery copy is saved as backups/pre-restore.db. ITGLA closes after restoring; open it again to load the recovered workspace. Only a full backup from the same database schema is supported."; color: UiColors.text; font-size: root.body-font-size; wrap: word-wrap; }
+                            Text { text: root.restore-source; color: UiColors.muted; font-size: root.body-font-size; wrap: word-wrap; }
+                        } }
+                        HorizontalLayout { spacing: 12px;
+                            restore-cancel := Button { compact: true; text: "Cancel"; clicked => { root.restore-confirm-open = false; root.restore-source = ""; } }
+                            Button { compact: true; text: "Restore and close"; primary: true; clicked => { root.confirm-restore(); } }
                         }
                     }
                 }
@@ -1396,5 +1575,6 @@ export component AppWindow inherits Window {
             Button { x: 250px; y: 128px; width: 96px; height: 36px; text: "Cancel"; clicked => { root.editing-cell-column = -1; } }
             Button { x: 360px; y: 128px; width: 96px; height: 36px; text: "Save"; primary: true; clicked => { if root.editing-cell-is-site { root.save-site-cell-edit(root.editing-cell-id, root.editing-cell-column, root.editing-cell-value); } else { root.save-cell-edit(root.editing-cell-id, root.editing-cell-column, root.editing-cell-value); } } }
         }
+    }
     }
 }

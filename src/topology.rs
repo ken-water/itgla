@@ -24,6 +24,7 @@ const RELATIONS: [&str; 10] = [
     "balances_to",
     "related_to",
 ];
+const NODE_ROW_STEP: f32 = 84.0;
 fn invalid(text: &str) -> StorageError {
     StorageError::InvalidImport(text.into())
 }
@@ -51,7 +52,7 @@ fn view_subset(
     let mut included = active.clone();
     if !focus.is_empty() {
         included.clear();
-        if active.contains(focus) {
+        for focus in focus.lines().filter(|key| active.contains(*key)) {
             included.insert(focus.to_owned());
             for l in links {
                 let source = view_key(&l.source_type, l.source_id);
@@ -326,7 +327,12 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
     let visible_view = view_subset(
         &active_view,
         &links,
-        &w.get_topology_view_focus(),
+        format!(
+            "{}\n{}",
+            w.get_topology_view_focus(),
+            w.get_topology_view_expanded()
+        )
+        .trim(),
         &hidden,
         &collapsed,
     );
@@ -359,11 +365,16 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
         .iter()
         .filter(|r| included.contains(&key(&r.kind, r.id)))
         .count();
-    let visible = all
+    let mut candidates = all
         .iter()
         .filter(|r| included.contains(&key(&r.kind, r.id)))
-        .take(200)
         .collect::<Vec<_>>();
+    let focus = w.get_topology_view_focus();
+    if !focus.is_empty() {
+        // Reserve a rendered slot for the requested asset even when it has hundreds of neighbors.
+        candidates.sort_by_key(|r| view_key(&r.kind, r.id) != focus.as_str());
+    }
+    let visible = candidates.into_iter().take(200).collect::<Vec<_>>();
     let mut counters = [0usize; 4];
     let visible_servers: BTreeSet<_> = visible
         .iter()
@@ -424,7 +435,7 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             counters[col] += 1;
             row
         };
-        let y = 48.0 + row as f32 * 96.0;
+        let y = 48.0 + row as f32 * NODE_ROW_STEP;
         locations.insert(key(&r.kind, r.id), (x, y));
         nodes.push(TopologyNode {
             id: r.id as i32,
@@ -510,7 +521,8 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             let row = sy as i32;
             let i = used_rails.entry(row).or_insert(0usize);
             *i += 1;
-            sy + 70.0 + *i as f32 * 20.0 / (rails[&row] + 1) as f32
+            // Keep cross-lane tracks inside the 18px gap between 66px nodes.
+            sy + 68.0 + *i as f32 * 14.0 / (rails[&row] + 1) as f32
         };
         edges.push(TopologyEdge {
             id: l.id as i32,
@@ -543,16 +555,33 @@ pub fn refresh(w: &AppWindow, repo: &Repository) -> Result<(), StorageError> {
             editable: true,
         });
     }
-    w.set_topology_height(80.0 + counters.into_iter().max().unwrap_or(0) as f32 * 96.0);
+    w.set_topology_height(80.0 + counters.into_iter().max().unwrap_or(0) as f32 * NODE_ROW_STEP);
+    // Search the full workspace, including assets outside the current diagram and render budget.
+    let resource_query = w.get_topology_query().trim().to_lowercase();
+    let searchable: Vec<_> = all
+        .iter()
+        .filter(|r| {
+            resource_query.is_empty()
+                || format!("{} {} {}", r.kind, r.label, r.detail)
+                    .to_lowercase()
+                    .contains(&resource_query)
+        })
+        .collect();
     w.set_topology_node_choices(ModelRc::new(VecModel::from(
-        nodes
+        searchable
             .iter()
-            .map(|n| format!("{}: {}", n.kind, n.label).into())
+            .map(|r| format!("{}: {}", r.kind, r.label).into())
+            .collect::<Vec<_>>(),
+    )));
+    w.set_topology_node_choice_keys(ModelRc::new(VecModel::from(
+        searchable
+            .iter()
+            .map(|r| format!("{}:{}", r.kind, r.id).into())
             .collect::<Vec<_>>(),
     )));
     w.set_topology_nodes(ModelRc::new(VecModel::from(nodes)));
     w.set_topology_edges(ModelRc::new(VecModel::from(edges)));
-    w.set_topology_status(if total>200 {format!("Showing 200 of {total} resources. Filter by business to narrow the map.").into()}else{format!("{total} resources. Services sit beside their host. Select a resource to highlight its links; All links shows dependencies.").into()});
+    w.set_topology_status(if total>200 {format!("Showing 200 of {total} resources. Search any name, IP or port to focus its connections, or filter by business.").into()}else{format!("{total} resources. Services sit beside their host. Select a resource to highlight its links; All links shows dependencies.").into()});
     Ok(())
 }
 fn report(w: &AppWindow, result: Result<(), StorageError>) {
@@ -562,15 +591,25 @@ fn report(w: &AppWindow, result: Result<(), StorageError>) {
 }
 /// Selections must not carry over between the real and in-memory workspaces.
 pub fn clear_selection(w: &AppWindow) {
+    w.set_workspace_detail_open(false);
+    w.set_workspace_search_open(false);
+    w.set_workspace_reminder_key("".into());
+    w.set_workspace_search_query("".into());
+    w.set_workspace_query("".into());
+    w.set_workspace_error("".into());
+    w.set_workspace_reminder_filter(0);
+    w.set_business_editor_open(false);
     w.set_topology_view_hidden("".into());
     w.set_topology_view_collapsed("".into());
     w.set_topology_view_focus("".into());
+    w.set_topology_view_expanded("".into());
     w.set_business_id(0);
     w.set_business_name("".into());
     w.set_business_tags("".into());
     w.set_business_notes("".into());
     w.set_business_hidden(false);
     w.set_topology_filter(0);
+    w.set_topology_query("".into());
     w.set_topology_link(0);
     w.set_topology_notes("".into());
     w.set_topology_source(0);
@@ -589,15 +628,24 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
                 hidden.clear();
                 collapsed.clear();
                 w.set_topology_view_focus("".into());
+                w.set_topology_view_expanded("".into());
             }
             1 => {
                 w.set_topology_view_focus(selected.clone());
+                w.set_topology_view_expanded("".into());
             }
             2 => {
                 collapsed.insert(selected.to_string());
             }
             3 => {
                 collapsed.remove(selected.as_str());
+                if !w.get_topology_view_focus().is_empty() {
+                    let mut expanded = view_keys(&w.get_topology_view_expanded());
+                    expanded.insert(selected.to_string());
+                    w.set_topology_view_expanded(
+                        expanded.into_iter().collect::<Vec<_>>().join("\n").into(),
+                    );
+                }
             }
             4 => {
                 hidden.insert(selected.to_string());
@@ -605,6 +653,14 @@ pub fn setup(window: &AppWindow, repo: Rc<RefCell<Repository>>) {
             5 => {
                 hidden.remove(selected.as_str());
                 collapsed.remove(selected.as_str());
+            }
+            6 => {
+                // Explicit search navigation can recover a hidden asset in another business.
+                hidden.clear();
+                collapsed.clear();
+                w.set_topology_filter(0);
+                w.set_topology_view_focus(selected.clone());
+                w.set_topology_view_expanded("".into());
             }
             _ => return,
         }
@@ -802,6 +858,11 @@ pub fn reset_demo(repo: &mut Repository) -> Result<(), StorageError> {
     let api = host("api-prod-01")?;
     let db = host("postgres-primary")?;
     let backup = host("backup-01")?;
+    let demo_expiry: String =
+        repo.connection
+            .query_row("SELECT date('now','localtime','+12 days')", [], |r| {
+                r.get(0)
+            })?;
     let domain = repo.save_inventory(
         0,
         1,
@@ -810,7 +871,7 @@ pub fn reset_demo(repo: &mut Repository) -> Result<(), StorageError> {
             business: "Customer platform".into(),
             registrar: "Example registrar".into(),
             registered: "2026-01-01".into(),
-            expires: "2027-01-01".into(),
+            expires: demo_expiry,
             ..Default::default()
         },
         &[],
@@ -960,6 +1021,18 @@ mod tests {
                 .iter()
                 .any(|n| n.kind == "server" && n.id == server.id)
         );
+        // One-level expansion adds neighbors without discarding the current focus.
+        let neighbor = w
+            .get_topology_nodes()
+            .iter()
+            .find(|n| n.kind == "service")
+            .expect("hosted service");
+        w.invoke_topology_view_action(3, format!("service:{}", neighbor.id).into());
+        assert!(!w.get_topology_view_focus().is_empty());
+        assert!(
+            w.get_topology_view_expanded()
+                .contains(&format!("service:{}", neighbor.id))
+        );
         w.invoke_topology_view_action(0, "".into());
         assert_eq!(w.get_topology_nodes().row_count(), original);
         w.invoke_topology_view_action(2, selected.into());
@@ -968,6 +1041,48 @@ mod tests {
         assert_eq!(repo.borrow().resource_links()?, links);
         assert_eq!(repo.borrow().inventory_entries()?.len(), entries.len());
         assert_eq!(w.get_topology_recovery_choices().row_count(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn full_workspace_search_can_focus_a_resource_beyond_render_limit() -> Result<(), StorageError>
+    {
+        i_slint_backend_testing::init_no_event_loop();
+        let w = AppWindow::new().expect("window");
+        let mut repository = Repository::in_memory()?;
+        reset_demo(&mut repository)?;
+        for index in 0..1024 {
+            repository.save_inventory(
+                0,
+                1,
+                Details {
+                    name: format!("scale-{index:03}.example.test"),
+                    ..Default::default()
+                },
+                &[],
+                None,
+            )?;
+        }
+        let repo = Rc::new(RefCell::new(repository));
+        setup(&w, repo.clone());
+        w.invoke_topology_refresh();
+        assert_eq!(w.get_topology_nodes().row_count(), 200);
+        w.set_topology_query("scale-1023".into());
+        w.invoke_topology_refresh();
+        assert_eq!(w.get_topology_node_choices().row_count(), 1);
+        let target = w
+            .get_topology_node_choice_keys()
+            .row_data(0)
+            .expect("search result");
+        w.invoke_topology_view_action(6, target);
+        assert_eq!(w.get_topology_nodes().row_count(), 1);
+        assert_eq!(
+            w.get_topology_nodes()
+                .row_data(0)
+                .expect("focused node")
+                .label,
+            "scale-1023.example.test"
+        );
         Ok(())
     }
 
@@ -1228,7 +1343,7 @@ mod tests {
         rows.sort_unstable();
         assert_eq!(rows.len(), services.len());
         assert_eq!(rows[0], host_node.py as i32);
-        assert!(rows.windows(2).all(|r| r[1] - r[0] == 96));
+        assert!(rows.windows(2).all(|r| r[1] - r[0] == NODE_ROW_STEP as i32));
         assert!(
             nodes
                 .iter()
@@ -1246,6 +1361,7 @@ mod tests {
         let repo = Rc::new(RefCell::new(repository));
         crate::operational::setup(&w, repo.clone());
         setup(&w, repo.clone());
+        crate::workspace::setup(&w, repo.clone());
         let weak = w.as_weak();
         w.on_tab_selected(move |tab| {
             if let Some(w) = weak.upgrade() {
@@ -1307,7 +1423,8 @@ mod tests {
         w.show().expect("show graph");
         assert_eq!(
             w.get_topology_node_choices().row_count(),
-            w.get_topology_nodes().row_count()
+            resources(&repo.borrow())?.len(),
+            "search includes resources outside the selected business"
         );
         ElementHandle::find_by_accessible_label(&w, "Select service: Orders API")
             .next()
@@ -1330,6 +1447,15 @@ mod tests {
             .next()
             .expect("explicit view action")
             .invoke_accessible_default_action();
+        assert_eq!(
+            w.get_active_tab(),
+            7,
+            "read-only context preserves the graph"
+        );
+        assert!(w.get_workspace_detail_open());
+        assert_eq!(w.get_workspace_detail_key(), format!("service:{}", api.id));
+        assert!(!w.get_inventory_editor_requested());
+        w.invoke_workspace_edit(w.get_workspace_detail_key());
         assert_eq!(w.get_active_tab(), 4);
         assert_eq!(w.get_inventory_form().id, api.id as i32);
         assert!(w.get_inventory_editor_requested());

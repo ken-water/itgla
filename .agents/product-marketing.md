@@ -13,3 +13,7 @@ Product direction and asset taxonomy: `docs/it-in-a-glance-product-direction.md`
 Current download is free. Existing $49/year Founder Pro roadmap pricing is a hypothesis, not measured willingness to pay or a claim of paying customers. Market research identified strong free alternatives and demand for portable, recoverable documentation. Keep observations, interpretations and purchase evidence separate.
 
 Website: itgla.com. Public copy remains English. The website should clearly express the brand idea and practical use cases, without implying automatic discovery, uptime monitoring, cloud sync, legal transfer automation or a complete secrets vault.
+
+## Free-first decision (2026-11-06)
+
+The owner selected three tiers: Free, Pro and Team, with useful free activation and retention first. Basic local ownership, search, relationships, manual reminders, export, backup and recovery belong to Free. API/automation and optional cloud continuity are planned for Pro; shared workspaces, permissions and team audit are planned for Team. No paid pricing or availability has been approved. Follow docs/free-first-delivery-20261106.md; earlier Founder Pro prices are historical hypotheses. Local candidate improvements are not included in existing 0.6.2 downloads. Do not claim real user validation, closed-app reminders or paid API availability.

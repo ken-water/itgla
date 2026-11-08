@@ -1,0 +1,48 @@
+{
+  "version": "2.0",
+  "id": "free-first-native-20261106",
+  "objective": "Improve local free product activation, safe recovery and metadata handover",
+  "level": "L3",
+  "profile": "cli",
+  "scope": {
+    "include": [
+      "src/**",
+      "ui/**",
+      "docs/**",
+      "scripts/**",
+      "website/**",
+      ".agents/product-marketing.md"
+    ],
+    "exclude": [
+      ".github/**"
+    ]
+  },
+  "target": "local",
+  "risk_flags": [
+    "persistent_data",
+    "performance_sensitive"
+  ],
+  "requested_actions": [
+    "local_read",
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_read",
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence"
+    ]
+  },
+  "planning": {
+    "plan_ref": "docs/free-first-delivery-20261106.md",
+    "approved": true
+  },
+  "metadata": {
+    "authorization": "Sequential optimization requested; local changes only, no dependency or schema changes."
+  }
+}

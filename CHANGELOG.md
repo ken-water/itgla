@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.6.3 - 2026-11-08
+
+- Add Overview, guided first use, isolated sample data, global asset search, and shared asset details.
+- Add dated reminders with review history, confirmed full-database recovery, and metadata-only handover export.
+- Improve relationship-map filtering, navigation, relationship colors, and behavior with larger inventories.
+- Refresh the homepage, screenshots, getting-started guide, plan comparison, and release/download information.
+- Add schema 22 reminder review history with the existing automatic pre-migration backup behavior.
+
 ## 0.6.2 - 2026-11-01
 
 - Simplify inventory navigation and actions; align table headers during horizontal scrolling.

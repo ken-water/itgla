@@ -20,6 +20,62 @@
 .marketing-site .legal-document h2 { color: var(--teal-dark); font-size: 24px; line-height: 1.3; }
 .marketing-site .legal-document section p { max-width: 780px; margin-top: 14px; }
 .marketing-site .legal-document section ul { color: var(--muted); padding-left: 22px; }
+.marketing-site .legal-document section a.button-primary { color: #fff; }
+.marketing-site .legal-document figure { margin: 24px 0; }
+.marketing-site .legal-document figure img { width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--radius); }
+.marketing-site .legal-document figcaption { margin-top: 10px; color: var(--muted); font-size: 14px; }
+.marketing-site .plans-page > section { padding-block: 28px; }
+.plan-availability { max-width: 820px; padding: 16px 18px; border-left: 3px solid var(--teal); background: var(--mint); }
+.plan-table-scroll { max-width: 100%; margin-top: 20px; overflow-x: auto; overscroll-behavior-inline: contain; border: 1px solid var(--line); background: var(--surface); }
+.plan-table-scroll:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.plan-table-hint { display: none; color: var(--teal-dark); font-size: 13px; font-weight: 650; }
+.plan-table { width: 100%; min-width: 790px; border-collapse: collapse; table-layout: fixed; color: var(--ink); font-size: 14px; }
+.plan-table caption { padding: 12px 14px; color: var(--muted); text-align: left; font-size: 13px; }
+.plan-table th, .plan-table td { padding: 14px 12px; border-top: 1px solid var(--line); border-right: 1px solid var(--line); text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+.plan-table thead th { position: sticky; top: 0; z-index: 1; background: var(--teal-dark); color: #fff; }
+.plan-table thead th:first-child { width: 27%; }
+.plan-table thead th:not(:first-child) { width: 24.333%; }
+.plan-table tbody th { background: var(--canvas); font-weight: 700; }
+.plan-table td:last-child, .plan-table th:last-child { border-right: 0; }
+.plan-name, .plan-price { display: block; }
+.plan-name { font-size: 18px; }
+.plan-price { margin-top: 4px; color: #e1eee9; font-size: 12px; font-weight: 500; }
+.plan-status { display: inline-flex; min-height: 24px; align-items: center; padding: 3px 7px; border: 1px solid currentColor; border-radius: 4px; font-size: 12px; font-weight: 700; line-height: 1.3; }
+.plan-status.current { color: #155d40; background: #e5f4eb; }
+.plan-status.preview { color: #80520a; background: #fff3d5; }
+.plan-status.planned { color: #315b78; background: #e9f2f8; }
+.comparison-key { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; font-size: 13px; }
+.plan-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 20px; margin-top: 18px; }
+.plan-actions a:not(.button) { min-height: 44px; display: inline-flex; align-items: center; }
+.plan-value-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin: 24px 0; }
+.plan-value { padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.plan-value h3 { margin: 0; color: var(--teal-dark); font-size: 19px; }
+.marketing-site .plan-value p { margin: 8px 0 0; font-size: 14px; line-height: 1.6; }
+.plan-value .plan-value-label { display: block; margin-bottom: 10px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.plan-value.pro { border-top: 3px solid #14735b; }
+.plan-value.team { border-top: 3px solid #6855a0; }
+.plans-page .plan-table td { text-align: center; vertical-align: middle; }
+.plans-page .plan-table tbody th { vertical-align: middle; }
+.plan-inclusion { position: relative; display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 7px; }
+.plan-mark { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; border-radius: 50%; flex: 0 0 auto; }
+.plan-mark svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+.plan-mark.yes { color: #136345; background: #e2f2e8; }
+.plan-mark.no { color: #775952; background: #f2ebe7; }
+.plan-mark.future { color: #315b78; background: #e9f2f8; border: 1px dashed currentColor; }
+.plan-cell-note { display: block; max-width: 180px; color: var(--muted); font-size: 12px; line-height: 1.45; font-weight: 500; }
+.plan-feature-note { display: block; margin-top: 6px; color: var(--muted); font-size: 12px; line-height: 1.5; font-weight: 400; }
+.plans-page .plan-table .plan-group th { padding: 12px 14px; background: var(--mint); color: var(--teal-dark); font-size: 13px; letter-spacing: .015em; }
+.plans-page .plan-table .paid-feature td:nth-child(3) { background: #f1f8f4; }
+.plans-page .plan-table .paid-feature td:nth-child(4) { background: #f5f2fa; }
+.comparison-key .plan-mark { width: 24px; height: 24px; }
+.comparison-key .plan-mark svg { width: 16px; height: 16px; }
+.plans-page .plan-table .plan-group th { position: static; box-shadow: none; }
+@media (max-width: 650px) { .plan-value-grid { grid-template-columns: 1fr; gap: 10px; } .plan-value { padding: 16px; } }
+@media (max-width: 820px) {
+  .plan-table-hint { display: block; }
+  .plan-table thead th:first-child, .plan-table tbody th { position: sticky; left: 0; z-index: 2; background: var(--canvas); box-shadow: 1px 0 var(--line); }
+  .plan-table thead th:first-child { z-index: 3; background: var(--teal-dark); }
+}
 .marketing-site .legal-document section li + li { margin-top: 8px; }
 .marketing-site .legal-document section a { text-underline-offset: 4px; }
 .marketing-site .site-footer nav a { display: inline-flex; min-height: 44px; align-items: center; }

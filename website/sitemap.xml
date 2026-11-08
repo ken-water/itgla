@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://itgla.com/</loc><lastmod>2026-11-01</lastmod></url>
-  <url><loc>https://itgla.com/downloads.html</loc><lastmod>2026-11-01</lastmod></url>
-  <url><loc>https://itgla.com/release-notes.html</loc><lastmod>2026-11-01</lastmod></url>
+  <url><loc>https://itgla.com/</loc><lastmod>2026-11-08</lastmod></url>
+  <url><loc>https://itgla.com/downloads.html</loc><lastmod>2026-11-08</lastmod></url>
+  <url><loc>https://itgla.com/release-notes.html</loc><lastmod>2026-11-08</lastmod></url>
   <url><loc>https://itgla.com/server-inventory.html</loc><lastmod>2026-11-01</lastmod></url>
   <url><loc>https://itgla.com/import-server-inventory.html</loc><lastmod>2026-11-01</lastmod></url>
   <url><loc>https://itgla.com/custom-server-fields.html</loc><lastmod>2026-11-01</lastmod></url>
@@ -13,4 +13,6 @@
   <url><loc>https://itgla.com/legal.html</loc><lastmod>2026-11-01</lastmod></url>
   <url><loc>https://itgla.com/refund.html</loc><lastmod>2026-11-01</lastmod></url>
   <url><loc>https://itgla.com/cookies.html</loc><lastmod>2026-11-01</lastmod></url>
+  <url><loc>https://itgla.com/getting-started.html</loc><lastmod>2026-11-08</lastmod></url>
+  <url><loc>https://itgla.com/plans.html</loc><lastmod>2026-11-08</lastmod></url>
 </urlset>

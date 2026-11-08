@@ -1,0 +1,51 @@
+{
+  "version": "1.0",
+  "task_id": "free-first-20261106",
+  "target_version": "Local free-first native candidate, 2026-11-06, SHA256 88545b1c9cebb1f0ac51b549e888bfaed939a6cafd09202fb88ffbcd12fe493e",
+  "gates": {
+    "lint": {
+      "status": "pass",
+      "evidence": [
+        "output/free-first-checks.json"
+      ]
+    },
+    "typecheck": {
+      "status": "pass",
+      "evidence": [
+        "output/free-first-tests-final.log"
+      ]
+    },
+    "focused_tests": {
+      "status": "pass",
+      "evidence": [
+        "output/free-first-tests-final.log"
+      ]
+    },
+    "build": {
+      "status": "pass",
+      "evidence": [
+        "output/free-first-build.log"
+      ]
+    },
+    "visual_review": {
+      "status": "pass",
+      "evidence": [
+        "C:/Users/dell/AppData/Local/Temp/itgla-free-first-native-urn6wdqs/manifest.json"
+      ]
+    },
+    "responsive": {
+      "status": "fail",
+      "reason": "Native rendered layouts and web 390/768/1440 pass; actual system DPI acceptance remains unrun.",
+      "evidence": [
+        "docs/testing/free-first-pilot-20261106.md"
+      ]
+    },
+    "accessibility": {
+      "status": "fail",
+      "reason": "Contrast and keyboard/modal tests pass; native screen reader and physical focus acceptance remain unrun.",
+      "evidence": [
+        "docs/testing/free-first-pilot-20261106.md"
+      ]
+    }
+  }
+}

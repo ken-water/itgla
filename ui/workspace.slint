@@ -1,0 +1,150 @@
+import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+import { Button, UiColors } from "controls.slint";
+import { DataTable, GridRow } from "data-table.slint";
+
+export struct WorkspaceItem { key: string, title: string, subtitle: string }
+
+component WorkspaceResourceRow inherits Rectangle {
+    in property <WorkspaceItem> item;
+    callback open(string);
+    min-height: 68px; vertical-stretch: 0;
+    background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+    HorizontalLayout { padding: 12px; spacing: 12px;
+        VerticalLayout { spacing: 5px;
+            Text { text: root.item.title; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; wrap: word-wrap; }
+            Text { text: root.item.subtitle; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+        }
+        Button { compact: true; height: 36px; text: "View"; accessible-label: "View " + root.item.title; clicked => { root.open(root.item.key); } }
+    }
+}
+
+export component WorkspacePanel inherits Rectangle {
+    in property <int> page;
+    in-out property <int> sort-mode;
+    in-out property <[length]> column-widths;
+    in-out property <bool> fitted;
+    in property <[WorkspaceItem]> businesses;
+    in property <[WorkspaceItem]> recent;
+    in property <[GridRow]> rows;
+    in property <[string]> keys;
+    in-out property <string> query;
+    in-out property <int> type-index;
+    in-out property <int> reminder-filter;
+    in property <[WorkspaceItem]> reminders;
+    in property <string> count;
+    in property <string> result-status;
+    in property <int> attention-count;
+    in property <string> error;
+    in property <string> status;
+    in property <bool> status-error;
+    in property <bool> demo;
+    in property <bool> has-assets;
+    private property <bool> show-first-steps: false;
+    callback refresh(); callback open(string); callback add(int); callback navigate(int); callback sample(); callback search(); callback handover();
+    callback reminder-action(string,int); callback review(string);
+    private property <int> add-type;
+    VerticalLayout { spacing: 16px; padding: 0px;
+        HorizontalLayout { spacing: 16px;
+            VerticalLayout { spacing: 6px;
+                Text { text: root.page == 8 ? "Your IT, at a glance" : root.page == 9 ? "Assets" : "Reminders"; color: UiColors.text; font-size: UiColors.body-size + 11px; font-weight: 750; }
+                Text { text: root.page == 8 ? "Know what runs where, who can help and what needs attention." : root.page == 9 ? "Find a resource and understand its context." : "Recorded dates and manual checks. Reminders update while ITGLA is open; no alerts when closed."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+            }
+            if root.page != 13: ComboBox { width: 144px; height: 36px; accessible-label: "New asset type"; model: ["Server", "Service", "Domain", "Business"]; current-index <=> root.add-type; }
+            if root.page != 13: Button { compact: true; height: 36px; primary: true; text: "Add asset"; clicked => { root.add(root.add-type); } }
+        }
+        if root.error != "": Text { text: root.error; color: UiColors.error; wrap: word-wrap; font-size: UiColors.body-size; accessible-role: text; }
+        if root.status != "": Text { text: root.status; color: root.status-error ? UiColors.error : UiColors.muted; wrap: word-wrap; font-size: UiColors.body-size; accessible-role: text; accessible-label: self.text; }
+        if root.page == 8: Rectangle { height: 84px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+            HorizontalLayout { padding: 18px; spacing: 24px;
+                Text { text: root.count; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
+                Text { text: "Needs attention: " + root.attention-count; color: root.attention-count > 0 ? UiColors.warning : UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+            }
+        }
+        if root.page == 8: HorizontalLayout { spacing: 12px;
+            Button { compact: true; text: "Import servers"; clicked => { root.add(8); } }
+            Button { compact: true; text: "Find an asset"; clicked => { root.search(); } }
+            Button { compact: true; text: "Explore asset map"; clicked => { root.navigate(7); } }
+            Button { compact: true; text: "Reminders"; clicked => { root.navigate(13); } }
+            if root.has-assets: Button { compact: true; text: root.show-first-steps ? "Hide guide" : "Getting started"; clicked => { root.show-first-steps = !root.show-first-steps; } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        if root.page == 9: HorizontalLayout { spacing: 12px;
+            LineEdit { accessible-label: "Filter all assets"; placeholder-text: "Name, IP, domain, purpose or contact"; text <=> root.query; edited => { root.refresh(); } }
+            ComboBox { accessible-label: "Asset type filter"; model: ["All types", "Servers", "Services", "Domains", "Businesses"]; current-index <=> root.type-index; selected => { root.refresh(); } }
+            Button { compact: true; text: "Saved sites"; clicked => { root.add(4); } }
+        }
+        if root.page == 9: Text { text: root.result-status; color: UiColors.muted; font-size: UiColors.body-size; }
+        if root.page == 9: DataTable { widths <=> root.column-widths; fitted <=> root.fitted; selected-id: -1; sort-mode: root.sort-mode; sort(mode) => { root.sort-mode = mode; root.refresh(); } rows: root.rows; headers: ["Name", "Address / host", "Type", "Purpose", "Environment", "Contact", "Last checked"]; column-weights: [2, 2.5, 1, 2, 1.2, 1.2, 1.4, 1, 1]; empty-label: "No matching assets. Add one, or change your search."; open(id) => { if id >= 0 && id < root.keys.length { root.open(root.keys[id]); } } }
+        if root.page == 13: HorizontalLayout { spacing: 12px;
+            ComboBox { accessible-label: "Reminder status filter"; model: ["Needs attention", "Reviewed", "Postponed"]; current-index <=> root.reminder-filter; selected => { root.refresh(); } }
+            Button { compact: true; text: "Work inbox"; clicked => { root.add(5); } }
+            Button { compact: true; text: "Projects"; clicked => { root.add(6); } }
+            Button { compact: true; text: "Operations"; clicked => { root.add(7); } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        if root.page != 9: ScrollView {
+            VerticalLayout { spacing: 12px;
+                if root.page == 8 && (!root.has-assets || root.show-first-steps): Rectangle { height: max(190px, UiColors.body-size * 15); background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+                    VerticalLayout { padding: 18px; spacing: 10px;
+                        Text { text: root.demo ? "Sample workspace - explore without changing your data" : "Make your first useful connection"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
+                        Text { text: "1. Add or import a server. Confirm its proposed SSH service in Services.\n2. Add a domain and select its real hosting server. Explore the asset map.\n3. Search for the resource, then follow its connected assets."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                        HorizontalLayout { spacing: 12px;
+                            if !root.demo: Button { compact: true; text: "Try sample data"; clicked => { root.sample(); } }
+                            if root.demo: Button { compact: true; text: "Exit sample"; clicked => { root.sample(); } }
+                            Button { compact: true; text: "Backup and recovery"; clicked => { root.navigate(2); } }
+                            Button { compact: true; text: "Export handover"; clicked => { root.handover(); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                    }
+                }
+                if root.reminders.length == 0: Rectangle { height: 130px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+                    VerticalLayout { padding: 20px; spacing: 8px;
+                        Text { text: "Nothing here right now"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+                        Text { text: "Record a domain expiry date, or add a dated check in Work. Missing dates are never guessed."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                    }
+                }
+                for reminder in root.reminders: Rectangle { height: max(108px, UiColors.body-size * 7); background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+                    HorizontalLayout { padding: 16px; spacing: 16px;
+                        VerticalLayout { spacing: 6px;
+                            Text { text: reminder.title; color: UiColors.text; font-size: UiColors.body-size + 1px; font-weight: 650; wrap: word-wrap; }
+                            Text { text: reminder.subtitle; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                        }
+                        Button { compact: true; height: 36px; text: "Review"; clicked => { root.review(reminder.key); } }
+                    }
+                }
+                if root.page == 8 && root.businesses.length > 0: Text { text: "Business context"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+                for business in root.businesses: WorkspaceResourceRow { visible: root.page == 8; item: business; open(key) => { root.open(key); } }
+                if root.page == 8 && root.recent.length > 0: Text { text: "Recently checked"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+                for entry in root.recent: WorkspaceResourceRow { visible: root.page == 8; item: entry; open(key) => { root.open(key); } }
+                Rectangle { vertical-stretch: 1; background: transparent; }
+            }
+        }
+    }
+}
+
+export component WorkspaceDetail inherits Rectangle {
+    in property <string> text;
+    in property <string> history;
+    in property <[WorkspaceItem]> related;
+    in property <bool> can-back;
+    callback back(); callback close(); callback open(string); callback edit(); callback map();
+    background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
+    VerticalLayout { padding: 20px; spacing: 16px;
+        HorizontalLayout { spacing: 10px;
+            if root.can-back: Button { compact: true; text: "Back"; clicked => { root.back(); } }
+            Text { text: "Asset context"; color: UiColors.text; font-size: UiColors.body-size + 5px; font-weight: 700; }
+            Button { compact: true; text: "Close details"; clicked => { root.close(); } }
+        }
+        ScrollView { VerticalLayout { spacing: 12px;
+            Text { text: root.text; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
+            Text { text: "Connected assets"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+            if root.related.length == 0: Text { text: "No recorded connections. An independent asset is valid."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+            for item in root.related: WorkspaceResourceRow { item: item; open(key) => { root.open(key); } }
+            Text { text: root.history; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+        } }
+        HorizontalLayout { spacing: 10px;
+            Button { compact: true; text: "Edit record"; clicked => { root.edit(); } }
+            Button { compact: true; text: "View on map"; clicked => { root.map(); } }
+        }
+    }
+}

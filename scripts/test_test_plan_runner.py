@@ -27,6 +27,13 @@ class RunnerTests(unittest.TestCase):
         result, _ = self.run_python("raise SystemExit(7)")
         self.assertEqual((result["status"], result["exit_code"]), ("FAIL", 7))
 
+    def test_workspace_profile_covers_both_feature_modules(self):
+        specs = runner.commands("workspace", "1.92.0")
+        tests = [gate["command"] for gate in specs if gate["id"] in ("rust-tests", "reminder-tests")]
+        self.assertEqual(len(tests), 2)
+        self.assertTrue(any("workspace::tests::" in cmd for cmd in tests))
+        self.assertTrue(any("reminders::tests::" in cmd for cmd in tests))
+
     def test_timeout_is_not_pass(self):
         result, _ = self.run_python("import time; time.sleep(30)", timeout=0.1)
         self.assertEqual(result["status"], "TIMEOUT")

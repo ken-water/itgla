@@ -37,8 +37,12 @@ def commands(profile: str, toolchain: str, website: bool = False) -> list[dict]:
     test = cargo + ["test", "--all-features", "--locked", "-j", "2"]
     if profile == "quick":
         test += ["asset_context::tests::"]
+    elif profile == "workspace":
+        test += ["workspace::tests::"]
     result.append(gate("rust-tests", test, timeout=1800))
-    if profile != "quick":
+    if profile == "workspace":
+        result.append(gate("reminder-tests", cargo + ["test", "--all-features", "--locked", "-j", "2", "reminders::tests::"], timeout=1800))
+    if profile not in ("quick", "workspace"):
         result.append(gate("clippy", cargo + ["clippy", "--all-targets", "--all-features",
                                                 "--locked", "-j", "2", "--", "-D", "warnings"],
                            timeout=1800))
@@ -118,7 +122,7 @@ def capture(command: list[str]) -> str:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=["quick", "full", "release"], default="quick")
+    parser.add_argument("--profile", choices=["quick", "workspace", "full", "release"], default="quick")
     parser.add_argument("--toolchain", default="1.92.0")
     parser.add_argument("--website", action="store_true", help="Also run the existing local website suite")
     parser.add_argument("--list", action="store_true", help="Print commands without executing or writing")

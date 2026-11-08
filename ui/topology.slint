@@ -12,8 +12,13 @@ component ConnectionLine inherits Rectangle {
     in property <bool> emphasized;
     private property <length> left: min(edge.sx, min(edge.mx, min(edge.mx2, edge.tx))) * scale * 1px;
     private property <length> top: min(edge.route-y, min(edge.sy, edge.ty)) * 1px;
-    private property <color> ink: emphasized ? UiColors.primary : UiColors.muted;
-    private property <length> weight: emphasized ? 2px : 1px;
+    private property <color> relation-ink: edge.caption == "owns" || edge.caption == "contains" ? (UiColors.dark ? #9ebaff : #315fb2)
+        : edge.caption == "resolves to" || edge.caption == "origin on" ? (UiColors.dark ? #78d5c0 : #137b68)
+        : edge.caption == "hosted on" ? (UiColors.dark ? #d1a8f1 : #7950a0)
+        : edge.caption == "depends on" || edge.caption == "replicates to" || edge.caption == "fails over to" || edge.caption == "balances to" ? (UiColors.dark ? #ffb27f : #b6531d)
+        : (UiColors.dark ? #8b9baa : #718079);
+    private property <color> ink: emphasized ? (UiColors.dark ? #ffd166 : #b45309) : relation-ink;
+    private property <length> weight: emphasized ? 2.5px : 1.5px;
     x: left - 1px; y: top - 6px;
     width: max(edge.sx, max(edge.mx, max(edge.mx2, edge.tx))) * scale * 1px - left + 2px;
     height: max(edge.route-y, max(edge.sy, edge.ty)) * 1px - top + 12px;
@@ -46,6 +51,8 @@ export component TopologyPanel inherits Rectangle {
     in property <[TopologyEdge]> edges;
     in property <[string]> choices;
     in property <[string]> node-choices;
+    in property <[string]> node-choice-keys;
+    in-out property <string> resource-query;
     in property <[string]> business-choices;
     in property <float> canvas-height;
     in-out property <int> filter-index;
@@ -62,7 +69,7 @@ export component TopologyPanel inherits Rectangle {
     in property <string> status;
     callback refresh(); callback select-business(int); callback save-business(); callback hide-business();
     callback open-resource(string,int); callback save-link(); callback select-link(int); callback remove-link(); callback new-resource(int);
-    private property <bool> editing: root.business-id != 0;
+    in-out property <bool> editing: root.business-id != 0;
     changed business-id => { if root.business-id != 0 { root.editing = true; } }
     private property <bool> links-open: false;
     private property <bool> tools-open: false;
@@ -117,9 +124,9 @@ export component TopologyPanel inherits Rectangle {
             }
         }
         if !root.business-mode: HorizontalLayout { height: 36px; spacing: 8px;
-            Text { text: "Locate resource"; color: UiColors.text; vertical-alignment: center; }
-            locate-box := ComboBox { accessible-label: "Locate resource"; horizontal-stretch: 1; model: root.node-choices; current-index <=> root.find-index;
-                selected => { root.select-node(root.nodes[locate-box.current-index]); root.scroll-y = max(min(0px, root.view-height - root.map-height), min(0px, 28px - root.nodes[locate-box.current-index].py * 1px)); }
+            LineEdit { accessible-label: "Find a resource across the workspace"; placeholder-text: "Find a name, IP or port"; horizontal-stretch: 1; text <=> root.resource-query; edited => { root.refresh(); } }
+            locate-box := ComboBox { accessible-label: "Locate resource and focus its connections"; horizontal-stretch: 1; model: root.node-choices; current-index <=> root.find-index;
+                selected => { if locate-box.current-index >= 0 && locate-box.current-index < root.node-choice-keys.length { root.view-action(6, root.node-choice-keys[locate-box.current-index]); } }
             }
             Button { compact: true; text: "Graph tools"; checkable: true; checked <=> root.tools-open; }
         }
@@ -131,7 +138,7 @@ export component TopologyPanel inherits Rectangle {
             Button { width: 96px; horizontal-stretch: 0; compact: true; text: "Add link"; clicked => { root.link-id = 0; root.link-notes = ""; root.link-editing = true; } }
         }
         if !root.business-mode && (root.selected-key != "" || root.view-hidden-count > 0 || root.focus-key != "" || root.recovery-choices.length > 0): HorizontalLayout { height: 36px; spacing: 8px;
-            ComboBox { accessible-label: "Selected resource view actions"; horizontal-stretch: 1; enabled: root.selected-key != ""; model: ["Selected resource…", "Only this and related", "Collapse branch", "Expand branch", "Hide from this diagram"]; selected => { if self.current-index > 0 { root.view-action(self.current-index, root.selected-key); self.current-index = 0; } } }
+            ComboBox { accessible-label: "Selected resource view actions"; horizontal-stretch: 1; enabled: root.selected-key != ""; model: ["Choose view action", "Only this and related", "Collapse branch", "Expand one level", "Hide from this diagram"]; selected => { if self.current-index > 0 { root.view-action(self.current-index, root.selected-key); self.current-index = 0; } } }
             if root.recovery-choices.length > 0: ComboBox { accessible-label: "Restore hidden resource or expand branch"; horizontal-stretch: 1; model: root.recovery-choices; current-index: -1; selected => { root.view-action(5, root.recovery-keys[self.current-index]); self.current-index = -1; } }
             Button { compact: true; text: "Show all resources"; enabled: root.view-hidden-count > 0 || root.focus-key != "" || root.recovery-choices.length > 0; clicked => { root.view-action(0, ""); } }
             Text { text: root.view-hidden-count + " hidden in this view"; color: UiColors.muted; vertical-alignment: center; }
@@ -139,7 +146,14 @@ export component TopologyPanel inherits Rectangle {
         if !root.business-mode: Rectangle { vertical-stretch: 1;
           VerticalLayout { padding: 0px; spacing: 8px;
           Rectangle { height: 28px; background: UiColors.raised; clip: true;
-            for lane[index] in ["Business", "Domain / Subdomain", "Server", "Service"]: Text { x: (20 + index * 300) * (graph.content-width / 1220px) * 1px + root.scroll-x; y: 4px; width: 220 * (graph.content-width / 1220px) * 1px; text: lane; accessible-role: text; accessible-label: "Connection column " + lane; color: UiColors.muted; font-weight: 700; }
+            for lane[index] in ["Business", "Domain / Subdomain", "Server", "Service"]: Text { x: (20 + index * 300) * (graph.content-width / 1220px) * 1px + root.scroll-x; y: 4px; width: 220 * (graph.content-width / 1220px) * 1px; text: lane; accessible-role: text; accessible-label: "Connection column " + lane; color: index == 0 ? (UiColors.dark ? #9ebaff : #315fb2) : index == 1 ? (UiColors.dark ? #78d5c0 : #137b68) : index == 2 ? (UiColors.dark ? #ffd082 : #a95b08) : (UiColors.dark ? #d1a8f1 : #7950a0); font-weight: 700; }
+        }
+          HorizontalLayout { height: 22px; spacing: 12px;
+            Text { text: "Links"; color: UiColors.muted; font-size: UiColors.body-size - 1px; vertical-alignment: center; }
+            for item[index] in ["Ownership", "DNS / origin", "Hosting", "Dependencies", "Selected path"]: HorizontalLayout { width: 112px; spacing: 5px;
+                Rectangle { y: 9px; width: 12px; height: 3px; background: index == 0 ? (UiColors.dark ? #9ebaff : #315fb2) : index == 1 ? (UiColors.dark ? #78d5c0 : #137b68) : index == 2 ? (UiColors.dark ? #d1a8f1 : #7950a0) : index == 3 ? (UiColors.dark ? #ffb27f : #b6531d) : (UiColors.dark ? #ffd166 : #b45309); }
+                Text { text: item; color: UiColors.muted; font-size: UiColors.body-size - 1px; vertical-alignment: center; }
+            }
         }
           graph := ScrollView { vertical-stretch: 1; mouse-drag-pan-enabled: true;
             content-y <=> root.scroll-y; content-x <=> root.scroll-x;
@@ -158,8 +172,13 @@ export component TopologyPanel inherits Rectangle {
                     visible: node.py * 1px + root.scroll-y + 66px >= 0px && node.py * 1px + root.scroll-y <= root.view-height;
                     x: node.px * canvas.zoom * 1px; y: node.py * 1px; width: 220 * canvas.zoom * 1px; height: 66px;
                     private property <bool> selected: root.selected-key == node.kind + ":" + node.id;
-                    background: self.selected ? UiColors.selected : UiColors.surface; border-width: self.selected ? 2px : 1px; border-color: self.selected ? UiColors.primary : UiColors.border; border-radius: 5px;
-                    VerticalLayout { padding: 10px; spacing: 3px;
+                    private property <color> type-ink: node.kind == "business" ? (UiColors.dark ? #9ebaff : #315fb2)
+                        : node.kind == "domain" ? (UiColors.dark ? #78d5c0 : #137b68)
+                        : node.kind == "server" ? (UiColors.dark ? #ffd082 : #a95b08)
+                        : (UiColors.dark ? #d1a8f1 : #7950a0);
+                    background: self.selected ? UiColors.selected : UiColors.surface; border-width: self.selected ? 2px : 1px; border-color: self.selected ? UiColors.primary : self.type-ink; border-radius: 5px;
+                    Rectangle { x: 0px; y: 0px; width: 5px; height: parent.height; background: parent.type-ink; border-radius: 3px; }
+                    VerticalLayout { padding-left: 14px; padding-right: 8px; padding-top: 9px; padding-bottom: 8px; spacing: 3px;
                         Text { text: node.label; color: UiColors.text; font-size: UiColors.body-size; font-weight: 700; overflow: elide; }
                         Text { text: node.detail; color: UiColors.muted; font-size: UiColors.body-size - 1px; overflow: elide; }
                     }
@@ -176,7 +195,8 @@ export component TopologyPanel inherits Rectangle {
         }
         if !root.business-mode: HorizontalLayout { height: 40px; spacing: 8px;
             Text { horizontal-stretch: 1; text: root.selected-key == "" ? "Drag empty space to pan. Select a resource to trace its connections." : root.selected-kind + ": " + root.selected-label + "  /  " + root.selected-detail; color: UiColors.text; overflow: elide; }
-            Button { compact: true; primary: true; text: root.selected-kind == "service" || root.selected-kind == "domain" ? "View details" : "Edit record"; enabled: root.selected-key != ""; clicked => { root.open-resource(root.selected-kind,root.selected-id); } }
+            Button { compact: true; primary: true; text: "View details"; enabled: root.selected-key != ""; clicked => { root.open-resource(root.selected-kind,root.selected-id); } }
+            if root.selected-key != "": Button { compact: true; text: "Focus connections"; clicked => { root.view-action(1, root.selected-key); } }
             if root.selected-key != "": Button { compact: true; quiet: true; text: "Clear selection"; enabled: root.selected-key != ""; clicked => { root.selected-key = ""; } }
             Button { compact: true; text: "Relationships"; checkable: true; checked <=> root.links-open; }
         }

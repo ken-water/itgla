@@ -4,14 +4,17 @@ mod asset_context;
 #[allow(dead_code)]
 mod domain;
 mod endpoints;
+mod free_workspace;
 mod import_data;
 mod operational;
 mod relationships;
+mod reminders;
 mod secrets;
 #[allow(dead_code)]
 mod storage;
 mod tables;
 mod topology;
+mod workspace;
 
 use std::{cell::RefCell, cmp::Ordering, fs, net::IpAddr, path::PathBuf, rc::Rc};
 
@@ -1112,6 +1115,30 @@ fn clear_editor(window: &AppWindow) {
 
 #[cfg(debug_assertions)]
 fn apply_desktop_audit_fixture(window: &AppWindow) {
+    // Capture the native software renderer even when the Windows desktop is locked.
+    // This debug-only facility is restricted to the isolated fictional demo.
+    if std::env::var_os("ITGLA_AUDIT_DEMO").is_some()
+        && let Some(path) = std::env::var_os("ITGLA_AUDIT_SNAPSHOT")
+    {
+        let weak = window.as_weak();
+        slint::Timer::single_shot(std::time::Duration::from_millis(800), move || {
+            let Some(window) = weak.upgrade() else { return };
+            let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+                use std::io::Write;
+                let pixels = window.window().take_snapshot()?;
+                let mut file = std::io::BufWriter::new(std::fs::File::create(path)?);
+                write!(file, "P6\n{} {}\n255\n", pixels.width(), pixels.height())?;
+                for pixel in pixels.as_slice() {
+                    file.write_all(&[pixel.r, pixel.g, pixel.b])?;
+                }
+                file.flush()?;
+                Ok(())
+            })();
+            if let Err(error) = result {
+                eprintln!("Native audit snapshot failed: {error}");
+            }
+        });
+    }
     if std::env::var_os("ITGLA_AUDIT_DEMO").is_some() {
         window.invoke_enter_demo();
     }
@@ -1139,6 +1166,28 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             window.set_onboarding_open(false);
             window.invoke_topology_refresh();
         }
+        Ok(view @ ("overview" | "assets" | "reminders")) => {
+            window.set_active_tab(if view == "overview" {
+                8
+            } else if view == "assets" {
+                9
+            } else {
+                13
+            });
+            window.set_onboarding_open(false);
+            window.invoke_workspace_refresh();
+        }
+        Ok("search") | Ok("details") => {
+            window.set_active_tab(9);
+            window.set_onboarding_open(false);
+            window.set_workspace_search_query("PostgreSQL".into());
+            window.invoke_workspace_refresh();
+            if std::env::var("ITGLA_AUDIT_VIEW").as_deref() == Ok("search") {
+                window.invoke_open_workspace_search();
+            } else if let Some(result) = window.get_workspace_search_results().row_data(0) {
+                window.invoke_workspace_open(result.key);
+            }
+        }
         Ok("servers") => {
             window.set_active_tab(0);
             window.set_onboarding_open(false);
@@ -1147,9 +1196,16 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             window.set_active_tab(1);
             window.set_onboarding_open(false);
         }
-        Ok("settings") => {
+        Ok("settings") | Ok("backup") | Ok("recovery") => {
             window.set_active_tab(2);
             window.set_onboarding_open(false);
+            if std::env::var("ITGLA_AUDIT_VIEW").as_deref() != Ok("settings") {
+                window.set_settings_scroll_y(-620.0);
+            }
+            if std::env::var("ITGLA_AUDIT_VIEW").as_deref() == Ok("recovery") {
+                window.set_restore_source("Fictional backup - restore disabled in demo".into());
+                window.set_restore_confirm_open(true);
+            }
         }
         Ok("import") => {
             window.set_active_tab(0);
@@ -1194,6 +1250,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     operational::setup(&window, repository.clone());
     topology::setup(&window, repository.clone());
     tables::setup(&window);
+    workspace::setup(&window, repository.clone());
+    free_workspace::setup(&window, repository.clone());
+    window.set_active_tab(workspace::startup_page(&repository.borrow()));
     endpoints::bind(&window, repository.clone(), table_state.clone());
     let preferences = repository.borrow().workspace_preferences();
     apply_preferences(&window, &preferences);
@@ -1264,13 +1323,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
         update_table_geometry(&window, &widths);
     }
-    window.set_onboarding_open(!window.get_has_server_records());
+    window.invoke_workspace_refresh();
+    window.set_onboarding_open(!window.get_workspace_has_assets() && window.get_site_count() == 0);
 
     let weak = window.as_weak();
+    let page_repository = repository.clone();
     window.on_tab_selected(move |tab| {
         if let Some(window) = weak.upgrade() {
+            if let Err(error) = workspace::remember_page(&page_repository.borrow(), tab) {
+                show_error(&window, &error);
+            }
             operational::clear_credentials(&window);
             window.set_active_tab(tab);
+            if matches!(tab, 8 | 9 | 13) {
+                window.set_workspace_reminder_filter(0);
+                window.invoke_workspace_refresh();
+            }
             if tab == 0 && window.get_fit_columns_on_open() {
                 window.invoke_auto_fit_columns();
             } else if tab == 1 && window.get_site_fit_columns_on_open() {
@@ -1972,6 +2040,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 window.set_inventory_server_filter(0);
                 window.set_demo_mode(true);
                 topology::clear_selection(&window);
+                window.invoke_workspace_refresh();
                 window.invoke_topology_refresh();
                 let _ = refresh(
                     &window,
@@ -1984,7 +2053,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &callback_site_state.borrow(),
                 );
                 let _ = refresh_settings_models(&window, &callback_repository.borrow());
-                window.set_active_tab(0);
+                window.set_active_tab(8);
                 show_status(&window, "Demo workspace opened — real data is untouched");
             }
             Err(error) => show_error(&window, &error),
@@ -2014,6 +2083,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &callback_site_state.borrow(),
                 );
                 topology::clear_selection(&window);
+                window.invoke_workspace_refresh();
                 window.invoke_topology_refresh();
                 window.invoke_inventory_refresh();
                 show_status(&window, "Demo reset");
@@ -2037,6 +2107,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         window.set_inventory_server_filter(0);
         window.set_demo_mode(false);
         topology::clear_selection(&window);
+        window.invoke_workspace_refresh();
         window.invoke_topology_refresh();
         let preferences = callback_repository.borrow().workspace_preferences();
         apply_preferences(&window, &preferences);
@@ -2843,6 +2914,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     });
 
+    window.invoke_tab_selected(window.get_active_tab());
     apply_desktop_audit_fixture(&window);
     window.run()?;
     Ok(())
@@ -2951,6 +3023,7 @@ mod tests {
     fn guide_blocks_background_navigation_and_escape_restores_it() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
+        window.set_active_tab(0);
         window.window().set_size(PhysicalSize::new(1240, 800));
         let weak = window.as_weak();
         window.on_tab_selected(move |tab| weak.upgrade().expect("live window").set_active_tab(tab));
@@ -3078,6 +3151,7 @@ mod tests {
     fn table_headers_toggle_sort_and_resize_only_while_pressed() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
+        window.set_active_tab(0);
         window.window().set_size(PhysicalSize::new(1_000, 640));
         window.set_onboarding_open(false);
         assert_eq!(window.get_font_size_step(), 2);
@@ -3230,12 +3304,15 @@ mod tests {
         assert_eq!(
             labels,
             [
+                "Overview",
+                "Assets",
                 "Servers",
                 "Services",
                 "Domains",
                 "Businesses",
-                "Connections",
                 "Sites",
+                "Asset map",
+                "Reminders",
                 "Settings"
             ]
         );
@@ -3305,55 +3382,23 @@ mod tests {
         window.on_preferences_changed(move |theme, font, density, _, _, _, _, _| {
             *observed.borrow_mut() = Some((theme, font, density));
         });
-        let slider = ElementHandle::find_by_accessible_label(&window, "Text size control")
-            .next()
-            .expect("text size slider");
-        assert_eq!(slider.accessible_value_minimum(), Some(1.0));
-        assert_eq!(slider.accessible_value_maximum(), Some(3.0));
-        // Pointer positions between labels must resolve to a discrete stop.
-        for (fraction, expected) in [(0.0, 1), (0.2, 1), (0.4, 2), (0.7, 2), (0.9, 3), (1.0, 3)] {
-            let slider = ElementHandle::find_by_accessible_label(&window, "Text size control")
-                .next()
-                .unwrap();
-            let origin = slider.absolute_position();
-            let position = LogicalPosition::new(
-                origin.x + 22.0 + (slider.size().width - 44.0) * fraction,
-                origin.y + 22.0,
-            );
-            window
-                .window()
-                .dispatch_event(WindowEvent::PointerMoved { position });
-            window.window().dispatch_event(WindowEvent::PointerPressed {
-                position,
-                button: PointerEventButton::Left,
-            });
-            window
-                .window()
-                .dispatch_event(WindowEvent::PointerReleased {
-                    position,
-                    button: PointerEventButton::Left,
-                });
+        // Each discrete size is a real keyboard-accessible, mutually exclusive button.
+        for expected in [1, 2, 3, 2, 1] {
+            let choice =
+                ElementHandle::find_by_accessible_label(&window, &format!("Text size {expected}"))
+                    .next()
+                    .expect("text size choice");
+            choice.invoke_accessible_default_action();
             assert_eq!(window.get_font_size_step(), expected);
+            assert_eq!(choice.accessible_checked(), Some(true));
+            for other in 1..=3 {
+                let option =
+                    ElementHandle::find_by_accessible_label(&window, &format!("Text size {other}"))
+                        .next()
+                        .expect("size option");
+                assert_eq!(option.accessible_checked(), Some(other == expected));
+            }
         }
-        for (key, expected) in [
-            (Key::Home, 1),
-            (Key::RightArrow, 2),
-            (Key::End, 3),
-            (Key::LeftArrow, 2),
-        ] {
-            window
-                .window()
-                .dispatch_event(WindowEvent::KeyPressed { text: key.into() });
-            window
-                .window()
-                .dispatch_event(WindowEvent::KeyReleased { text: key.into() });
-            assert_eq!(window.get_font_size_step(), expected);
-        }
-        for step in 1..=3 {
-            slider.set_accessible_value(step.to_string());
-            assert_eq!(window.get_font_size_step(), step);
-        }
-        slider.set_accessible_value("0");
         for label in ["Color: Sand", "Row spacing: Roomy"] {
             let choice = ElementHandle::find_by_accessible_label(&window, label)
                 .next()
@@ -3514,6 +3559,7 @@ mod tests {
     fn screen_reader_tree_covers_server_and_site_tables() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
+        window.set_active_tab(0);
         window.set_onboarding_open(false);
         window.set_servers(ModelRc::new(VecModel::from(vec![ServerRow {
             id: 7,
@@ -3938,6 +3984,7 @@ mod tests {
     fn inventory_editors_open_on_request_and_close_without_clearing_fields() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
+        window.set_active_tab(0);
         window.set_onboarding_open(false);
         window.show().expect("show window");
         assert!(!window.get_server_editor_open());
@@ -4121,6 +4168,7 @@ mod tests {
     fn largest_font_server_form_keeps_fields_separate_and_save_visible() {
         i_slint_backend_testing::init_no_event_loop();
         let window = AppWindow::new().expect("test window");
+        window.set_active_tab(0);
         window.window().set_size(PhysicalSize::new(1000, 640));
         window.set_onboarding_open(false);
         window.set_font_size_step(3);

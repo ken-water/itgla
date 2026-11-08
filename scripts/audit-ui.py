@@ -43,7 +43,7 @@ def main() -> int:
         "Sites horizontal reset": "root.site-table-scroll-x = 0px",
         "Sites default fields": 'title: "ENVIRONMENT"',
         "resource-specific count": 'root.site-count + (root.site-count == 1 ? " SITE" : " SITES")',
-        "first-run guide": "Start with one server",
+        "first-run guide": 'text: "Try sample data"',
         "import defaults": "Defaults for empty or missing columns",
         "readable default font": "font-size-step: 2",
         "inherited control font": "default-font-size: root.control-font-size",

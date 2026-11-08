@@ -1,0 +1,42 @@
+{
+  "version": "1.0",
+  "id": "free-first-20261106",
+  "task_class": "application_page",
+  "objective": "Polish free local onboarding, recovery, handover and honest website guidance",
+  "scope": {
+    "include": [
+      "src/**",
+      "ui/**",
+      "docs/**",
+      "scripts/**",
+      "website/**",
+      ".agents/product-marketing.md"
+    ],
+    "exclude": [
+      "production",
+      ".github/**"
+    ]
+  },
+  "current_stage": "VERIFY",
+  "stop_stage": "VERIFY",
+  "target_environment": "local",
+  "risk_flags": [],
+  "requested_actions": [
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence"
+    ]
+  },
+  "metadata": {
+    "plan": "docs/free-first-delivery-20261106.md",
+    "authorization": "User requested sequential local optimization; external outreach and production are excluded."
+  }
+}

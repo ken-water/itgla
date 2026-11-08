@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCALE = 4
 GREEN = '#203c30'
 PAPER = '#f4f6f1'
+RESAMPLE_LANCZOS = getattr(Image, 'Resampling', Image).LANCZOS
 
 
 def generate(output):
@@ -21,7 +22,7 @@ def generate(output):
                   font=ImageFont.truetype(str(font_path), size * SCALE), fill=color)
     def logo(im, xy, size):
         mark = Image.open(ROOT / 'assets/itgla.png').convert('RGBA')
-        mark = mark.resize((size * SCALE, size * SCALE), Image.Resampling.LANCZOS)
+        mark = mark.resize((size * SCALE, size * SCALE), RESAMPLE_LANCZOS)
         im.paste(mark, tuple(int(v * SCALE) for v in xy), mark)
     sidebar = Image.new('RGB', (164 * SCALE, 314 * SCALE), GREEN)
     logo(sidebar, (20, 26), 52)

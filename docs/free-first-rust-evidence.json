@@ -1,0 +1,114 @@
+{
+  "version": "2.0",
+  "task_id": "free-first-native-20261106",
+  "target_revision": "Local free-first native candidate, 2026-11-06, SHA256 88545b1c9cebb1f0ac51b549e888bfaed939a6cafd09202fb88ffbcd12fe493e",
+  "gates": {
+    "format": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/free-first-format.log"
+      ],
+      "command": "cargo +1.92.0 fmt --all -- --check"
+    },
+    "check": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/free-first-clippy-final.log"
+      ],
+      "command": "cargo +1.92.0 clippy --config output/workspace-cargo-network.toml --offline --all-targets --all-features --locked -j 2 -- -D warnings"
+    },
+    "clippy": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/free-first-clippy-final.log"
+      ],
+      "command": "cargo +1.92.0 clippy --config output/workspace-cargo-network.toml --offline --all-targets --all-features --locked -j 2 -- -D warnings"
+    },
+    "tests": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/free-first-tests-final.log"
+      ],
+      "command": "cargo +1.92.0 --config output/workspace-cargo-network.toml test --offline --all-features --locked -j 2"
+    },
+    "locked_build": {
+      "status": "pass",
+      "exit_code": 0,
+      "evidence": [
+        "output/free-first-build.log"
+      ],
+      "command": "cargo +1.92.0 --config output/workspace-cargo-network.toml build --offline --locked -j 2"
+    }
+  },
+  "diff": {
+    "paths": [
+      ".agents/product-marketing.md",
+      "Cargo.lock",
+      "Cargo.toml",
+      "deny.toml",
+      "docs/design/workspace-20261105/README.md",
+      "docs/design/workspace-20261105/brand.png",
+      "docs/design/workspace-20261105/index.html",
+      "docs/design/workspace-20261105/workspace.css",
+      "docs/design/workspace-20261105/workspace.js",
+      "docs/free-first-delivery-20261106.md",
+      "docs/free-first-rust-evidence.json",
+      "docs/free-first-rust-task.json",
+      "docs/free-first-ui-evidence.json",
+      "docs/free-first-ui-task.json",
+      "docs/roadmap-to-10-paid-users-2027-06.md",
+      "docs/testing/free-first-evidence-20261106.md",
+      "docs/testing/free-first-observations.csv",
+      "docs/testing/free-first-pilot-20261106.md",
+      "docs/testing/workspace-acceptance-20261105.md",
+      "docs/testing/workspace-implementation-evidence-20261105.md",
+      "docs/workspace-development-backlog-20261105.json",
+      "docs/workspace-development-plan-20261105.md",
+      "docs/workspace-implementation-task.json",
+      "docs/workspace-rust-evidence.json",
+      "docs/workspace-rust-task.json",
+      "docs/workspace-ui-evidence.json",
+      "migrations/022_reminder_reviews.sql",
+      "scripts/audit-ui.py",
+      "scripts/capture-free-first-preview.py",
+      "scripts/preview-workspace.ps1",
+      "scripts/run-test-plan.py",
+      "scripts/test_test_plan_runner.py",
+      "src/free_workspace.rs",
+      "src/import_data.rs",
+      "src/main.rs",
+      "src/operational.rs",
+      "src/reminders.rs",
+      "src/storage.rs",
+      "src/topology.rs",
+      "src/workspace.rs",
+      "tests/fixtures/workspace-import.xlsx",
+      "ui/app.slint",
+      "ui/appearance.slint",
+      "ui/data-table.slint",
+      "ui/topology.slint",
+      "ui/workspace.slint",
+      "website/assets/itgla-free-first-preview-20261106.webp",
+      "website/downloads.html",
+      "website/getting-started.html",
+      "website/index.html",
+      "website/llms.txt",
+      "website/marketing.css",
+      "website/plans.html",
+      "website/sitemap.xml",
+      "website/tests/free-first.spec.js"
+    ],
+    "files_changed": 55,
+    "lines_added": 4019,
+    "lines_deleted": 156,
+    "new_files": 33,
+    "dependencies_added": [
+      "Inherited calamine/zip/quick-xml security upgrade from the prior workspace implementation; no dependency change introduced in this free-first slice"
+    ],
+    "public_api_changed": false
+  }
+}

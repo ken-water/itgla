@@ -21,7 +21,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 21;
+const SCHEMA_VERSION: i64 = 22;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -513,6 +513,13 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/021_asset_context.sql"))?;
             transaction.pragma_update(None, "user_version", 21)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 21 {
+            self.automatic_backup("pre-schema-22.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/022_reminder_reviews.sql"))?;
+            transaction.pragma_update(None, "user_version", 22)?;
             transaction.commit()?;
         }
         Ok(())
@@ -3121,7 +3128,17 @@ impl Repository {
 
     pub fn restore_backup(&mut self, path: &Path) -> Result<(), StorageError> {
         self.ensure_external_path(path)?;
-        if self.automatic_backup_path("pre-restore.db").as_deref() == Some(path) {
+        if self
+            .automatic_backup_path("pre-restore.db")
+            .is_some_and(|recovery| {
+                recovery == path
+                    || recovery
+                        .canonicalize()
+                        .ok()
+                        .zip(path.canonicalize().ok())
+                        .is_some_and(|(a, b)| a == b)
+            })
+        {
             return Err(StorageError::InvalidImport(
                 "The restore source cannot be the automatic recovery point".into(),
             ));
@@ -3247,7 +3264,15 @@ impl Repository {
     }
 
     fn ensure_external_path(&self, path: &Path) -> Result<(), StorageError> {
-        if path.as_os_str().is_empty() || self.database_path.as_deref() == Some(path) {
+        let is_current = self.database_path.as_ref().is_some_and(|current| {
+            current == path
+                || current
+                    .canonicalize()
+                    .ok()
+                    .zip(path.canonicalize().ok())
+                    .is_some_and(|(a, b)| a == b)
+        });
+        if path.as_os_str().is_empty() || is_current {
             return Err(StorageError::InvalidImport(
                 "Choose a valid file path outside the current database".into(),
             ));
@@ -5261,6 +5286,16 @@ mod tests {
 
         repository.restore_backup(&backup_path)?;
         assert_eq!(repository.project_named("After Backup")?, None);
+        let recovery = directory.join("backups/pre-restore.db");
+        assert!(recovery.exists());
+        let alias = directory.join("backups/../backups/pre-restore.db");
+        assert!(repository.restore_backup(&alias).is_err());
+        let current_alias = directory.join("backups/../source.db");
+        assert!(repository.create_backup(&current_alias).is_err());
+        assert!(repository.restore_backup(&current_alias).is_err());
+        repository
+            .connection
+            .execute_batch("PRAGMA integrity_check;")?;
         drop(repository);
         let _ = fs::remove_dir_all(directory);
         Ok(())

@@ -182,4 +182,25 @@ mod tests {
         let _ = fs::remove_file(path);
         Ok(())
     }
+
+    #[test]
+    fn spreadsheet_upgrade_preserves_xlsx_and_rejects_truncated_ole() -> Result<(), ImportError> {
+        let xlsx = temporary_path("xlsx");
+        fs::write(
+            &xlsx,
+            include_bytes!("../tests/fixtures/workspace-import.xlsx"),
+        )?;
+        let result = read_tabular(&xlsx);
+        let _ = fs::remove_file(xlsx);
+        let data = result?;
+        assert_eq!(data.headers, ["IP", "Ports"]);
+        assert_eq!(data.rows, [vec!["203.0.113.10", "443"]]);
+
+        let xls = temporary_path("xls");
+        fs::write(&xls, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1])?;
+        let result = read_tabular(&xls);
+        let _ = fs::remove_file(xls);
+        assert!(matches!(result, Err(ImportError::Spreadsheet(_))));
+        Ok(())
+    }
 }

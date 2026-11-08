@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ITGLA · Workspace design preview</title><link rel="icon" href="brand.png">
+  <link rel="stylesheet" href="workspace.css"><script src="workspace.js" defer></script>
+</head>
+<body>
+  <a class="skip" href="#main">Skip to workspace</a>
+  <aside class="sidebar">
+    <a class="brand" href="#overview"><img src="brand.png" width="38" height="38" alt=""><span>ITGLA<small>IT in a glance</small></span></a>
+    <div class="workspace-name"><span class="avatar">N</span><span>Northstar studio<small>Personal workspace</small></span></div>
+    <nav aria-label="Workspace"><button data-page="overview">Overview</button><button data-page="assets">Assets <span id="asset-count">8</span></button><button data-page="map">Asset map</button><button data-page="reminders">Reminders <span id="reminder-count">2</span></button></nav>
+    <div class="sidebar-bottom"><p>YOUR WORKSPACE, YOUR DATA<small>Local-first. No account required.</small></p><button data-page="settings">Settings</button></div>
+  </aside>
+  <div class="workspace">
+    <header class="topbar"><span id="breadcrumb">Workspace / Overview</span><button class="search-trigger" id="search-open"><span>Search assets, addresses, people…</span><kbd>Ctrl K</kbd></button></header>
+    <div class="preview-note">DESIGN PREVIEW <span>Fictional data · Changes last until this page reloads · No real connections or notifications</span></div>
+    <main id="main" tabindex="-1"></main>
+  </div>
+  <aside id="detail" class="detail" aria-label="Asset details" hidden></aside>
+  <dialog id="search-dialog" aria-labelledby="search-title"><div class="dialog-head"><h2 id="search-title">Find anything in your IT</h2><button data-close="search-dialog">Close</button></div><label for="global-search">Name, IP, domain, purpose or contact</label><input id="global-search" type="search" placeholder="Try PostgreSQL, Alex or 203.0.113.10" autocomplete="off"><p class="muted">Searches all asset types. No special syntax needed.</p><div id="search-results"></div></dialog>
+  <dialog id="add-dialog" aria-labelledby="add-title"><form id="add-form"><div class="dialog-head"><h2 id="add-title">Add an asset</h2><button type="button" data-close="add-dialog">Cancel</button></div><p class="muted">Start with the basics. Add maintenance details when you need them.</p><label for="asset-type">Type</label><select id="asset-type"><option>Server</option><option>Service</option><option>Domain</option><option>Business</option></select><label for="asset-name">Name (required)</label><input id="asset-name" required maxlength="100" placeholder="e.g. Production web server"><label for="asset-purpose">Purpose</label><input id="asset-purpose" maxlength="180" placeholder="What is this used for?"><label id="host-label" for="asset-host">Runs on (optional)</label><select id="asset-host"></select><details><summary>More information</summary><label for="asset-owner">Contact</label><input id="asset-owner" maxlength="100" placeholder="Who can help?"><label for="asset-env">Environment</label><select id="asset-env"><option>Not recorded</option><option>Production</option><option>Development</option><option>Test</option></select></details><div class="form-footer"><span class="muted">Preview only · not saved to your inventory</span><button class="primary" type="submit">Add asset</button></div></form></dialog>
+  <div id="toast" role="status" class="toast" hidden></div>
+</body>
+</html>

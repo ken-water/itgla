@@ -1,0 +1,62 @@
+{
+  "version": "2.0",
+  "id": "workspace-native-20261105",
+  "objective": "Implement the approved local Slint workspace and additive manual-reminder migration with isolated tests",
+  "level": "L4",
+  "profile": "migration",
+  "scope": {
+    "include": [
+      "src/**",
+      "ui/**",
+      "migrations/**",
+      "docs/**",
+      "scripts/run-test-plan.py",
+      "scripts/test_test_plan_runner.py",
+      "Cargo.toml",
+      "Cargo.lock",
+      "tests/**",
+      "deny.toml",
+      "scripts/preview-workspace.ps1"
+    ],
+    "exclude": [
+      "website/**",
+      ".github/**"
+    ]
+  },
+  "target": "local",
+  "risk_flags": [
+    "persistent_data",
+    "contract",
+    "performance_sensitive",
+    "dependency_change"
+  ],
+  "requested_actions": [
+    "local_read",
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence",
+    "prepare_migration",
+    "add_dependency"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_read",
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence",
+      "prepare_migration",
+      "add_dependency"
+    ]
+  },
+  "planning": {
+    "plan_ref": "docs/workspace-development-plan-20261105.md",
+    "approved": true
+  },
+  "metadata": {
+    "authorization": "User approved the prepared plan and requested sequential implementation. No production migration or release.",
+    "dependency_upgrade": "Existing spreadsheet reader upgraded to fix reachable RUSTSEC-2026-0436; no new direct dependency.",
+    "dependency_authority": "Routine local dependency repair needed to safely preserve the existing spreadsheet import while implementing and validating S3; user-requested implementation authorizes local fixes. No external publication."
+  }
+}

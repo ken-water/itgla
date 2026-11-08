@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "id": "workspace-20261105",
+  "task_class": "application_page",
+  "objective": "Implement the accepted six-stage local desktop workspace plan using existing repositories and safe additive reminder state",
+  "scope": {
+    "include": [
+      "src/**",
+      "ui/**",
+      "migrations/**",
+      "docs/**",
+      "scripts/run-test-plan.py",
+      "scripts/test_test_plan_runner.py",
+      "Cargo.toml",
+      "Cargo.lock",
+      "tests/**",
+      "deny.toml",
+      "scripts/preview-workspace.ps1"
+    ],
+    "exclude": [
+      "production",
+      "website/**",
+      ".github/**"
+    ]
+  },
+  "current_stage": "VERIFY",
+  "stop_stage": "VERIFY",
+  "target_environment": "local",
+  "risk_flags": [],
+  "requested_actions": [
+    "local_edit",
+    "local_test",
+    "local_build",
+    "local_evidence",
+    "prepare_migration"
+  ],
+  "authority": {
+    "allowed_actions": [
+      "local_edit",
+      "local_test",
+      "local_build",
+      "local_evidence",
+      "prepare_migration"
+    ]
+  },
+  "metadata": {
+    "plan": "docs/workspace-development-plan-20261105.md",
+    "authorization": "User requested sequential implementation of the prepared plan; tests use isolated workspaces."
+  }
+}

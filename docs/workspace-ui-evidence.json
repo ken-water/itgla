@@ -1,0 +1,56 @@
+{
+  "version": "1.0",
+  "task_id": "workspace-20261105",
+  "target_version": "e6c5808 + local workspace implementation (2026-11-05)",
+  "gates": {
+    "lint": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-format.log",
+        "output/workspace-english.log"
+      ]
+    },
+    "focused_tests": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-final-tests.log",
+        "output/workspace-runner-tests.log"
+      ]
+    },
+    "build": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-build.log"
+      ]
+    },
+    "responsive": {
+      "status": "fail",
+      "evidence": [
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ],
+      "reason": "Native layout bounds tested at1100x720/1440x900 for three sizes; actual system DPI review remains pending."
+    },
+    "accessibility": {
+      "status": "fail",
+      "evidence": [
+        "output/workspace-ui-static.log",
+        "output/workspace-final-tests.log",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ],
+      "reason": "Contrast/input/modal tests pass; native screen-reader and focus-origin review remain unrun."
+    },
+    "visual_review": {
+      "status": "pass",
+      "evidence": [
+        "C:\\Users\\dell\\AppData\\Local\\Temp\\itgla-workspace-final-native\\manifest.json",
+        "docs\\testing\\workspace-implementation-evidence-20261105.md"
+      ]
+    },
+    "typecheck": {
+      "status": "pass",
+      "evidence": [
+        "output/workspace-clippy.log"
+      ]
+    }
+  }
+}

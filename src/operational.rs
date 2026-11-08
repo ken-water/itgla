@@ -347,9 +347,15 @@ impl Repository {
         if values.len() > 5000 {
             return Err(invalid("Inventory exceeds the 5000-record limit"));
         }
+        // Read hosting associations once rather than one SQLite query per inventory row.
         let mut hosts = self.connection.prepare(
-            "SELECT server_id FROM operational_hosts WHERE inventory_id=?1 ORDER BY server_id",
+            "SELECT inventory_id,server_id FROM operational_hosts ORDER BY inventory_id,server_id",
         )?;
+        let mut by_inventory = std::collections::HashMap::<i64, Vec<i64>>::new();
+        for host in hosts.query_map([], |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)))? {
+            let (inventory, server) = host?;
+            by_inventory.entry(inventory).or_default().push(server);
+        }
         let mut display_servers = self.display_server_records(false)?;
         display_servers.extend(self.display_server_records(true)?);
         values
@@ -374,9 +380,7 @@ impl Repository {
                         verified_at,
                         verification_due,
                         updated_at,
-                        hosts: hosts
-                            .query_map([id], |row| row.get(0))?
-                            .collect::<Result<Vec<_>, _>>()?,
+                        hosts: by_inventory.remove(&id).unwrap_or_default(),
                     };
                     entry.details.name = display_service_name(&entry, &display_servers);
                     Ok(entry)

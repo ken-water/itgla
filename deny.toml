@@ -1,5 +1,11 @@
 [advisories]
 ignore = [
+    # Same verified non-affected parser configuration as RUSTSEC-2026-0414 below.
+    # Owner ken-water; reassess by 2026-11-24. See workspace implementation evidence.
+    { id = "RUSTSEC-2026-0433", reason = "Slint i-slint-common 1.18.1 styled_text::parse_interpolated enables only ENABLE_STRIKETHROUGH. ITGLA has no direct Markdown parser and does not enable ENABLE_WIKILINKS or Options::all; the advisory explicitly excludes this configuration." },
+    # Maintenance exception, not a claim that the dependency is vulnerability-free.
+    # Owner ken-water; reassess by 2026-11-24; removal requires an upstream spin_on update.
+    { id = "RUSTSEC-2026-0441", reason = "Unmaintained pin-utils 0.1.0 is required by spin_on through Slint 1.18.1 and its compiler. No safe upgrade is available. Retain the existing native UI toolchain for this local implementation and track upstream replacement with core::pin::pin or pin-project-lite." },
     # Verified non-affected for Slint 1.18.1: only ENABLE_STRIKETHROUGH is set.
     # Owner ken-water; reassess by 2026-11-24 and prefer pulldown-cmark >=0.13.5.
     { id = "RUSTSEC-2026-0414", reason = "Slint i-slint-common 1.18.1 styled_text::parse_interpolated uses only Options::ENABLE_STRIKETHROUGH, not ENABLE_WIKILINKS or Options::all. ITGLA has no direct Markdown parser. The advisory explicitly excludes parsing without wikilinks. See docs/releases/v0.6.2.md." },

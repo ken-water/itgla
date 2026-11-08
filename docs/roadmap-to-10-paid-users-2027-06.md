@@ -1,5 +1,7 @@
 # ITGLA Roadmap To 10 Paid Users
 
+> Superseded commercial assumptions (2026-11-06): follow [Free-first delivery](free-first-delivery-20261106.md). The owner selected Free, Pro and Team, with activation and retention first. Basic local reminders, export, backup and recovery remain free. Earlier prices and month/version markers below are historical hypotheses, not current commitments. API is intended for Pro after validation; paid collaboration belongs to Team.
+
 ## Target
 
 By 2027-06-30, ITGLA should have 10 paying customers who actively maintain at least one real project. The target is deliberately small: prove that a solo founder with one or a few servers will pay for reduced operational risk before building a broad ITSM product.

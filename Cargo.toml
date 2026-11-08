@@ -1,6 +1,6 @@
 [package]
 name = "itgla"
-version = "0.6.2"
+version = "0.6.3"
 edition = "2024"
 description = "Local-first IT resource relationship manager"
 license = "Proprietary"
@@ -16,7 +16,7 @@ icons = ["assets/itgla.png"]
 
 [dependencies]
 arboard = { version = "3.6.1", default-features = false }
-calamine = { version = "0.36.1", default-features = false }
+calamine = { version = "0.38.0", default-features = false }
 csv = "1.4.0"
 rfd = { version = "0.17.2", default-features = false, features = ["xdg-portal"] }
 slint = { version = "1.18.1", default-features = false, features = [
