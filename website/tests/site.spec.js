@@ -129,6 +129,10 @@ test("shared footer geometry stays consistent across the site", async ({ page })
   let sharedStyle;
   for (const path of pages) {
     await page.goto(path);
+    await expect(page.locator('link[href^="/styles.css?v="]')).toHaveAttribute(
+      "href",
+      "/styles.css?v=20261108-footer-spacing",
+    );
     const style = await page.locator(".site-footer").evaluate((footer) => {
       const computed = getComputedStyle(footer);
       return {

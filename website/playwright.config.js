@@ -1,17 +1,19 @@
 const { defineConfig } = require("@playwright/test");
 
+const port = Number.parseInt(process.env.ITGLA_TEST_PORT || "4183", 10);
+
 module.exports = defineConfig({
   testDir: "./tests",
   outputDir: "./test-results",
   reporter: "line",
   use: {
-    baseURL: "http://127.0.0.1:4183",
+    baseURL: process.env.ITGLA_TEST_BASE_URL || `http://127.0.0.1:${port}`,
     browserName: "chromium",
   },
   webServer: [
     {
-      command: "python3 -m http.server 4183 --bind 127.0.0.1",
-      port: 4183,
+      command: `python3 -m http.server ${port} --bind 127.0.0.1`,
+      port,
       reuseExistingServer: true,
     },
     {
