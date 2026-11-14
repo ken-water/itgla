@@ -15,7 +15,7 @@ for (const width of [390, 768, 1440]) {
       for (const href of new Set(hrefs)) expect((await request.get(href)).ok(), href).toBeTruthy();
     }
     await expect(page.getByRole("heading", { name: "Pro" })).toBeVisible();
-    await expect(page.locator("main")).toContainText("neither is available for purchase");
+    await expect(page.locator("main")).toContainText("no paid plan or price is available today");
     const ratio = await page.locator("main .button-primary").evaluate(button => {
       const css = getComputedStyle(button);
       const luminance = color => {
