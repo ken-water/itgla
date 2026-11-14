@@ -61,7 +61,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await expect(page.locator(".platform-card")).toHaveCount(3);
   await expect(page.locator("#macos")).toContainText("Apple silicon");
   await expect(page.locator("#macos")).toContainText("Intel");
-  await expect(page.locator("#windows")).toContainText("EXE · 9.3 MB");
+  await expect(page.locator("#windows")).toContainText("EXE · 14.1 MB");
   await expect(page.locator(".verify-guides details[open]")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
