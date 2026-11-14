@@ -88,8 +88,12 @@
 @media (max-width: 560px) {
   .homepage { --home-gutter: 16px; }
   .homepage .site-nav a { display: none; }
-  .homepage .site-nav a[href="/"], .homepage .site-nav a[href="/downloads.html"], .homepage .site-nav a[href="/signin.html"] { display: inline-flex; }
-  .homepage .site-nav { gap: 10px; }
+  .homepage .site-nav a[href="/"], .homepage .site-nav a[href="/downloads.html"], .homepage .site-nav a[href="/signin.html"], .homepage .site-nav .nav-signup { display: inline-flex; }
+  .homepage .site-nav { gap: 6px; }
+}
+
+@media (max-width: 360px) {
+  .homepage .site-nav a[href="/"] { display: none; }
 }
 
 /* Keep the product name and actual workspace together at every viewport. */

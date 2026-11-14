@@ -1,0 +1,7 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 600" role="img" aria-labelledby="title desc">
+  <title id="title">ITGLA</title><desc id="desc">IT in a glance.</desc>
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4f8f5"/><stop offset="1" stop-color="#dcece5"/></linearGradient><filter id="s" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#173f36" flood-opacity=".16"/></filter></defs>
+  <rect width="600" height="600" rx="48" fill="url(#bg)"/><circle cx="475" cy="100" r="155" fill="#0f7664" opacity=".08"/><circle cx="100" cy="530" r="140" fill="#c17d11" opacity=".08"/>
+  <rect x="175" y="112" width="250" height="250" rx="54" fill="#fff" filter="url(#s)"/><path d="M250 180h100M300 180v115M250 295h100" fill="none" stroke="#173f36" stroke-width="22" stroke-linecap="round"/><path d="M238 237h124" stroke="#0f7664" stroke-width="8" stroke-linecap="round" opacity=".55"/><circle cx="250" cy="180" r="15" fill="#0f7664"/><circle cx="350" cy="295" r="15" fill="#c17d11"/>
+  <text x="300" y="455" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="50" font-weight="750" fill="#173f36">ITGLA</text><text x="300" y="500" text-anchor="middle" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="24" fill="#47665d">IT in a glance.</text>
+</svg>

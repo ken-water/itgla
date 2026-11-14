@@ -30,7 +30,7 @@ for (const width of [390, 768, 1440]) {
     });
     expect(ratio).toBeGreaterThanOrEqual(4.5);
     await page.goto("/getting-started.html#local-preview");
-    await expect(page.locator("#local-preview")).toContainText("current 0.6.3 desktop release includes");
+    await expect(page.locator("#local-preview")).toContainText("current 0.6.4 desktop release includes");
     await expect(page.locator("#local-preview")).toContainText("no closed-app notifications");
     expect(errors).toEqual([]);
   });
@@ -58,11 +58,13 @@ test("plan matrix distinguishes current and planned features", async ({ page }) 
   await expect(table.getByRole("columnheader").first()).toHaveText("Capability");
   await expect(table.locator(".plan-name")).toHaveText(["Free", "Pro", "Team"]);
   await expect(table.getByRole("rowheader", { name: "Full local database backup" })).toBeVisible();
-  await expect(table).toContainText("Available in 0.6.3");
+  await expect(table).toContainText("Available in 0.6.4");
   await expect(table).not.toContainText("Local preview; pending release");
   await expect(table).toContainText("Planned; not available");
   await expect(table).toContainText("API and automation");
-  await expect(page.getByText("Prices and launch dates have not been announced.")).toBeVisible();
+  await expect(page.locator("main")).toContainText("has no asset-count limit");
+  await expect(page.locator("main")).toContainText("no paid plan or price is available today");
+  await expect(page.locator("main")).not.toContainText("$19/month");
   expect(await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)).toBeLessThanOrEqual(0);
   const region = page.getByRole("region", { name: "Plan comparison table" });
   expect(await region.evaluate(el => el.scrollWidth > el.clientWidth)).toBeTruthy();

@@ -37,6 +37,7 @@ export component TopologyPanel inherits Rectangle {
     in property <[GridRow]> grid-rows;
     in property <int> grid-sort-mode;
     callback grid-sort(int);
+    callback copy-grid(int,int,int);
     in property <int> view-hidden-count;
     in property <[string]> recovery-choices;
     in property <[string]> recovery-keys;
@@ -106,7 +107,7 @@ export component TopologyPanel inherits Rectangle {
         if root.business-mode: LineEdit { accessible-label: "Search businesses"; placeholder-text: "Search businesses, contacts and references"; text <=> root.business-query; edited => { root.refresh(); } }
         if root.business-mode: CheckBox { text: "Show hidden businesses"; checked <=> root.hidden; toggled => { root.select-business(0); root.editing = false; root.refresh(); } }
         if root.business-mode: HorizontalLayout { spacing: 16px;
-            DataTable { horizontal-stretch: 1; headers: ["Business", "Tags", "Notes / responsibility"]; rows: root.grid-rows; selected-id: root.business-id; sort-mode: root.grid-sort-mode; sort(mode) => { root.grid-sort(mode); } open(id) => { root.select-business(id); root.editing = true; } }
+            DataTable { horizontal-stretch: 1; copy-kind: 0; copy-grid(kind,row-id,column) => { root.copy-grid(kind,row-id,column); } headers: ["Business", "Tags", "Notes / responsibility"]; rows: root.grid-rows; selected-id: root.business-id; sort-mode: root.grid-sort-mode; sort(mode) => { root.grid-sort(mode); } open(id) => { root.select-business(id); root.editing = true; } }
             if root.editing: Rectangle { width: 340px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
                 VerticalLayout { padding: 12px; spacing: 10px;
                   ScrollView { vertical-stretch: 1; VerticalLayout { spacing: 10px;

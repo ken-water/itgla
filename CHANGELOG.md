@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.6.4 - 2026-11-14
+
+- Add URL-based asset discovery with progress, cancellation, bounded DNS/HTTPS evidence and explicit review before importing candidates.
+- Retain discovery evidence and asset links in additive schema migrations 23–25; never infer a verified origin server from public DNS alone.
+- Support copying whole inventory rows and columns alongside clearly indicated key fields.
+- Keep the current desktop free with no asset-count limit; disable public pricing and entitlement enforcement.
+- Unify website sign-in navigation, footers, current download information and free-first guidance.
+
 ## 0.6.3 - 2026-11-08
 
 - Add Overview, guided first use, isolated sample data, global asset search, and shared asset details.

@@ -1,6 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod asset_context;
+mod discovery;
 #[allow(dead_code)]
 mod domain;
 mod endpoints;
@@ -148,7 +149,7 @@ fn work_to_row(work: &WorkItem) -> WorkRow {
         )
         .into(),
         scope: format!(
-            "{}P · {}S · {}A",
+            "{}P | {}S | {}A",
             work.project_count, work.server_count, work.asset_count
         )
         .into(),
@@ -812,7 +813,117 @@ fn table_data_width(widths: &[f32]) -> f32 {
 }
 
 fn table_width_for(widths: &[f32]) -> f32 {
-    (table_data_width(widths) + 116.0).max(816.0)
+    (table_data_width(widths) + 188.0).max(888.0)
+}
+
+fn refresh_discovery(window: &AppWindow, repository: &Repository) -> Result<(), StorageError> {
+    if window.get_demo_mode() {
+        window.set_discovery_results(ModelRc::new(VecModel::default()));
+        window.set_discovery_warnings(SharedString::new());
+        window.set_discovery_run_labels(ModelRc::new(VecModel::default()));
+        return Ok(());
+    }
+    let runs = repository.discovery_runs()?;
+    let selected = window.get_discovery_run_id().parse::<i64>().unwrap_or(0);
+    let mut labels = vec![SharedString::from("All runs (recent 100 listed)")];
+    let mut keys = vec![SharedString::from("0")];
+    let mut urls = vec![SharedString::new()];
+    for run in &runs {
+        labels.push(
+            format!(
+                "#{} | {} UTC | {} | {} pending / {}",
+                run.id, run.completed_at, run.input_url, run.pending, run.total
+            )
+            .into(),
+        );
+        keys.push(run.id.to_string().into());
+        urls.push(run.input_url.clone().into());
+    }
+    let selected_key = selected.to_string();
+    let selected_index = keys
+        .iter()
+        .position(|id| id.as_str() == selected_key)
+        .unwrap_or(0);
+    let run_id = if selected_index == 0 { 0 } else { selected };
+    window.set_discovery_run_id(run_id.to_string().into());
+    window.set_discovery_run_index(selected_index as i32);
+    window.set_discovery_run_labels(ModelRc::new(VecModel::from(labels)));
+    window.set_discovery_run_keys(ModelRc::new(VecModel::from(keys)));
+    window.set_discovery_run_urls(ModelRc::new(VecModel::from(urls)));
+    let status = ["", "needs-review", "confirmed", "ignored", "stale"]
+        .get(window.get_discovery_status_filter().max(0) as usize)
+        .unwrap_or(&"");
+    let kind = [
+        "",
+        "domain",
+        "subdomain-candidate",
+        "public-endpoint",
+        "ip-candidate",
+        "dns-record",
+        "tls-certificate",
+        "http-evidence",
+        "link-evidence",
+        "external-reference",
+        "discovery-scope",
+        "certificate-pattern",
+    ]
+    .get(window.get_discovery_kind_filter().max(0) as usize)
+    .unwrap_or(&"");
+    let page = repository.discovery_page(&storage::DiscoveryFilter {
+        run_id,
+        status: (*status).into(),
+        kind: (*kind).into(),
+        query: window.get_discovery_query().to_string(),
+        page: window.get_discovery_page_number().max(0) as usize,
+    })?;
+    window.set_discovery_page_number(page.page as i32);
+    window.set_discovery_has_previous(page.page > 0);
+    window.set_discovery_has_next((page.page + 1) * 20 < page.total);
+    window.set_discovery_page_status(
+        format!(
+            "{} observations | Page {} of {}",
+            page.total,
+            page.page + 1,
+            page.total.div_ceil(20).max(1)
+        )
+        .into(),
+    );
+    let rows = page.candidates.into_iter().map(|candidate| {
+        let item = candidate.observation;
+        let can_add = matches!(item.kind.as_str(), "domain" | "subdomain-candidate") || (item.kind == "public-endpoint" && item.source == "page");
+        let linked = candidate.matches.iter().any(|asset| asset.key == candidate.linked_key);
+        let destination = if linked {
+            format!("Linked to {}. Existing fields and visibility are preserved.", candidate.linked_key)
+        } else if !candidate.linked_key.is_empty() {
+            "Previously linked asset is unavailable. Reopen and review before linking again.".into()
+        } else if !candidate.matches.is_empty() {
+            "Already in your inventory. Confirm to link this evidence; no existing fields will be overwritten.".into()
+        } else if can_add {
+            format!("Confirmation adds a new {}. No server relationship is inferred.", if item.kind == "public-endpoint" { "Site" } else { "Domain" })
+        } else { "Evidence only. Confirmation does not create a server or deployment relationship.".into() };
+        DiscoveryRow {
+            key: candidate.id.to_string().into(),
+            title: format!("{}: {}", item.kind, item.value).into(),
+            evidence: format!("Run #{} | Source: {} | Confidence: {}% | Observed: {} UTC\n{}\n{}", candidate.run_id, item.source,item.confidence,candidate.discovered_at,discovery::evidence_summary(&item),candidate.history).into(),
+            can_add,
+            destination: destination.into(),
+            target_labels: ModelRc::new(VecModel::from(candidate.matches.iter().map(|asset| asset.label.clone().into()).collect::<Vec<SharedString>>())),
+            target_keys: ModelRc::new(VecModel::from(candidate.matches.iter().map(|asset| asset.key.clone().into()).collect::<Vec<SharedString>>())),
+            target_previews: ModelRc::new(VecModel::from(candidate.matches.iter().map(|asset| asset.summary.clone().into()).collect::<Vec<SharedString>>())),
+            linked_key: if linked { candidate.linked_key.into() } else { SharedString::new() },
+            status: item.verification_status.into(),
+        }
+    }).collect::<Vec<_>>();
+    window.set_discovery_results(ModelRc::new(VecModel::from(rows)));
+    let warnings = repository.discovery_warnings(run_id)?.join("\n");
+    window.set_discovery_warnings(if warnings.is_empty() {
+        SharedString::new()
+    } else if run_id == 0 {
+        format!("Latest run warnings:\n{warnings}").into()
+    } else {
+        format!("Run #{run_id} warnings:\n{warnings}").into()
+    });
+    Ok(())
 }
 
 fn update_table_geometry(window: &AppWindow, widths: &[f32]) {
@@ -1221,6 +1332,37 @@ fn apply_desktop_audit_fixture(window: &AppWindow) {
             }
         }
         Ok("guide") => window.set_onboarding_open(true),
+        Ok("discovery") if std::env::var_os("ITGLA_AUDIT_DEMO").is_some() => {
+            // Fictional view-only fixture; no collector or database writes are invoked.
+            window.set_active_tab(8);
+            window.set_onboarding_open(false);
+            window.set_discovery_open(true);
+            window.set_discovery_url("https://example.com".into());
+            window.set_discovery_ct(std::env::var_os("ITGLA_AUDIT_CT").is_some());
+            window.set_discovery_run_labels(ModelRc::new(VecModel::from(vec![
+                "All runs (recent 100 listed)".into(),
+                "#2 | 2026-11-14 10:30:00 UTC | https://example.com | 3 pending / 5".into(),
+            ])));
+            window.set_discovery_run_index(1);
+            window.set_discovery_page_status("5 observations | Page 1 of 1".into());
+            window.set_discovery_results(ModelRc::new(VecModel::from(
+                [
+                    ("domain", "example.com"),
+                    ("subdomain-candidate", "api.example.com"),
+                    ("ip-candidate", "203.0.113.10"),
+                ]
+                .into_iter()
+                .enumerate()
+                .map(|(index, (kind, value))| DiscoveryRow {
+                    key: index.to_string().into(),
+                    title: format!("{kind}: {value}").into(),
+                    status: "needs-review".into(),
+                    evidence: "Fictional sample evidence, not a real discovery result".into(),
+                    ..Default::default()
+                })
+                .collect::<Vec<_>>(),
+            )));
+        }
         _ => {}
     }
 
@@ -1318,6 +1460,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     refresh(&window, &repository.borrow(), &table_state.borrow())?;
     refresh_sites(&window, &repository.borrow(), &site_table_state.borrow())?;
     refresh_settings_models(&window, &repository.borrow())?;
+    refresh_discovery(&window, &repository.borrow())?;
     if preferences.fit_columns_on_open {
         let widths = auto_fit_column_widths(&window);
         window.set_column_widths(ModelRc::new(VecModel::from(widths.clone())));
@@ -1335,6 +1478,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             operational::clear_credentials(&window);
             window.set_active_tab(tab);
+            if tab == 8
+                && let Err(error) = refresh_discovery(&window, &page_repository.borrow())
+            {
+                show_error(&window, &error);
+            }
             if matches!(tab, 8 | 9 | 13) {
                 window.set_workspace_reminder_filter(0);
                 window.invoke_workspace_refresh();
@@ -1354,6 +1502,146 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             window.set_status_message(SharedString::new());
         }
+    });
+    let weak = window.as_weak();
+    let discovery_repository = Rc::clone(&repository);
+    window.on_discovery_review(move |key, action| {
+        let Some(window) = weak.upgrade() else { return; };
+        if window.get_demo_mode() { return; }
+        let Ok(id) = key.parse::<i64>() else { return; };
+        let result = discovery_repository.borrow_mut().review_discovery_candidate(id, action.as_str());
+        match result {
+            Ok(()) => {
+                let result = refresh_discovery(&window, &discovery_repository.borrow())
+                    .and_then(|_| workspace::refresh(&window, &discovery_repository.borrow()))
+                    .and_then(|_| operational::refresh(&window, &discovery_repository.borrow()));
+                if let Err(error) = result { show_error(&window, &error); }
+                window.set_discovery_status("Review saved. Confirmed domains appear in Domains; confirmed web pages appear in Sites. Existing assets are preserved.".into());
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+    let weak = window.as_weak();
+    let discovery_repository = Rc::clone(&repository);
+    window.on_discovery_filter(move || {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        window.set_discovery_page_number(0);
+        if let Err(error) = refresh_discovery(&window, &discovery_repository.borrow()) {
+            show_error(&window, &error);
+        }
+    });
+    let weak = window.as_weak();
+    let discovery_repository = Rc::clone(&repository);
+    window.on_discovery_page(move |direction| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        window.set_discovery_page_number(
+            window
+                .get_discovery_page_number()
+                .saturating_add(direction.clamp(-1, 1))
+                .max(0),
+        );
+        if let Err(error) = refresh_discovery(&window, &discovery_repository.borrow()) {
+            show_error(&window, &error);
+        }
+    });
+    let weak = window.as_weak();
+    let discovery_repository = Rc::clone(&repository);
+    window.on_discovery_run(move |index| {
+        let Some(window) = weak.upgrade() else {
+            return;
+        };
+        if window.get_demo_mode() || window.get_discovery_busy() {
+            return;
+        }
+        if let Some(key) = window
+            .get_discovery_run_keys()
+            .row_data(index.max(0) as usize)
+        {
+            window.set_discovery_run_id(key);
+            window.set_discovery_page_number(0);
+            if let Err(error) = refresh_discovery(&window, &discovery_repository.borrow()) {
+                show_error(&window, &error);
+            }
+        }
+    });
+    let weak = window.as_weak();
+    let discovery_repository = Rc::clone(&repository);
+    window.on_discovery_link(move |key, target| {
+        let Some(window) = weak.upgrade() else { return; };
+        if window.get_demo_mode() { return; }
+        let Ok(id) = key.parse::<i64>() else { return; };
+        let result = discovery_repository.borrow_mut().link_discovery_candidate(id, target.as_str());
+        match result {
+            Ok(()) => {
+                let result = refresh_discovery(&window, &discovery_repository.borrow())
+                    .and_then(|_| workspace::refresh(&window, &discovery_repository.borrow()))
+                    .and_then(|_| operational::refresh(&window, &discovery_repository.borrow()));
+                if let Err(error) = result { show_error(&window, &error); }
+                window.set_discovery_status("Evidence linked. Existing names, notes, visibility and host links were preserved.".into());
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+    let weak = window.as_weak();
+    window.on_discover_url(move |url| {
+        let Some(window) = weak.upgrade() else { return; };
+        if window.get_demo_mode() {
+            window.set_discovery_status("Exit sample mode before saving discovery results.".into());
+            return;
+        }
+        if window.get_discovery_busy() { return; }
+        if discovery::host_from_url(url.as_str()).is_none() {
+            window.set_discovery_status("Enter an HTTP(S) domain URL, without credentials, query parameters or fragments. Only default HTTP(S) ports are supported.".into());
+            return;
+        }
+        window.set_discovery_busy(true);
+        window.set_discovery_progress(0);
+        window.set_discovery_status("Starting discovery...".into());
+        let ct_proxy = window.get_discovery_ct_proxy().trim().to_owned();
+        let options = discovery::DiscoveryOptions { certificate_transparency: window.get_discovery_ct(), ct_proxy: (!ct_proxy.is_empty()).then_some(ct_proxy) };
+        let weak = window.as_weak();
+        std::thread::spawn(move || {
+            let report = discovery::discover(url.as_str(), options, |percent, message| {
+                let message = message.to_owned();
+                let _ = weak.upgrade_in_event_loop(move |window| {
+                    window.set_discovery_progress(i32::from(percent));
+                    window.set_discovery_status(message.into());
+                });
+            });
+            let _ = weak.upgrade_in_event_loop(|window| {
+                window.set_discovery_progress(97);
+                window.set_discovery_status("Saving candidates for review...".into());
+            });
+            let save_result = Repository::open_default().and_then(|repository| repository.save_discovery_report(&report));
+            let _ = weak.upgrade_in_event_loop(move |window| {
+                window.set_discovery_busy(false);
+                if window.get_demo_mode() { return; }
+                if let Ok(id) = &save_result {
+                    window.set_discovery_run_id(id.to_string().into());
+                    window.set_discovery_page_number(0);
+                    window.set_discovery_status_filter(0);
+                    window.set_discovery_kind_filter(0);
+                    window.set_discovery_query(SharedString::new());
+                }
+                let count = report.observations.len();
+                if let Err(error) = Repository::open_default()
+                    .and_then(|repository| refresh_discovery(&window, &repository))
+                { show_error(&window, &error); }
+                window.set_discovery_warnings(report.warnings.join("\n").into());
+                let status = match save_result {
+                    Ok(_) => {
+                        window.set_discovery_progress(100);
+                        format!("Found {count} observations. Results saved as pending candidates; none changed your assets.")
+                    },
+                    Err(error) => format!("Found {count} observations, but could not save this run: {error}"),
+                };
+                window.set_discovery_status(status.into());
+            });
+        });
     });
 
     let weak = window.as_weak();
@@ -2054,7 +2342,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 let _ = refresh_settings_models(&window, &callback_repository.borrow());
                 window.set_active_tab(8);
-                show_status(&window, "Demo workspace opened — real data is untouched");
+                show_status(&window, "Demo workspace opened; real data is untouched");
             }
             Err(error) => show_error(&window, &error),
         }
@@ -2665,6 +2953,169 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         {
             Ok(()) => {
                 window.set_copy_notice("Copied".into());
+                let weak = window.as_weak();
+                slint::Timer::single_shot(std::time::Duration::from_millis(1_600), move || {
+                    if let Some(window) = weak.upgrade() {
+                        window.set_copy_notice(SharedString::new());
+                    }
+                });
+            }
+            Err(error) => show_error(&window, &error),
+        }
+    });
+
+    let weak = window.as_weak();
+    window.on_copy_grid(move |kind, row_id, column| {
+        let Some(window) = weak.upgrade() else { return };
+        let (rows, headers): (Vec<crate::GridRow>, Vec<&str>) = match kind {
+            0 => (
+                window.get_business_grid().iter().collect(),
+                vec!["Business", "Tags", "Notes / responsibility"],
+            ),
+            1 => (
+                window.get_inventory_grid().iter().collect(),
+                vec![
+                    "Service",
+                    "Hosting servers",
+                    "Port",
+                    "Protocol",
+                    "Version",
+                    "Status",
+                    "Tags",
+                ],
+            ),
+            2 => (
+                window.get_inventory_grid().iter().collect(),
+                vec![
+                    "Domain",
+                    "Origin servers",
+                    "Parent domain",
+                    "Registrar",
+                    "Expiry",
+                    "CDN",
+                    "Tags",
+                ],
+            ),
+            3 => (
+                window.get_work_grid().iter().collect(),
+                vec!["Title", "Type", "Owner", "Status", "Priority", "Due date"],
+            ),
+            4 => (
+                window.get_workspace_rows().iter().collect(),
+                vec![
+                    "Name",
+                    "Address / host",
+                    "Type",
+                    "Purpose",
+                    "Environment",
+                    "Contact",
+                    "Last checked",
+                ],
+            ),
+            5 => {
+                let custom_headers: Vec<String> = window
+                    .get_custom_headers()
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect();
+                let mut headers = vec![
+                    "Name".to_owned(),
+                    "IP address".to_owned(),
+                    "Environment".to_owned(),
+                    "Status".to_owned(),
+                    "Purpose".to_owned(),
+                    "Tags".to_owned(),
+                ];
+                headers.extend(custom_headers);
+                let rows = window
+                    .get_servers()
+                    .iter()
+                    .map(|item| {
+                        let mut cells = vec![
+                            item.name.to_string(),
+                            item.ip_address.to_string(),
+                            item.environment.to_string(),
+                            item.status.to_string(),
+                            item.purpose.to_string(),
+                            item.tags.to_string(),
+                        ];
+                        cells.extend(item.custom_values.iter().map(|v| v.to_string()));
+                        crate::tables::row(item.id, cells)
+                    })
+                    .collect::<Vec<_>>();
+                let borrowed = headers.iter().map(String::as_str).collect::<Vec<_>>();
+                let Some(text) = crate::tables::grid_copy_text(&rows, &borrowed, row_id, column)
+                else {
+                    return;
+                };
+                match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
+                    Ok(()) => {
+                        window.set_copy_notice(
+                            if row_id >= 0 {
+                                "Row copied"
+                            } else {
+                                "Column copied"
+                            }
+                            .into(),
+                        );
+                    }
+                    Err(error) => show_error(&window, &error),
+                }
+                return;
+            }
+            6 => {
+                let rows = window
+                    .get_sites()
+                    .iter()
+                    .map(|item| {
+                        crate::tables::row(
+                            item.id,
+                            vec![
+                                item.name.to_string(),
+                                item.url.to_string(),
+                                item.environment.to_string(),
+                                item.status.to_string(),
+                                item.purpose.to_string(),
+                                item.tags.to_string(),
+                            ],
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let headers = ["Name", "URL", "Environment", "Status", "Purpose", "Tags"];
+                let Some(text) = crate::tables::grid_copy_text(&rows, &headers, row_id, column)
+                else {
+                    return;
+                };
+                match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
+                    Ok(()) => {
+                        window.set_copy_notice(
+                            if row_id >= 0 {
+                                "Row copied"
+                            } else {
+                                "Column copied"
+                            }
+                            .into(),
+                        );
+                    }
+                    Err(error) => show_error(&window, &error),
+                }
+                return;
+            }
+            _ => return,
+        };
+        let Some(text) = crate::tables::grid_copy_text(&rows, &headers, row_id, column) else {
+            return;
+        };
+        match arboard::Clipboard::new().and_then(|mut clipboard| clipboard.set_text(text)) {
+            Ok(()) => {
+                window.set_copy_notice(
+                    if row_id >= 0 {
+                        "Row copied"
+                    } else {
+                        "Column copied"
+                    }
+                    .into(),
+                );
                 let weak = window.as_weak();
                 slint::Timer::single_shot(std::time::Duration::from_millis(1_600), move || {
                     if let Some(window) = weak.upgrade() {
@@ -3846,9 +4297,10 @@ mod tests {
             let heading = field(&format!("Sort by {title}"));
             let row_action = field(action);
             let initial_width = heading.size().width;
+            let resize = field(&format!("Resize column {title}"));
             let start = LogicalPosition::new(
-                heading.absolute_position().x + heading.size().width - 3.0,
-                heading.absolute_position().y + heading.size().height / 2.0,
+                resize.absolute_position().x + resize.size().width / 2.0,
+                resize.absolute_position().y + resize.size().height / 2.0,
             );
             window
                 .window()
@@ -3925,15 +4377,216 @@ mod tests {
     fn table_geometry_counts_each_column_width_once() {
         let default_widths = [180.0, 160.0, 130.0];
         assert_eq!(table_data_width(&default_widths), 470.0);
-        assert_eq!(table_width_for(&default_widths), 816.0);
+        assert_eq!(table_width_for(&default_widths), 888.0);
 
         let fitted_widths = [96.0, 112.0, 96.0];
         assert_eq!(table_data_width(&fitted_widths), 304.0);
-        assert_eq!(table_width_for(&fitted_widths), 816.0);
+        assert_eq!(table_width_for(&fitted_widths), 888.0);
 
         let wide_widths = [420.0, 420.0, 420.0, 300.0];
         assert_eq!(table_data_width(&wide_widths), 1_560.0);
-        assert_eq!(table_width_for(&wide_widths), 1_676.0);
+        assert_eq!(table_width_for(&wide_widths), 1_748.0);
+    }
+
+    #[test]
+    fn guide_discovery_shortcut_exits_sample_and_opens_prominent_overview_actions() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_active_tab(2);
+        window.set_demo_mode(true);
+        let weak = window.as_weak();
+        window.on_exit_demo(move || weak.upgrade().expect("window").set_demo_mode(false));
+        let weak = window.as_weak();
+        window.on_tab_selected(move |page| weak.upgrade().expect("window").set_active_tab(page));
+        window.window().set_size(PhysicalSize::new(1000, 700));
+        window.show().expect("show");
+        window.set_onboarding_open(true);
+        window.invoke_open_url_discovery();
+        assert!(!window.get_onboarding_open());
+        assert!(!window.get_demo_mode());
+        assert_eq!(window.get_active_tab(), 8);
+        assert!(window.get_discovery_open());
+        let find = |label: &str| {
+            ElementHandle::find_by_accessible_label(&window, label)
+                .next()
+                .expect(label)
+        };
+        for font in 1..=3 {
+            window.set_font_size_step(font);
+            let sample = find("Try sample data");
+            let discover = find("Hide discovery");
+            let import = find("Import servers");
+            assert!((sample.absolute_position().y - discover.absolute_position().y).abs() < 1.1);
+            assert!(sample.absolute_position().y < import.absolute_position().y);
+            assert!(discover.absolute_position().x + discover.size().width <= 1000.0);
+            assert!(sample.size().height >= 40.0);
+        }
+        let calls = Rc::new(RefCell::new(0));
+        let observed = Rc::clone(&calls);
+        window.on_enter_demo(move || *observed.borrow_mut() += 1);
+        find("Try sample data").invoke_accessible_default_action();
+        assert_eq!(*calls.borrow(), 1);
+    }
+
+    #[test]
+    fn optional_ct_disclosure_fits_all_font_sizes_and_preserves_default_privacy() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(8);
+        window.set_discovery_open(true);
+        window.window().set_size(PhysicalSize::new(1000, 900));
+        window.show().expect("show");
+        assert!(!window.get_discovery_ct());
+        let find = |label: &str| ElementHandle::find_by_accessible_label(&window, label).next();
+        assert!(find("Certificate transparency proxy").is_none());
+        find("Query certificate transparency")
+            .expect("opt-in checkbox")
+            .invoke_accessible_default_action();
+        assert!(window.get_discovery_ct());
+        for step in 1..=3 {
+            window.set_font_size_step(step);
+            let proxy =
+                find("Certificate transparency proxy").expect("proxy shown only after opt in");
+            let button = find("Start discovery").expect("start button");
+            assert!(
+                proxy.absolute_position().y >= button.absolute_position().y + button.size().height
+            );
+            assert!(proxy.absolute_position().x + proxy.size().width <= 1001.0);
+            assert!(proxy.size().height >= 33.0);
+        }
+        window.set_discovery_busy(true);
+        find("Query certificate transparency")
+            .expect("checkbox")
+            .invoke_accessible_default_action();
+        assert!(
+            window.get_discovery_ct(),
+            "Cannot change provider consent mid-run"
+        );
+    }
+
+    #[test]
+    fn discovery_existing_match_uses_explicit_link_action() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(8);
+        window.set_discovery_open(true);
+        window.set_discovery_run_labels(ModelRc::new(VecModel::from(vec![
+            "All runs".into(),
+            "Run #1".into(),
+        ])));
+        window.set_discovery_results(ModelRc::new(VecModel::from(vec![DiscoveryRow {
+            key: "8".into(),
+            title: "domain: example.com".into(),
+            status: "needs-review".into(),
+            can_add: true,
+            target_labels: ModelRc::new(VecModel::from(vec!["Existing production domain".into()])),
+            target_keys: ModelRc::new(VecModel::from(vec!["domain:3".into()])),
+            target_previews: ModelRc::new(VecModel::from(vec![
+                "Keep existing notes and visibility".into(),
+            ])),
+            ..Default::default()
+        }])));
+        let calls = Rc::new(RefCell::new(None));
+        let observed = Rc::clone(&calls);
+        window.on_discovery_link(move |key, target| *observed.borrow_mut() = Some((key, target)));
+        window.window().set_size(PhysicalSize::new(1000, 900));
+        window.show().expect("show");
+        ElementHandle::find_by_accessible_label(&window, "Review domain: example.com")
+            .next()
+            .expect("review")
+            .invoke_accessible_default_action();
+        assert!(
+            ElementHandle::find_by_accessible_label(
+                &window,
+                "Existing asset for domain: example.com"
+            )
+            .next()
+            .is_some()
+        );
+        assert!(
+            ElementHandle::find_by_accessible_label(&window, "Confirm and add")
+                .next()
+                .is_none()
+        );
+        ElementHandle::find_by_accessible_label(&window, "Confirm and link")
+            .next()
+            .expect("link action")
+            .invoke_accessible_default_action();
+        assert_eq!(*calls.borrow(), Some(("8".into(), "domain:3".into())));
+    }
+
+    #[test]
+    fn discovery_inbox_exposes_evidence_and_review_without_blocking_overview() {
+        i_slint_backend_testing::init_no_event_loop();
+        let window = AppWindow::new().expect("test window");
+        window.set_onboarding_open(false);
+        window.set_active_tab(8);
+        window.window().set_size(PhysicalSize::new(1280, 900));
+        window.set_discovery_results(ModelRc::new(VecModel::from(vec![DiscoveryRow {
+            key: "7".into(),
+            title: "domain: example.com".into(),
+            evidence: "Source: input | Confidence: 100% | Observed: 2026-11-14 10:00:00".into(),
+            status: "needs-review".into(),
+            can_add: true,
+            ..Default::default()
+        }])));
+        window.set_discovery_run_labels(ModelRc::new(VecModel::from(vec![
+            "All runs".into(),
+            "Run #1".into(),
+        ])));
+        let selected = Rc::new(RefCell::new(None));
+        let observed = selected.clone();
+        window.on_discovery_review(move |key, action| *observed.borrow_mut() = Some((key, action)));
+        window.show().expect("show window");
+        let find = |label: &str| ElementHandle::find_by_accessible_label(&window, label).next();
+        assert!(
+            find("Discovery URL").is_none(),
+            "Discovery starts collapsed"
+        );
+        find("Discover from URL")
+            .expect("discovery entry")
+            .invoke_accessible_default_action();
+        assert!(find("Discovery URL").is_some());
+        find("Review domain: example.com")
+            .expect("review evidence")
+            .invoke_accessible_default_action();
+        find("Confirm and add")
+            .expect("explicit confirmation")
+            .invoke_accessible_default_action();
+        assert_eq!(*selected.borrow(), Some(("7".into(), "confirm".into())));
+        for step in 1..=3 {
+            window.set_font_size_step(step);
+            let confirm = find("Confirm and add").expect("confirmation remains accessible");
+            assert!(confirm.size().height >= 28.0);
+            assert!(confirm.absolute_position().x >= 0.0);
+            assert!(confirm.absolute_position().x + confirm.size().width <= 1281.0);
+            for width in [1000, 1280] {
+                window.window().set_size(PhysicalSize::new(width, 900));
+                let url = find("Discovery URL").expect("URL field");
+                let button = find("Start discovery").expect("dedicated discovery action");
+                assert!(button.size().width >= 179.0);
+                assert!((url.size().height - button.size().height).abs() < 1.1);
+                assert!((url.absolute_position().y - button.absolute_position().y).abs() < 1.1);
+                assert!(
+                    url.absolute_position().x + url.size().width + 12.0
+                        <= button.absolute_position().x
+                );
+                assert!(button.absolute_position().x + button.size().width <= width as f32);
+                window.set_discovery_busy(true);
+                window.set_discovery_progress(46);
+                window.set_discovery_status("Checking sitemap.xml (3 of 5)...".into());
+                let progress = find("Discovery progress").expect("visible progress indicator");
+                assert!(
+                    progress.absolute_position().y
+                        > button.absolute_position().y + button.size().height
+                );
+                assert!(find("Checking sitemap.xml (3 of 5)...").is_some());
+                window.set_discovery_busy(false);
+                assert!(find("Discovery progress").is_none());
+            }
+        }
     }
 
     #[test]
@@ -3971,10 +4624,10 @@ mod tests {
                     .enumerate()
                     .all(|(index, width)| index == 2 || (96.0..=420.0).contains(width))
             );
-            assert!(table_width_for(&widths) >= 816.0);
+            assert!(table_width_for(&widths) >= 888.0);
             assert_eq!(
                 table_width_for(&widths),
-                (table_data_width(&widths) + 116.0).max(816.0)
+                (table_data_width(&widths) + 188.0).max(888.0)
             );
             assert_eq!(widths, fitted_column_widths(&headers, &rows));
         }

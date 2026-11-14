@@ -123,10 +123,10 @@
 }
 @media (max-width: 560px) {
   .marketing-site .site-header { gap: 12px; }
-  .marketing-site .site-nav { gap: 8px; flex-wrap: nowrap; }
+  .marketing-site .site-nav { gap: 6px; flex-wrap: nowrap; }
   .marketing-site .site-nav a { font-size: 12px; }
   .marketing-site .site-nav a { display: none; }
-  .marketing-site .site-nav a[href="/"], .marketing-site .site-nav a[href="/downloads.html"], .marketing-site .site-nav a[href="/signin.html"] { display: inline-flex; }
+  .marketing-site .site-nav a[href="/"], .marketing-site .site-nav a[href="/downloads.html"], .marketing-site .site-nav a[href="/signin.html"], .marketing-site .site-nav .nav-signup { display: inline-flex; }
   .marketing-site .document-main { width: calc(100% - 32px); }
   .marketing-site .page-heading { margin-bottom: 32px; }
   .marketing-site .download-list article { padding-block: 28px; }
@@ -206,4 +206,8 @@
   .mac-packages { grid-template-columns: 1fr; }
   .download-verification { width: calc(100% + 32px); margin: 32px -16px 0; padding: 30px 16px; }
   .marketing-site .downloads-main .release-notes { padding: 22px 18px; }
+}
+
+@media (max-width: 360px) {
+  .marketing-site .site-nav a[href="/"] { display: none; }
 }

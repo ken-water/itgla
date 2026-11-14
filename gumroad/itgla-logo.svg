@@ -1,0 +1,6 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-labelledby="title desc">
+  <title id="title">ITGLA logo</title><desc id="desc">A connected I mark representing IT in a glance.</desc>
+  <path d="M30 24h40M50 24v52M30 76h40" fill="none" stroke="#173F36" stroke-width="9" stroke-linecap="round"/>
+  <path d="M27 50h46" fill="none" stroke="#0F7664" stroke-width="3" stroke-linecap="round" opacity=".48"/>
+  <circle cx="30" cy="24" r="6" fill="#0F7664"/><circle cx="70" cy="76" r="6" fill="#C17D11"/>
+</svg>

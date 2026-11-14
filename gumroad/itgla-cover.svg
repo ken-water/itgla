@@ -1,0 +1,23 @@
+﻿<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">ITGLA — IT in a glance</title>
+  <desc id="desc">A calm visual map connecting domains, servers and services.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f4f8f5"/><stop offset="1" stop-color="#dcece5"/></linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#ffffff" stop-opacity=".96"/><stop offset="1" stop-color="#eef7f2" stop-opacity=".9"/></linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%"><feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#173f36" flood-opacity=".14"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="1140" cy="80" r="220" fill="#0f7664" opacity=".08"/><circle cx="80" cy="670" r="190" fill="#c17d11" opacity=".08"/>
+  <g transform="translate(88 82)"><rect width="68" height="68" rx="18" fill="#fff" filter="url(#shadow)"/><path d="M21 18h26M34 18v35M21 53h26" fill="none" stroke="#173f36" stroke-width="6" stroke-linecap="round"/><path d="M19 35h30" stroke="#0f7664" stroke-width="2" opacity=".55"/><circle cx="21" cy="18" r="4" fill="#0f7664"/><circle cx="47" cy="53" r="4" fill="#c17d11"/></g>
+  <text x="178" y="126" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="34" font-weight="700" fill="#173f36">ITGLA</text>
+  <text x="92" y="250" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="76" font-weight="750" fill="#173f36">IT in a glance.</text>
+  <text x="96" y="306" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="28" fill="#47665d">See what you have. Understand how it connects.</text>
+  <g transform="translate(640 176)" filter="url(#shadow)"><rect width="540" height="390" rx="24" fill="url(#panel)" stroke="#c9ddd5"/>
+    <path d="M110 108C190 80 250 105 300 160S405 230 455 190M110 275C185 240 230 230 300 160S390 120 455 94" fill="none" stroke="#84b9a8" stroke-width="4" stroke-linecap="round" stroke-dasharray="8 11"/>
+    <g><circle cx="110" cy="108" r="30" fill="#0f7664"/><text x="110" y="116" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="17" font-weight="700" fill="#fff">DNS</text><text x="110" y="158" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#47665d">domain</text></g>
+    <g><circle cx="300" cy="160" r="38" fill="#173f36"/><text x="300" y="168" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="18" font-weight="700" fill="#fff">01</text><text x="300" y="214" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#47665d">server</text></g>
+    <g><circle cx="455" cy="94" r="30" fill="#c17d11"/><text x="455" y="102" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="17" font-weight="700" fill="#fff">API</text><text x="455" y="144" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#47665d">service</text></g>
+    <g><circle cx="110" cy="275" r="30" fill="#5d7fa3"/><text x="110" y="283" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="17" font-weight="700" fill="#fff">DB</text><text x="110" y="325" text-anchor="middle" font-family="Inter,Segoe UI,Arial" font-size="16" fill="#47665d">database</text></g>
+  </g>
+  <text x="96" y="625" font-family="Inter,Segoe UI,Arial,sans-serif" font-size="22" font-weight="600" fill="#0f7664">Local-first inventory · relationships · handover clarity</text>
+</svg>

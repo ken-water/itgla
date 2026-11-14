@@ -197,6 +197,7 @@ fn refresh_projection(
     repo: &Repository,
     all: &[AssetSummary],
 ) -> Result<(), StorageError> {
+    crate::refresh_discovery(w, repo)?;
     let types = ["", "server", "service", "domain", "business"];
     w.set_workspace_has_assets(!all.is_empty());
     let kind = types.get(w.get_workspace_type() as usize).unwrap_or(&"");
@@ -277,11 +278,13 @@ fn refresh_projection(
             .map(|a| slint::SharedString::from(a.key()))
             .collect::<Vec<_>>(),
     )));
+    let technical = all.iter().filter(|a| a.resource.kind != "business").count();
+    let businesses = all.iter().filter(|a| a.resource.kind == "business").count();
+    let managed = technical + businesses;
     w.set_workspace_count(
         format!(
-            "Technical assets: {} · Businesses: {}",
-            all.iter().filter(|a| a.resource.kind != "business").count(),
-            all.iter().filter(|a| a.resource.kind == "business").count()
+            "Free plan: {} assets | No current limit | Technical: {} | Businesses: {}",
+            managed, technical, businesses
         )
         .into(),
     );

@@ -27,3 +27,5 @@
 /.playwright-cli/
 __pycache__/
 /website/downloads/v0.6.2/
+
+/website/downloads/v0.6.4/

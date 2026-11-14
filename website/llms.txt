@@ -6,7 +6,7 @@
 
 - ITGLA helps independent developers and small IT teams understand their resources and connections through business records, inventory tables, notes and a connection map.
 - It supports tags, IP addresses, ports, spreadsheet imports, column mapping, custom fields, sorting, filtering, and copying individual cells.
-- Current version: 0.6.3. The app supports manual service/domain inventory with versions, ports, tags, notes, hosting/origin servers, registrar/expiry/CDN fields, and directed service relations. Optional service account protection is Windows-only (CurrentUser DPAPI); Linux/macOS support metadata. Full database backups include this inventory; legacy project JSON does not.
+- Current version: 0.6.4. The app supports manual service/domain inventory with versions, ports, tags, notes, hosting/origin servers, registrar/expiry/CDN fields, and directed service relations. Optional service account protection is Windows-only (CurrentUser DPAPI); Linux/macOS support metadata. Full database backups include this inventory; legacy project JSON does not.
 - The desktop application stores its workspace in a local SQLite database.
 - The desktop application does not require an account, provide cloud sync, upload workspaces, execute server commands, deploy services, or replace monitoring and secrets-management tools. Website sign-in is optional and separate from the local desktop application; signing in does not enable desktop cloud sync.
 
@@ -22,9 +22,9 @@
 
 ## Free-first plan direction
 
-- Three tiers are intended: Free, Pro and Team. Only the free local desktop is currently available; paid pricing and availability are not announced.
+- The current desktop product is free and has no asset-count limit. Paid options may be evaluated later; no paid plan, price or checkout is available today.
 - Basic local ownership, export, backup and recovery belong in Free. The customer integration API and automation are intended for Pro; shared workspaces, permissions and audit are intended for Team. These paid capabilities are planned, not shipping.
-- Version 0.6.3 includes Overview, global asset search, isolated sample data, recorded-date reminders with review history, full database backup and confirmed restore, metadata-only handover export, and relationship-map filtering. Reminders update while the application is open; there are no closed-app notifications or automatic certificate checks.
+- Version 0.6.4 includes Overview, global asset search, isolated sample data, recorded-date reminders with review history, full database backup and confirmed restore, metadata-only handover export, and relationship-map filtering. Reminders update while the application is open; there are no closed-app notifications or automatic certificate checks.
 
 ## Official pages
 

@@ -11,6 +11,34 @@ pub fn row(id: i32, cells: Vec<String>) -> GridRow {
     }
 }
 
+pub fn grid_copy_text(
+    rows: &[GridRow],
+    headers: &[&str],
+    row_id: i32,
+    column: i32,
+) -> Option<String> {
+    let clean = |value: slint::SharedString| value.to_string().replace(['\t', '\r', '\n'], " ");
+    if column >= 0 {
+        let index = column as usize;
+        let title = headers.get(index)?;
+        let mut values = vec![(*title).to_owned()];
+        values.extend(
+            rows.iter()
+                .filter_map(|row| row.cells.row_data(index))
+                .map(clean),
+        );
+        Some(values.join("\n"))
+    } else {
+        let row = rows.iter().find(|row| row.id == row_id)?;
+        Some(
+            (0..headers.len())
+                .map(|index| clean(row.cells.row_data(index).unwrap_or_default()))
+                .collect::<Vec<_>>()
+                .join("\t"),
+        )
+    }
+}
+
 /// Width preferences use only displayed metadata, with bounded long values.
 /// Narrow numeric ports should not take the same space as host descriptions.
 pub fn inventory_widths(rows: &[GridRow], kind: i32) -> ModelRc<f32> {
@@ -129,5 +157,23 @@ mod tests {
             sorted(rows, 0).iter().map(|r| r.id).collect::<Vec<_>>(),
             [1, 2, 3]
         );
+    }
+
+    #[test]
+    fn copies_rows_as_tsv_and_columns_with_header_as_lines() {
+        let rows = vec![
+            row(7, vec!["web".into(), "10.0.0.1".into()]),
+            row(8, vec!["db".into(), "10.0.0.2".into()]),
+        ];
+        assert_eq!(
+            grid_copy_text(&rows, &["Name", "IP"], 7, -1).as_deref(),
+            Some("web\t10.0.0.1")
+        );
+        assert_eq!(
+            grid_copy_text(&rows, &["Name", "IP"], -1, 1).as_deref(),
+            Some("IP\n10.0.0.1\n10.0.0.2")
+        );
+        assert_eq!(grid_copy_text(&rows, &["Name", "IP"], 99, -1), None);
+        assert_eq!(grid_copy_text(&rows, &["Name"], -1, 3), None);
     }
 }

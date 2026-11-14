@@ -108,8 +108,9 @@ button, a { -webkit-tap-highlight-color: transparent; }
 }
 
 .site-nav .nav-signin:hover { background: var(--teal-dark); color: #fff; }
-.site-nav .nav-login { border-radius: var(--radius) 0 0 var(--radius); }
-.site-nav .nav-signup { color: var(--teal-dark); text-decoration: none; }
+.site-nav .nav-login { border-radius: var(--radius); white-space: nowrap; }
+.site-nav .nav-signup { min-height: 42px; padding: 9px 16px; border: 1px solid var(--teal-dark); border-radius: var(--radius); background: var(--teal-dark); color: #fff; display: inline-flex; align-items: center; text-decoration: none; }
+.site-nav .nav-signup:hover { background: #0e2f28; color: #fff; }
 .account-menu { position: relative; }
 .account-trigger { display: grid; place-items: center; width: 36px; height: 36px; border: 1px solid #b9d0bb; border-radius: 50%; background: #e6f0e4; color: var(--teal-dark); cursor: pointer; list-style: none; }
 .account-trigger::-webkit-details-marker { display: none; }
@@ -615,12 +616,14 @@ button, a { -webkit-tap-highlight-color: transparent; }
   .brand { font-size: 17px; }
   .brand img { width: 30px; height: 30px; }
   .site-nav a { display: none; }
-  .site-nav a[href="/"], .site-nav a[href="/downloads.html"], .site-nav a[href="/signin.html"] {
+  .site-nav a[href="/"], .site-nav a[href="/downloads.html"], .site-nav a[href="/signin.html"], .site-nav .nav-signup {
     min-height: 44px;
     display: inline-flex;
     align-items: center;
     font-size: 13px;
   }
+  .site-nav .nav-login, .site-nav .nav-signup { white-space: nowrap; }
+  .site-nav .nav-signup { padding-inline: 10px; }
   .site-nav .nav-download { display: none; }
   .hero-layout { width: calc(100% - 32px); padding-top: 28px; padding-bottom: 20px; }
   .release-line { margin-bottom: 12px; font-size: 10px; }

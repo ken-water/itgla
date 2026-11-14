@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "status": "free_first",
+  "limits_enabled": false,
+  "prices_published": false,
+  "asset_counting_policy": "docs/discovery-packaging.md#proposed-asset-capacity",
+  "features": {
+    "local_inventory": {
+      "availability": "available"
+    },
+    "search_and_relationship_map": {
+      "availability": "available"
+    },
+    "local_import_export_backup_recovery": {
+      "availability": "available"
+    },
+    "manual_discovery": {
+      "availability": "in_development"
+    },
+    "scheduled_discovery": {
+      "availability": "planned"
+    },
+    "customer_api_and_integrations": {
+      "availability": "planned"
+    },
+    "cloud_continuity": {
+      "availability": "planned"
+    },
+    "shared_workspace": {
+      "availability": "planned"
+    },
+    "team_permissions_and_audit": {
+      "availability": "planned"
+    }
+  },
+  "plans": {
+    "free": {
+      "managed_asset_limit": 100,
+      "price": {
+        "currency": null,
+        "monthly_minor_units": 0,
+        "annual_minor_units": 0
+      },
+      "features": {
+        "local_inventory": "included",
+        "search_and_relationship_map": "included",
+        "local_import_export_backup_recovery": "included",
+        "manual_discovery": "proposed",
+        "scheduled_discovery": "undecided",
+        "customer_api_and_integrations": "undecided",
+        "cloud_continuity": "undecided",
+        "shared_workspace": "undecided",
+        "team_permissions_and_audit": "undecided"
+      }
+    },
+    "pro": {
+      "managed_asset_limit": 500,
+      "price": {
+        "currency": "USD",
+        "monthly_minor_units": 1900,
+        "annual_minor_units": 12900
+      },
+      "features": {
+        "local_inventory": "included",
+        "search_and_relationship_map": "included",
+        "local_import_export_backup_recovery": "included",
+        "manual_discovery": "proposed",
+        "scheduled_discovery": "proposed",
+        "customer_api_and_integrations": "proposed",
+        "cloud_continuity": "proposed",
+        "shared_workspace": "undecided",
+        "team_permissions_and_audit": "undecided"
+      }
+    },
+    "team": {
+      "managed_asset_limit": 2000,
+      "price": {
+        "currency": "USD",
+        "monthly_minor_units": 4900,
+        "annual_minor_units": 39900
+      },
+      "features": {
+        "local_inventory": "included",
+        "search_and_relationship_map": "included",
+        "local_import_export_backup_recovery": "included",
+        "manual_discovery": "proposed",
+        "scheduled_discovery": "proposed",
+        "customer_api_and_integrations": "proposed",
+        "cloud_continuity": "proposed",
+        "shared_workspace": "proposed",
+        "team_permissions_and_audit": "proposed"
+      }
+    }
+  },
+  "public_pricing": false
+}

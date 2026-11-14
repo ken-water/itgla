@@ -5,16 +5,15 @@ function escapeText(value) {
 }
 
 function showSignedOut() {
-  const login = nav.querySelector(".nav-signin");
-  if (!login) return;
-  if (document.body.classList.contains("marketing-site")) {
-    login.textContent = "Account";
-    login.setAttribute("aria-label", "Website account (optional)");
-    login.title = "Website features only. The desktop app needs no account.";
-    login.href = "/signin.html";
-    return;
+  let login = nav.querySelector(".nav-signin");
+  if (!login) {
+    login = document.createElement("a");
+    login.className = "nav-signin";
+    nav.append(login);
   }
   login.textContent = "Log in";
+  login.removeAttribute("aria-label");
+  login.removeAttribute("title");
   login.href = "/signin.html";
   login.classList.add("nav-login");
   if (!nav.querySelector(".nav-signup")) {

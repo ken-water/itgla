@@ -1,5 +1,13 @@
 const emailForm = document.getElementById("email-signin-form");
 const authStatus = document.getElementById("auth-status");
+const signupMode = new URLSearchParams(location.search).get("mode") === "signup";
+if (signupMode) {
+  document.title = "Create account - ITGLA";
+  document.getElementById("signin-title").textContent = "Create your ITGLA account";
+  document.querySelector(".auth-card > .eyebrow").textContent = "Create account";
+  document.querySelector(".auth-intro").textContent = "Use Google or get a one-time verification link by email to create your website account.";
+  emailForm.querySelector("button").textContent = "Continue with email";
+}
 if (new URLSearchParams(location.search).get("google_error") === "1") {
   authStatus.textContent = "Google sign-in could not be completed. Try again or use an email link.";
 }

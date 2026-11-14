@@ -43,7 +43,7 @@ def main() -> int:
         "Sites horizontal reset": "root.site-table-scroll-x = 0px",
         "Sites default fields": 'title: "ENVIRONMENT"',
         "resource-specific count": 'root.site-count + (root.site-count == 1 ? " SITE" : " SITES")',
-        "first-run guide": 'text: "Try sample data"',
+        "first-run guide": 'action: "Try sample data"',
         "import defaults": "Defaults for empty or missing columns",
         "readable default font": "font-size-step: 2",
         "inherited control font": "default-font-size: root.control-font-size",
@@ -56,7 +56,7 @@ def main() -> int:
         "accessible custom action": "accessible-action-default =>",
         "explicit save result": 'text: root.status-message; color: root.status-is-error ? UiColors.error : UiColors.success',
         "guarded column drag": "if self.pressed { root.resize",
-        "non-overlapping sort target": "width: parent.width - 14px; enabled: root.ascending-mode",
+        "non-overlapping sort target": "width: parent.width - (root.copy-enabled ? 58px : 14px); enabled: root.ascending-mode",
         "truncated-only tooltip": "measurement.preferred-width > root.width - 38px: Tooltip",
     }
     for label, fragment in required_contracts.items():

@@ -6,7 +6,7 @@ on:
       release_tag:
         description: Immutable source release tag (v-prefixed)
         required: true
-        default: v0.6.3
+        default: v0.6.4
         type: string
 
 permissions:

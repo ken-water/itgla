@@ -1,5 +1,5 @@
-import { DataTable, GridRow } from "data-table.slint";
-import { WorkspacePanel, WorkspaceDetail, WorkspaceItem } from "workspace.slint";
+﻿import { DataTable, GridRow } from "data-table.slint";
+import { WorkspacePanel, WorkspaceDetail, WorkspaceItem, DiscoveryRow, StartChoice } from "workspace.slint";
 import { AssetContextForm, AssetContextEditor } from "asset-context.slint";
 import { TopologyPanel, TopologyNode, TopologyEdge, BusinessItem } from "topology.slint";
 import { InventoryPanel, InventoryForm, InventoryRow, InventoryChoice } from "inventory.slint";
@@ -119,19 +119,20 @@ component DataCell inherits Rectangle {
     in property <int> column-index;
     in property <string> value;
     in property <string> copy-label;
+    in property <bool> copy-enabled: false;
     in property <length> cell-font-size: UiColors.body-size - 2px;
     in property <length> hover-font-size: UiColors.body-size + 4px;
     in property <bool> show-tooltip: true;
     callback copy(string, string);
     callback edit(int, int, string);
-    background: cell-touch.has-hover ? UiColors.selected : transparent;
+    background: root.copy-enabled && cell-touch.has-hover ? UiColors.selected : transparent;
     border-width: cell-focus.has-focus ? 2px : 0px;
     border-color: UiColors.focus;
     forward-focus: cell-focus;
     accessible-role: button;
     accessible-label: root.copy-label + ": " + (root.value == "" ? "empty" : root.value);
     accessible-description: "Press Space to copy. Press Enter to edit.";
-    accessible-action-default => { root.copy(root.value, root.copy-label); }
+    accessible-action-default => { if root.copy-enabled { root.copy(root.value, root.copy-label); } else { root.edit(root.server-id, root.column-index, root.value); } }
     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.grid-line; }
     Text { x: 10px; y: 0; width: parent.width - 38px; height: parent.height; text: root.value; color: UiColors.text; font-size: root.cell-font-size; vertical-alignment: center; overflow: elide; }
     if root.show-tooltip && measurement.preferred-width > root.width - 38px: Tooltip {
@@ -143,7 +144,7 @@ component DataCell inherits Rectangle {
     }
     measurement := Text { visible: false; text: root.value; font-size: root.cell-font-size; }
     Text { x: parent.width - 28px; y: 0; width: 18px; height: parent.height; text: "⧉"; color: UiColors.success; font-size: UiColors.body-size + 2px; vertical-alignment: center; horizontal-alignment: center; }
-    cell-touch := TouchArea { clicked => { root.copy(root.value, root.copy-label); } double-clicked => { root.edit(root.server-id, root.column-index, root.value); } }
+    cell-touch := TouchArea { clicked => { if root.copy-enabled { root.copy(root.value, root.copy-label); } } double-clicked => { root.edit(root.server-id, root.column-index, root.value); } }
     cell-focus := FocusScope {
         width: 0px;
         key-pressed(event) => {
@@ -167,9 +168,11 @@ component HeaderCell inherits Rectangle {
     in property <int> ascending-mode: -1;
     in property <int> descending-mode: -1;
     in property <int> current-mode: -1;
+    in property <bool> copy-enabled: false;
     property <bool> sorted: root.current-mode == root.ascending-mode || root.current-mode == root.descending-mode;
     callback sort(int);
     callback resize(length);
+    callback copy;
     background: sort-touch.pressed ? UiColors.border : sort-touch.has-hover ? UiColors.border : root.sorted ? UiColors.selected : UiColors.raised;
     border-width: header-focus.has-focus ? 2px : 0px;
     border-color: UiColors.focus;
@@ -180,10 +183,11 @@ component HeaderCell inherits Rectangle {
     accessible-enabled: root.ascending-mode >= 0;
     accessible-action-default => { if root.ascending-mode >= 0 { root.sort(root.current-mode == root.ascending-mode ? root.descending-mode : root.ascending-mode); } }
     Rectangle { x: parent.width - 1px; width: 1px; height: parent.height; background: UiColors.border; }
-    Text { x: 10px; width: parent.width - (root.ascending-mode >= 0 ? 38px : 16px); height: parent.height; text: root.title; color: root.sorted ? UiColors.success : UiColors.muted; font-size: root.header-font-size; font-weight: 700; vertical-alignment: center; overflow: elide; }
-    if root.ascending-mode >= 0: Text { x: parent.width - 34px; width: 20px; height: parent.height; text: root.current-mode == root.ascending-mode ? "↑" : root.current-mode == root.descending-mode ? "↓" : "↕"; color: root.sorted ? UiColors.success : UiColors.muted; font-size: UiColors.body-size + 3px; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; }
+    Text { x: 10px; width: parent.width - (root.copy-enabled ? 90px : root.ascending-mode >= 0 ? 38px : 16px); height: parent.height; text: root.title; color: root.sorted ? UiColors.success : UiColors.muted; font-size: root.header-font-size; font-weight: 700; vertical-alignment: center; overflow: elide; }
+    if root.copy-enabled: Button { x: parent.width - 58px; width: 44px; height: parent.height; compact: true; quiet: true; text: "Copy"; accessible-label: "Copy column " + root.title; clicked => { root.copy(); } }
+    if root.ascending-mode >= 0: Text { x: parent.width - (root.copy-enabled ? 80px : 34px); width: 20px; height: parent.height; text: root.current-mode == root.ascending-mode ? "↑" : root.current-mode == root.descending-mode ? "↓" : "↕"; color: root.sorted ? UiColors.success : UiColors.muted; font-size: UiColors.body-size + 3px; font-weight: 700; vertical-alignment: center; horizontal-alignment: center; }
     sort-touch := TouchArea {
-        width: parent.width - 14px; enabled: root.ascending-mode >= 0; mouse-cursor: pointer;
+        width: parent.width - (root.copy-enabled ? 58px : 14px); enabled: root.ascending-mode >= 0; mouse-cursor: pointer;
         clicked => { root.sort(root.current-mode == root.ascending-mode ? root.descending-mode : root.ascending-mode); }
         Tooltip { text: root.current-mode == root.ascending-mode ? @markdown("Ascending · Click for descending") : root.current-mode == root.descending-mode ? @markdown("Descending · Click for ascending") : @markdown("Click to sort ascending · Numbers sort by value"); }
     }
@@ -219,26 +223,27 @@ component ServerTableRow inherits Rectangle {
     in property <bool> hidden;
     in property <bool> show-tooltips: true;
     in property <length> row-height: 42px;
-    callback edit; callback ports; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string); callback open-endpoint(string, string);
+    callback edit; callback ports; callback hide; callback restore; callback copy(string, string); callback copy-row; callback edit-cell(int, int, string); callback open-endpoint(string, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
     Rectangle { x: 0; y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.grid-line; }
     HorizontalLayout {
         x: 0px; y: 0px; width: parent.width; height: parent.height;
         spacing: 0px; padding: 0px; alignment: start;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
-        DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.ip-address; copy-label: "IP address"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
+        DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.ip-address; copy-label: "IP address"; copy-enabled: true; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[3]; server-id: root.item.id; column-index: 3; value: root.item.environment; copy-label: "Environment"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[4]; server-id: root.item.id; column-index: 4; value: root.item.status; copy-label: "Status"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[5]; server-id: root.item.id; column-index: 5; value: root.item.purpose; copy-label: "Purpose"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[6]; server-id: root.item.id; column-index: 6; value: root.item.tags; copy-label: "Tags"; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         for value[index] in root.item.custom-values: DataCell { width: root.column-widths[7 + index]; server-id: root.item.id; column-index: 7 + index; value: value; copy-label: root.custom-headers[index]; cell-font-size: root.cell-font-size; hover-font-size: root.hover-font-size; copy(cell-value, label) => { root.copy(cell-value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         Rectangle {
-            width: 116px; horizontal-stretch: 0; background: transparent;
+            width: 188px; horizontal-stretch: 0; background: transparent;
             if !root.hidden: Button { x: 5px; y: (parent.height - 28px) / 2; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
             if !root.hidden: Button { x: 53px; y: (parent.height - 28px) / 2; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
             if root.hidden: Button { x: 9px; y: (parent.height - 28px) / 2; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
+            Button { x: 116px; y: (parent.height - 28px) / 2; width: 66px; height: 28px; compact: true; quiet: true; text: "Copy row"; clicked => { root.copy-row(); } }
         }
-        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: transparent; }
+        Rectangle { width: root.table-width > root.data-width + 188px ? root.table-width - root.data-width - 188px : 0px; background: transparent; }
     }
 }
 
@@ -251,19 +256,20 @@ component TableHeader inherits Rectangle {
     in property <int> sort-mode-index;
     callback sort(int);
     callback resize(int, length);
+    callback copy-column(int);
     width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
         x: 0px; y: 0px; width: parent.width; height: parent.height;
         spacing: 0px; padding: 0px; alignment: start;
-        HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
-        HeaderCell { width: root.column-widths[1]; title: "IP ADDRESS"; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(1, value); } }
-        HeaderCell { width: root.column-widths[3]; title: "ENVIRONMENT"; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(3, value); } }
-        HeaderCell { width: root.column-widths[4]; title: "STATUS"; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(4, value); } }
-        HeaderCell { width: root.column-widths[5]; title: "PURPOSE"; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(5, value); } }
-        HeaderCell { width: root.column-widths[6]; title: "TAGS"; header-font-size: root.header-font-size; ascending-mode: 12; descending-mode: 13; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(6, value); } }
-        for header[index] in root.custom-headers: HeaderCell { width: root.column-widths[7 + index]; title: header; header-font-size: root.header-font-size; ascending-mode: 14 + index * 2; descending-mode: 15 + index * 2; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(7 + index, value); } }
-        HeaderCell { width: 116px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
-        Rectangle { width: root.table-width > root.data-width + 116px ? root.table-width - root.data-width - 116px : 0px; background: UiColors.grid-line; }
+        HeaderCell { width: root.column-widths[0]; title: "NAME"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(0); } resize(value) => { root.resize(0, value); } }
+        HeaderCell { width: root.column-widths[1]; title: "IP ADDRESS"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(1); } resize(value) => { root.resize(1, value); } }
+        HeaderCell { width: root.column-widths[3]; title: "ENVIRONMENT"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(2); } resize(value) => { root.resize(3, value); } }
+        HeaderCell { width: root.column-widths[4]; title: "STATUS"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(3); } resize(value) => { root.resize(4, value); } }
+        HeaderCell { width: root.column-widths[5]; title: "PURPOSE"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(4); } resize(value) => { root.resize(5, value); } }
+        HeaderCell { width: root.column-widths[6]; title: "TAGS"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 12; descending-mode: 13; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(5); } resize(value) => { root.resize(6, value); } }
+        for header[index] in root.custom-headers: HeaderCell { width: root.column-widths[7 + index]; title: header; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 14 + index * 2; descending-mode: 15 + index * 2; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(6 + index); } resize(value) => { root.resize(7 + index, value); } }
+        HeaderCell { width: 188px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
+        Rectangle { width: root.table-width > root.data-width + 188px ? root.table-width - root.data-width - 188px : 0px; background: UiColors.grid-line; }
     }
 }
 
@@ -274,17 +280,18 @@ component SiteTableHeader inherits Rectangle {
     in property <length> header-font-size: UiColors.body-size - 3px;
     callback sort(int);
     callback resize(int, length);
+    callback copy-column(int);
     width: root.table-width; height: 34px; background: UiColors.raised; border-width: 1px; border-color: UiColors.border;
     HorizontalLayout {
         x: 0px; y: 0px; width: parent.width; height: parent.height;
         spacing: 0px; padding: 0px; alignment: start;
-        HeaderCell { width: root.column-widths[0]; title: "NAME"; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(0, value); } }
-        HeaderCell { width: root.column-widths[1]; title: "URL"; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(1, value); } }
-        HeaderCell { width: root.column-widths[2]; title: "ENVIRONMENT"; header-font-size: root.header-font-size; ascending-mode: 4; descending-mode: 5; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(2, value); } }
-        HeaderCell { width: root.column-widths[3]; title: "STATUS"; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(3, value); } }
-        HeaderCell { width: root.column-widths[4]; title: "PURPOSE"; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(4, value); } }
-        HeaderCell { width: root.column-widths[5]; title: "TAGS"; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } resize(value) => { root.resize(5, value); } }
-        HeaderCell { width: 116px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
+        HeaderCell { width: root.column-widths[0]; title: "NAME"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 0; descending-mode: 1; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(0); } resize(value) => { root.resize(0, value); } }
+        HeaderCell { width: root.column-widths[1]; title: "URL"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 2; descending-mode: 3; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(1); } resize(value) => { root.resize(1, value); } }
+        HeaderCell { width: root.column-widths[2]; title: "ENVIRONMENT"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 4; descending-mode: 5; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(2); } resize(value) => { root.resize(2, value); } }
+        HeaderCell { width: root.column-widths[3]; title: "STATUS"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 6; descending-mode: 7; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(3); } resize(value) => { root.resize(3, value); } }
+        HeaderCell { width: root.column-widths[4]; title: "PURPOSE"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 8; descending-mode: 9; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(4); } resize(value) => { root.resize(4, value); } }
+        HeaderCell { width: root.column-widths[5]; title: "TAGS"; copy-enabled: true; header-font-size: root.header-font-size; ascending-mode: 10; descending-mode: 11; current-mode: root.sort-mode-index; sort(mode) => { root.sort(mode); } copy => { root.copy-column(5); } resize(value) => { root.resize(5, value); } }
+        HeaderCell { width: 188px; horizontal-stretch: 0; title: "ACTIONS"; header-font-size: root.header-font-size; }
     }
 }
 
@@ -296,23 +303,24 @@ component SiteTableRow inherits Rectangle {
     in property <bool> hidden;
     in property <bool> show-tooltips: true;
     in property <length> row-height: 42px;
-    callback edit; callback hide; callback restore; callback copy(string, string); callback edit-cell(int, int, string);
+    callback edit; callback hide; callback restore; callback copy(string, string); callback copy-row; callback edit-cell(int, int, string);
     width: root.table-width; height: root.row-height; background: UiColors.surface;
     Rectangle { y: parent.height - 1px; width: parent.width; height: 1px; background: UiColors.grid-line; }
     HorizontalLayout {
         x: 0px; y: 0px; width: parent.width; height: parent.height;
         spacing: 0px; padding: 0px; alignment: start;
         DataCell { width: root.column-widths[0]; server-id: root.item.id; column-index: 0; value: root.item.name; copy-label: "Name"; cell-font-size: root.cell-font-size; show-tooltip: root.show-tooltips; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
-        DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.url; copy-label: "URL"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
+        DataCell { width: root.column-widths[1]; server-id: root.item.id; column-index: 1; value: root.item.url; copy-label: "URL"; copy-enabled: true; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[2]; server-id: root.item.id; column-index: 2; value: root.item.environment; copy-label: "Environment"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[3]; server-id: root.item.id; column-index: 3; value: root.item.status; copy-label: "Status"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[4]; server-id: root.item.id; column-index: 4; value: root.item.purpose; copy-label: "Purpose"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         DataCell { width: root.column-widths[5]; server-id: root.item.id; column-index: 5; value: root.item.tags; copy-label: "Tags"; cell-font-size: root.cell-font-size; copy(value, label) => { root.copy(value, label); } edit(id, column, value) => { root.edit-cell(id, column, value); } }
         Rectangle {
-            width: 116px; horizontal-stretch: 0;
+            width: 188px; horizontal-stretch: 0;
             if !root.hidden: Button { x: 5px; y: (parent.height - 28px) / 2; width: 44px; height: 28px; text: "Edit"; clicked => { root.edit(); } }
             if !root.hidden: Button { x: 53px; y: (parent.height - 28px) / 2; width: 58px; height: 28px; text: "Hide"; clicked => { root.hide(); } }
             if root.hidden: Button { x: 9px; y: (parent.height - 28px) / 2; width: 98px; height: 28px; text: "Restore"; clicked => { root.restore(); } }
+            Button { x: 116px; y: (parent.height - 28px) / 2; width: 66px; height: 28px; compact: true; quiet: true; text: "Copy row"; clicked => { root.copy-row(); } }
         }
     }
 }
@@ -519,6 +527,35 @@ export component AppWindow inherits Window {
     in property <string> workspace-count;
     in property <bool> workspace-has-assets;
     in property <string> workspace-result-status;
+    in-out property <string> discovery-url;
+    in property <string> discovery-status;
+    in property <[DiscoveryRow]> discovery-results;
+    in property <bool> discovery-busy;
+    in property <int> discovery-progress;
+    in-out property <bool> discovery-ct: false;
+    in-out property <string> discovery-ct-proxy;
+    in property <string> discovery-warnings;
+    in-out property <bool> discovery-open: false;
+    in property <[string]> discovery-run-labels;
+    in property <[string]> discovery-run-keys;
+    in property <[string]> discovery-run-urls;
+    in-out property <string> discovery-run-id: "0";
+    in-out property <int> discovery-run-index;
+    in-out property <int> discovery-status-filter;
+    in-out property <int> discovery-kind-filter;
+    in-out property <string> discovery-query;
+    in-out property <int> discovery-page-number;
+    in property <string> discovery-page-status;
+    in property <bool> discovery-has-next;
+    in property <bool> discovery-has-previous;
+    callback discovery-filter(); callback discovery-page(int); callback discovery-run(int);
+    callback discovery-link(string,string);
+    public function open-url-discovery() {
+        root.onboarding-open = false;
+        if root.demo-mode { root.exit-demo(); }
+        root.request-tab(8);
+        root.discovery-open = true;
+    }
     in-out property <string> workspace-error;
     in-out property <bool> workspace-detail-open;
     in-out property <string> workspace-detail-key;
@@ -738,6 +775,7 @@ export component AppWindow inherits Window {
     callback site-column-width-changed(int, length);
     callback auto-fit-site-columns;
     callback copy-value(string, string);
+    callback copy-grid(int, int, int);
     callback choose-import-file;
     callback open-server-import;
     open-server-import => { root.request-table-import(false); }
@@ -747,6 +785,8 @@ export component AppWindow inherits Window {
     callback auto-map-import;
     callback confirm-import;
     callback tab-selected(int);
+    callback discover-url(string);
+    callback discovery-review(string,string);
     function request-tab(tab: int) { if !root.restore-confirm-open && !root.onboarding-open && !root.endpoints-open && !root.appearance-open && !root.workspace-search-open && root.workspace-reminder-key == "" { root.workspace-detail-open = false; root.tab-selected(tab); } }
     callback work-selected(int);
     callback save-work(int, string, string, string, string, string, string, string, string);
@@ -864,9 +904,22 @@ export component AppWindow inherits Window {
         search => { root.open-workspace-search(); }
         handover => { root.export-handover(); }
         status: root.status-message; status-error: root.status-is-error;
+        discovery-url <=> root.discovery-url; discovery-status: root.discovery-status; discovery-results: root.discovery-results;
+        discovery-busy: root.discovery-busy; discovery-progress: root.discovery-progress; discovery-warnings: root.discovery-warnings;
+        discovery-ct <=> root.discovery-ct; discovery-ct-proxy <=> root.discovery-ct-proxy;
+        discovery-open <=> root.discovery-open;
+        discovery-run-labels: root.discovery-run-labels; discovery-run-index <=> root.discovery-run-index;
+        discovery-status-filter <=> root.discovery-status-filter; discovery-kind-filter <=> root.discovery-kind-filter; discovery-query <=> root.discovery-query;
+        discovery-page-status: root.discovery-page-status; discovery-has-next: root.discovery-has-next; discovery-has-previous: root.discovery-has-previous;
+        discovery-filter => { root.discovery-filter(); } discovery-page(direction) => { root.discovery-page(direction); } discovery-run(index) => { root.discovery-run(index); }
+        discovery-retry => { if root.discovery-run-index > 0 && root.discovery-run-index < root.discovery-run-urls.length { root.discovery-url = root.discovery-run-urls[root.discovery-run-index]; root.discover-url(root.discovery-url); } }
+        discovery-link(key,target) => { root.discovery-link(key,target); }
+        begin-discovery => { root.open-url-discovery(); }
+        discovery-review(key,action) => { root.discovery-review(key,action); }
         refresh => { root.workspace-query-pending = true; } open(key) => { root.workspace-open(key); }
         add(kind) => { root.workspace-new(kind); } navigate(tab) => { root.request-tab(tab); if tab == 2 { root.settings-scroll-y = -620px; } }
         review(key) => { root.workspace-review(key); }
+        discover(url) => { root.discover-url(url); }
     }
 
     if root.active-tab == 6 || root.active-tab == 7: TopologyPanel {
@@ -953,7 +1006,7 @@ export component AppWindow inherits Window {
             // ScrollView content offsets are signed; headers follow the same horizontal offset.
             Rectangle {
                 x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
-                TableHeader { x: root.server-table-scroll-x; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } resize(index, value) => { root.column-width-changed(index, value); } }
+        TableHeader { x: root.server-table-scroll-x; custom-headers: root.custom-headers; column-widths: root.column-widths; table-width: root.table-width; data-width: root.table-data-width; header-font-size: root.small-font-size; sort-mode-index: root.sort-mode-index; sort(mode) => { root.sort-selected(mode); } copy-column(index) => { root.copy-grid(5, -1, index); } resize(index, value) => { root.column-width-changed(index, value); } }
             }
             server-table-scroll := ScrollView {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
@@ -966,6 +1019,7 @@ export component AppWindow inherits Window {
                         hide => { root.hide-target-id = server.id; }
                         restore => { root.restore-server(server.id); }
                         copy(value, label) => { root.copy-value(value, label); }
+                        copy-row => { root.copy-grid(5, server.id, -1); }
                         edit-cell(id, column, value) => { root.edit-cell(id, column, value); }
                         ports => { root.status-message = ""; }
                         open-endpoint(protocol, address) => { root.open-endpoint(protocol, address); }
@@ -1030,7 +1084,7 @@ export component AppWindow inherits Window {
             x: 0; y: 162px; width: parent.width; height: parent.height - 162px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border;
             Rectangle {
                 x: 1px; y: 1px; width: parent.width - 2px; height: 35px; clip: true;
-                SiteTableHeader { x: root.site-table-scroll-x; column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } resize(index, value) => { root.site-column-width-changed(index, value); } }
+                SiteTableHeader { x: root.site-table-scroll-x; column-widths: root.site-column-widths; table-width: root.site-table-width; header-font-size: root.small-font-size; sort-mode-index: root.site-sort-mode-index; sort(mode) => { root.site-sort-selected(mode); } copy-column(index) => { root.copy-grid(6, -1, index); } resize(index, value) => { root.site-column-width-changed(index, value); } }
             }
             ScrollView {
                 x: 1px; y: 36px; width: parent.width - 2px; height: parent.height - 37px;
@@ -1043,6 +1097,7 @@ export component AppWindow inherits Window {
                         hide => { root.hide-site-target-id = site.id; }
                         restore => { root.restore-site(site.id); }
                         copy(value, label) => { root.copy-value(value, label); }
+                        copy-row => { root.copy-grid(6, site.id, -1); }
                         edit-cell(id, column, value) => { root.edit-site-cell(id, column, value); }
                     }
                 }
@@ -1194,7 +1249,7 @@ export component AppWindow inherits Window {
         x: root.workspace-left; y: 80px; width: parent.width - root.workspace-left - 24px; height: parent.height - 104px; background: transparent;
         PageHeader { x: 0; y: 0; text: "Work inbox"; token-size: root.page-title-font-size; }
         CheckBox { x: 0; y: 34px; text: "Table view"; checked <=> root.work-table-mode; }
-        if root.work-table-mode: DataTable { x: 0; y: 108px; width: parent.width; height: parent.height - 108px; headers: ["Title", "Type", "Owner", "Status", "Priority", "Due date"]; rows: root.work-grid; selected-id: root.selected-work-id; sort-mode: root.work-grid-sort; sort(mode) => { root.grid-sort(3,mode); } open(id) => { root.work-selected(id); root.work-table-mode = false; } }
+        if root.work-table-mode: DataTable { copy-kind: 3; copy-grid(kind,row-id,column) => { root.copy-grid(kind,row-id,column); } x: 0; y: 108px; width: parent.width; height: parent.height - 108px; headers: ["Title", "Type", "Owner", "Status", "Priority", "Due date"]; rows: root.work-grid; selected-id: root.selected-work-id; sort-mode: root.work-grid-sort; sort(mode) => { root.grid-sort(3,mode); } open(id) => { root.work-selected(id); root.work-table-mode = false; } }
         Button { x: parent.width - 132px; y: -4px; width: 132px; height: 32px; text: "+  New work"; clicked => { root.work-table-mode = false; root.new-work(); } }
         work-search := LineEdit { x: 10px; y: 68px; width: max(110px, parent.width - 330px); height: 32px; placeholder-text: "Search work"; text <=> root.work-list-query; edited => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
         kind-filter := ComboBox { x: parent.width - 300px; y: 68px; width: 90px; height: 32px; model: ["All types", "Change", "Task", "Renewal", "Incident", "Migration", "Launch", "Maintenance"]; current-index <=> root.work-list-kind-filter; selected(value) => { root.work-list-filter-changed(root.work-list-query, root.work-list-kind-filter, root.work-list-status-filter, root.work-list-sort-mode); } }
@@ -1429,7 +1484,7 @@ export component AppWindow inherits Window {
                 TouchArea { }
                 Rectangle {
                     x: (parent.width - self.width) / 2; y: (parent.height - self.height) / 2;
-                    width: min(760px, parent.width - 48px); height: min(380px, parent.height - 48px);
+                    width: min(800px, parent.width - 48px); height: min(440px, parent.height - 48px);
                     background: UiColors.surface; border-radius: 8px;
                     VerticalLayout { padding: 24px; spacing: 16px;
                         HorizontalLayout { spacing: 16px;
@@ -1438,14 +1493,16 @@ export component AppWindow inherits Window {
                         }
                         ScrollView { horizontal-stretch: 1; vertical-stretch: 1;
                             VerticalLayout { spacing: 18px;
-                                Text { text: "Free local workspace. No account needed. Try fictional sample data, add your own server, or import a table."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
-                                Text { text: "Add a name and IP address. A pending SSH service on port 22 is created for you to check in Services."; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
-                                Text { text: "Already have a spreadsheet? Import it instead. Add domains, contacts and connections when you need them."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                Text { text: "Choose an easy starting point. No account needed."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                                HorizontalLayout { spacing: 16px;
+                                    StartChoice { title: "See how ITGLA works"; description: "Explore a complete sample workspace and asset map. Your own data stays untouched."; action: "Try sample data"; selected => { root.onboarding-open = false; root.enter-demo(); } }
+                                    StartChoice { title: "Start with your website"; description: "Enter a public URL, review discovered domains and pages, then confirm what to add."; action: "Discover from URL"; selected => { root.open-url-discovery(); } }
+                                }
+                                Text { text: "Prefer to start manually? Add a server or import your existing spreadsheet below."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
                             }
                         }
                         HorizontalLayout { spacing: 12px;
-                            Button { compact: true; text: "Try sample data"; height: 40px; clicked => { root.onboarding-open = false; root.enter-demo(); } }
-                            Button { compact: true; text: "Add first server"; primary: true; height: 40px; clicked => { root.onboarding-open = false; root.workspace-new(0); } }
+                            Button { compact: true; text: "Add first server"; height: 40px; clicked => { root.onboarding-open = false; root.workspace-new(0); } }
                             Button { compact: true; text: "Import a table"; height: 40px; clicked => { root.onboarding-open = false; root.request-tab(0); root.request-table-import(false); } }
                         }
                     }

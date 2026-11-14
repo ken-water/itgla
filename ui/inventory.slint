@@ -100,6 +100,7 @@ export component InventoryPanel inherits Rectangle {
     callback unlock();
     callback copy-secret(bool);
     callback copy(string,string);
+    callback copy-grid(int,int,int);
     callback clear-filter();
     callback add-relation();
     callback remove-relation(int);
@@ -131,6 +132,8 @@ export component InventoryPanel inherits Rectangle {
             CheckBox { text: "More columns"; checked <=> root.more-columns; }
             DataTable {
                 vertical-stretch: 1;
+                copy-kind: root.form.kind == 0 ? 1 : 2;
+                copy-grid(kind,row-id,column) => { root.copy-grid(kind,row-id,column); }
                 headers: root.form.kind == 0 ? ["Service", "Hosting servers", "Port", "Protocol", "Version", "Status", "Tags"] : ["Domain", "Origin servers", "Parent domain", "Registrar", "Expiry", "CDN", "Tags"];
                 rows: root.grid-rows; selected-id: root.form.id; sort-mode: root.grid-sort-mode; link-column: 1;
                 shown-columns: root.form.kind == 0 ? [true, true, true, true, root.more-columns, true, root.more-columns] : [true, true, root.more-columns, root.more-columns, true, true, root.more-columns];

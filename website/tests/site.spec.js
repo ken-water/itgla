@@ -24,8 +24,9 @@ for (const viewport of viewports) {
     await expect(page.locator(".hero-product img")).toHaveAttribute("src", "/assets/itgla-free-first-preview-20261106.webp");
     await expect(page.locator(".hero-product img")).toHaveAttribute("alt", /Native ITGLA overview/);
     await expect(page.locator(".release-line")).toContainText("Free local desktop");
-    await expect(page.locator(".hero-note")).toContainText("Downloads are version 0.6.3");
-    await expect(page.locator(".site-nav a[href='/signin.html']")).toHaveCount(0);
+    await expect(page.locator(".hero-note")).toContainText("Downloads are version 0.6.4");
+    await expect(page.locator(".nav-login")).toHaveText("Log in");
+    await expect(page.locator(".nav-signup")).toHaveText("Sign up");
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeHidden();
     await page.getByText("Starting from a spreadsheet?", { exact: true }).click();
     await expect(page.getByRole("heading", { name: "Import your table" })).toBeVisible();
@@ -51,11 +52,11 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/downloads.html");
 
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.3" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.4" })).toBeVisible();
   await expect(page.locator('script[type="application/ld+json"]')).toHaveCount(1);
   await expect(page.locator('link[href^="/marketing.css?v="]')).toHaveAttribute(
     "href",
-    "/marketing.css?v=20261108-download-polish",
+    "/marketing.css?v=20261112-auth-nav-r2",
   );
   await expect(page.locator(".platform-card")).toHaveCount(3);
   await expect(page.locator("#macos")).toContainText("Apple silicon");
@@ -64,7 +65,7 @@ test("download page exposes current verified artifacts", async ({ page, request 
   await expect(page.locator(".verify-guides details[open]")).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Download EXE" })).toHaveAttribute(
     "href",
-    "https://itgla.com/downloads/v0.6.3/itgla-v0.6.3-windows-x86_64-setup.exe",
+    "https://itgla.com/downloads/v0.6.4/itgla-v0.6.4-windows-x86_64-setup.exe",
   );
 
   for (const name of ["Download ZIP", "Download DEB", "Download RPM", "Download AppImage", "Download Apple silicon DMG", "Download Intel DMG", "Download sha256sums"]) {
@@ -76,23 +77,23 @@ test("download page exposes current verified artifacts", async ({ page, request 
   );
   await page.goto("/release-notes.html");
   await expect(page.getByRole("heading", { name: "Release notes" })).toBeVisible();
-  await expect(page.getByText("v0.6.3 · November 8, 2026").first()).toBeVisible();
+  await expect(page.getByText("v0.6.4 · November 14, 2026").first()).toBeVisible();
   await expect(page.getByText("v0.3.29 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.3.28 · October 18, 2026")).toBeVisible();
   await expect(page.getByText("v0.0.1 · September 19, 2026")).toBeVisible();
 
   const artifacts = [
-    "itgla-v0.6.3-windows-x86_64-setup.exe",
-    "itgla-v0.6.3-windows-x86_64.zip",
-    "itgla-v0.6.3-linux-x86_64.deb",
-    "itgla-v0.6.3-linux-x86_64.rpm",
-    "itgla-v0.6.3-linux-x86_64.AppImage",
-    "itgla-v0.6.3-macos-arm64.dmg",
-    "itgla-v0.6.3-macos-x86_64.dmg",
+    "itgla-v0.6.4-windows-x86_64-setup.exe",
+    "itgla-v0.6.4-windows-x86_64.zip",
+    "itgla-v0.6.4-linux-x86_64.deb",
+    "itgla-v0.6.4-linux-x86_64.rpm",
+    "itgla-v0.6.4-linux-x86_64.AppImage",
+    "itgla-v0.6.4-macos-arm64.dmg",
+    "itgla-v0.6.4-macos-x86_64.dmg",
     "sha256sums",
   ];
   for (const artifact of artifacts) {
-    const response = await request.head(`${process.env.ITGLA_RELEASE_ORIGIN || ""}/downloads/v0.6.3/${artifact}`);
+    const response = await request.head(`${process.env.ITGLA_RELEASE_ORIGIN || ""}/downloads/v0.6.4/${artifact}`);
     expect(response.ok(), `${artifact} should be downloadable`).toBeTruthy();
     expect(Number(response.headers()["content-length"] ?? 0), `${artifact} should not be empty`).toBeGreaterThan(0);
   }
@@ -133,9 +134,11 @@ test("shared footer geometry stays consistent across the site", async ({ page })
   let sharedStyle;
   for (const path of pages) {
     await page.goto(path);
+    await expect(page.locator(".nav-login")).toHaveText("Log in");
+    await expect(page.locator(".nav-signup")).toHaveText("Sign up");
     await expect(page.locator('link[href^="/styles.css?v="]')).toHaveAttribute(
       "href",
-      "/styles.css?v=20261108-footer-clean",
+      "/styles.css?v=20261112-auth-nav-r2",
     );
     const style = await page.locator(".site-footer").evaluate((footer) => {
       const computed = getComputedStyle(footer);
@@ -249,16 +252,16 @@ test("homepage feedback supports keyboard disclosure and recovery", async ({ pag
   expect(attempts).toBe(2);
 });
 
-test("website account remains optional along the desktop download journey", async ({ page }) => {
+test("login and signup remain optional along the desktop download journey", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("link", { name: "Website account (optional)" })).toHaveCount(1);
-  await expect(page.locator(".nav-signup")).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/signin.html");
+  await expect(page.getByRole("link", { name: "Sign up" })).toHaveAttribute("href", "/signin.html?mode=signup");
   await page.getByRole("link", { name: /All platforms & checksums/ }).first().click();
   await expect(page.locator(".download-reassurance")).toContainText("No desktop account");
-  await page.getByRole("link", { name: "Website account (optional)" }).click();
+  await page.getByRole("link", { name: "Sign up" }).click();
   await expect(page.locator(".account-boundary")).toContainText("does not sync your desktop inventory");
   await page.getByRole("link", { name: "Download the desktop app" }).click();
-  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.3" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Download ITGLA v0.6.4" })).toBeVisible();
 });
 
 test("download platform anchors and verification instructions are usable", async ({ page }) => {
@@ -293,6 +296,9 @@ test("email sign-in does not fall through to a 404", async ({ page }) => {
   await expect(page.locator("#email-signin-form")).toBeVisible();
   await expect(page.getByRole("link", { name: "Continue with Google" })).toHaveAttribute("href", "/auth/google/start");
   await expect(page.locator("#email-signin-form")).toHaveAttribute("id", "email-signin-form");
+  await page.goto("/signin.html?mode=signup");
+  await expect(page.getByRole("heading", { name: "Create your ITGLA account" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Continue with email" })).toBeVisible();
 });
 
 test("LLM discovery covers every sitemap page", async ({ request }) => {
@@ -313,7 +319,7 @@ for (const viewport of viewports) {
     await page.goto("/downloads.html");
     for (const [label, arch] of [["Apple silicon", "arm64"], ["Intel", "x86_64"]]) {
       await expect(page.getByRole("heading", { name: `macOS 14+ \u00b7 ${label}`, exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `https://itgla.com/downloads/v0.6.3/itgla-v0.6.3-macos-${arch}.dmg`);
+      await expect(page.getByRole("link", { name: `Download ${label} DMG`, exact: true })).toHaveAttribute("href", `https://itgla.com/downloads/v0.6.4/itgla-v0.6.4-macos-${arch}.dmg`);
     }
     const downloads = page.locator(".package-row a");
     await expect(downloads).toHaveCount(7);

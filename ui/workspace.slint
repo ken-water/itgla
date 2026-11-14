@@ -1,8 +1,23 @@
-import { LineEdit, ComboBox, ScrollView } from "std-widgets.slint";
+import { LineEdit, ComboBox, ScrollView, CheckBox } from "std-widgets.slint";
 import { Button, UiColors } from "controls.slint";
 import { DataTable, GridRow } from "data-table.slint";
 
 export struct WorkspaceItem { key: string, title: string, subtitle: string }
+export struct DiscoveryRow { key: string, title: string, evidence: string, status: string, can-add: bool, destination: string, target-labels: [string], target-keys: [string], target-previews: [string], linked-key: string }
+
+export component StartChoice inherits Rectangle {
+    in property <string> title;
+    in property <string> description;
+    in property <string> action;
+    callback selected();
+    min-height: 164px; horizontal-stretch: 1; vertical-stretch: 0;
+    background: UiColors.raised; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+    VerticalLayout { padding: 16px; spacing: 12px;
+        Text { text: root.title; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
+        Text { text: root.description; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+        Button { primary: true; height: 40px; text: root.action; clicked => { root.selected(); } }
+    }
+}
 
 component WorkspaceResourceRow inherits Rectangle {
     in property <WorkspaceItem> item;
@@ -39,9 +54,33 @@ export component WorkspacePanel inherits Rectangle {
     in property <bool> status-error;
     in property <bool> demo;
     in property <bool> has-assets;
+    in-out property <string> discovery-url;
+    in property <string> discovery-status;
+    in property <[DiscoveryRow]> discovery-results;
+    in property <bool> discovery-busy;
+    in property <int> discovery-progress;
+    in-out property <bool> discovery-ct;
+    in-out property <string> discovery-ct-proxy;
+    in property <string> discovery-warnings;
+    in-out property <bool> discovery-open: false;
+    in property <[string]> discovery-run-labels;
+    in-out property <int> discovery-run-index;
+    in-out property <int> discovery-status-filter;
+    in-out property <int> discovery-kind-filter;
+    in-out property <string> discovery-query;
+    in property <string> discovery-page-status;
+    in property <bool> discovery-has-next;
+    in property <bool> discovery-has-previous;
+    callback discovery-filter(); callback discovery-page(int); callback discovery-run(int); callback discovery-retry();
+    callback discovery-link(string,string);
+    callback begin-discovery();
+    private property <string> discovery-expanded;
+    private property <int> discovery-target-index;
+    callback discovery-review(string,string);
     private property <bool> show-first-steps: false;
-    callback refresh(); callback open(string); callback add(int); callback navigate(int); callback sample(); callback search(); callback handover();
+    callback refresh(); callback open(string); callback add(int); callback navigate(int); callback sample(); callback search(); callback handover(); callback discover(string);
     callback reminder-action(string,int); callback review(string);
+    callback copy-grid(int,int,int);
     private property <int> add-type;
     VerticalLayout { spacing: 16px; padding: 0px;
         HorizontalLayout { spacing: 16px;
@@ -50,31 +89,17 @@ export component WorkspacePanel inherits Rectangle {
                 Text { text: root.page == 8 ? "Know what runs where, who can help and what needs attention." : root.page == 9 ? "Find a resource and understand its context." : "Recorded dates and manual checks. Reminders update while ITGLA is open; no alerts when closed."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
             }
             if root.page != 13: ComboBox { width: 144px; height: 36px; accessible-label: "New asset type"; model: ["Server", "Service", "Domain", "Business"]; current-index <=> root.add-type; }
-            if root.page != 13: Button { compact: true; height: 36px; primary: true; text: "Add asset"; clicked => { root.add(root.add-type); } }
+            if root.page != 13: Button { compact: true; height: 36px; primary: root.page != 8; text: "Add asset"; clicked => { root.add(root.add-type); } }
         }
         if root.error != "": Text { text: root.error; color: UiColors.error; wrap: word-wrap; font-size: UiColors.body-size; accessible-role: text; }
         if root.status != "": Text { text: root.status; color: root.status-error ? UiColors.error : UiColors.muted; wrap: word-wrap; font-size: UiColors.body-size; accessible-role: text; accessible-label: self.text; }
-        if root.page == 8: Rectangle { height: 84px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
-            HorizontalLayout { padding: 18px; spacing: 24px;
-                Text { text: root.count; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
-                Text { text: "Needs attention: " + root.attention-count; color: root.attention-count > 0 ? UiColors.warning : UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
-            }
-        }
-        if root.page == 8: HorizontalLayout { spacing: 12px;
-            Button { compact: true; text: "Import servers"; clicked => { root.add(8); } }
-            Button { compact: true; text: "Find an asset"; clicked => { root.search(); } }
-            Button { compact: true; text: "Explore asset map"; clicked => { root.navigate(7); } }
-            Button { compact: true; text: "Reminders"; clicked => { root.navigate(13); } }
-            if root.has-assets: Button { compact: true; text: root.show-first-steps ? "Hide guide" : "Getting started"; clicked => { root.show-first-steps = !root.show-first-steps; } }
-            Rectangle { horizontal-stretch: 1; background: transparent; }
-        }
         if root.page == 9: HorizontalLayout { spacing: 12px;
             LineEdit { accessible-label: "Filter all assets"; placeholder-text: "Name, IP, domain, purpose or contact"; text <=> root.query; edited => { root.refresh(); } }
             ComboBox { accessible-label: "Asset type filter"; model: ["All types", "Servers", "Services", "Domains", "Businesses"]; current-index <=> root.type-index; selected => { root.refresh(); } }
             Button { compact: true; text: "Saved sites"; clicked => { root.add(4); } }
         }
         if root.page == 9: Text { text: root.result-status; color: UiColors.muted; font-size: UiColors.body-size; }
-        if root.page == 9: DataTable { widths <=> root.column-widths; fitted <=> root.fitted; selected-id: -1; sort-mode: root.sort-mode; sort(mode) => { root.sort-mode = mode; root.refresh(); } rows: root.rows; headers: ["Name", "Address / host", "Type", "Purpose", "Environment", "Contact", "Last checked"]; column-weights: [2, 2.5, 1, 2, 1.2, 1.2, 1.4, 1, 1]; empty-label: "No matching assets. Add one, or change your search."; open(id) => { if id >= 0 && id < root.keys.length { root.open(root.keys[id]); } } }
+        if root.page == 9: DataTable { copy-kind: 4; copy-grid(kind,row-id,column) => { root.copy-grid(kind,row-id,column); } widths <=> root.column-widths; fitted <=> root.fitted; selected-id: -1; sort-mode: root.sort-mode; sort(mode) => { root.sort-mode = mode; root.refresh(); } rows: root.rows; headers: ["Name", "Address / host", "Type", "Purpose", "Environment", "Contact", "Last checked"]; column-weights: [2, 2.5, 1, 2, 1.2, 1.2, 1.4, 1, 1]; empty-label: "No matching assets. Add one, or change your search."; open(id) => { if id >= 0 && id < root.keys.length { root.open(root.keys[id]); } } }
         if root.page == 13: HorizontalLayout { spacing: 12px;
             ComboBox { accessible-label: "Reminder status filter"; model: ["Needs attention", "Reviewed", "Postponed"]; current-index <=> root.reminder-filter; selected => { root.refresh(); } }
             Button { compact: true; text: "Work inbox"; clicked => { root.add(5); } }
@@ -84,13 +109,100 @@ export component WorkspacePanel inherits Rectangle {
         }
         if root.page != 9: ScrollView {
             VerticalLayout { spacing: 12px;
+        if root.page == 8: Rectangle { height: 84px; background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+            HorizontalLayout { padding: 18px; spacing: 24px;
+                Text { text: root.count; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
+                Text { text: "Needs attention: " + root.attention-count; color: root.attention-count > 0 ? UiColors.warning : UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; }
+            }
+        }
+        if root.page == 8: HorizontalLayout { spacing: 12px;
+            Button { primary: true; width: 184px; height: 40px; text: root.demo ? "Exit sample" : "Try sample data"; clicked => { root.sample(); } }
+            Button { primary: true; width: 196px; height: 40px; text: root.discovery-open && !root.demo ? "Hide discovery" : "Discover from URL"; clicked => { if root.demo { root.begin-discovery(); } else { root.discovery-open = !root.discovery-open; } } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        if root.page == 8: HorizontalLayout { spacing: 12px;
+            Button { compact: true; text: "Import servers"; clicked => { root.add(8); } }
+            Button { compact: true; text: "Find an asset"; clicked => { root.search(); } }
+            if root.has-assets: Button { compact: true; text: root.show-first-steps ? "Hide guide" : "Getting started"; clicked => { root.show-first-steps = !root.show-first-steps; } }
+            Rectangle { horizontal-stretch: 1; background: transparent; }
+        }
+        if root.page == 8 && root.discovery-open: Rectangle { height: max(172px, UiColors.body-size * 13) + (root.discovery-ct ? 72px : 0px) + (root.discovery-busy ? 46px : 0px); background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+            VerticalLayout { padding: 14px; spacing: 10px;
+                    Text { text: "Start with a public URL"; color: UiColors.text; font-size: UiColors.body-size + 1px; font-weight: 650; }
+                    Text { text: "Find public pages, DNS records, certificate names and sitemap links. Review findings before adding assets."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+                HorizontalLayout { spacing: 14px; height: 40px;
+                    LineEdit { accessible-label: "Discovery URL"; placeholder-text: "https://www.example.com"; text <=> root.discovery-url; enabled: !root.discovery-busy; height: 40px; horizontal-stretch: 1; }
+                    Button { primary: true; width: max(180px, UiColors.body-size * 13); height: 40px; text: root.discovery-busy ? "Scanning..." : "Discover"; accessible-label: "Start discovery"; enabled: !root.discovery-busy && !root.demo && root.discovery-url != ""; clicked => { root.discover(root.discovery-url); } }
+                }
+                CheckBox { text: "Also query certificate transparency (crt.sh)"; accessible-label: "Query certificate transparency"; checked <=> root.discovery-ct; enabled: !root.discovery-busy; }
+                if root.discovery-ct: VerticalLayout { spacing: 6px;
+                    Text { text: "Sends the domain to crt.sh. Historical names may be inactive. Optional proxy applies only to this lookup."; color: UiColors.muted; font-size: UiColors.body-size - 1px; wrap: word-wrap; }
+                    LineEdit { accessible-label: "Certificate transparency proxy"; placeholder-text: "Optional proxy, e.g. http://127.0.0.1:5670"; text <=> root.discovery-ct-proxy; enabled: !root.discovery-busy; height: 34px; }
+                }
+                if root.discovery-busy: VerticalLayout { spacing: 6px;
+                    HorizontalLayout { spacing: 12px;
+                        Text { text: root.discovery-status; color: UiColors.muted; font-size: UiColors.body-size; overflow: elide; horizontal-stretch: 1; accessible-label: self.text; }
+                        Text { text: root.discovery-progress + "%"; color: UiColors.text; font-size: UiColors.body-size; font-weight: 650; }
+                    }
+                    Rectangle { height: 6px; background: UiColors.selected; border-radius: 3px;
+                        accessible-role: progress-indicator; accessible-label: "Discovery progress"; accessible-value: root.discovery-progress + "%";
+                        Rectangle { width: parent.width * min(100, max(0, root.discovery-progress)) / 100; height: parent.height; border-radius: 3px; background: UiColors.primary; }
+                    }
+                }
+            }
+        }
+        if root.page == 8 && root.discovery-open && !root.discovery-busy && root.discovery-status != "": Text { text: root.discovery-status; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; accessible-label: self.text; }
+        if root.page == 8 && root.discovery-open && root.discovery-run-labels.length > 1: Rectangle { height: max(300px, root.height * 0.45); background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
+            VerticalLayout { padding: 12px; spacing: 10px;
+                Text { text: "Discovery inbox"; color: UiColors.text; font-size: UiColors.body-size + 1px; font-weight: 650; }
+                HorizontalLayout { spacing: 10px;
+                    ComboBox { accessible-label: "Discovery run"; model: root.discovery-run-labels; current-index <=> root.discovery-run-index; enabled: !root.discovery-busy; horizontal-stretch: 1; selected => { root.discovery-expanded = ""; root.discovery-run(root.discovery-run-index); } }
+                    Button { compact: true; text: "Retry URL"; enabled: root.discovery-run-index > 0 && !root.discovery-busy && !root.demo; clicked => { root.discovery-retry(); } }
+                }
+                HorizontalLayout { spacing: 10px;
+                    ComboBox { accessible-label: "Discovery status filter"; model: ["All states", "Needs review", "Confirmed", "Ignored", "Stale"]; current-index <=> root.discovery-status-filter; selected => { root.discovery-expanded = ""; root.discovery-filter(); } }
+                    ComboBox { accessible-label: "Discovery type filter"; model: ["All types", "Domain", "Subdomain", "Web page", "DNS address", "DNS record", "TLS certificate", "HTTP evidence", "Link", "External reference", "Scope", "Wildcard certificate"]; current-index <=> root.discovery-kind-filter; selected => { root.discovery-expanded = ""; root.discovery-filter(); } }
+                    LineEdit { accessible-label: "Search discovery results"; placeholder-text: "Domain, address or evidence"; text <=> root.discovery-query; edited => { root.discovery-expanded = ""; root.discovery-filter(); } }
+                }
+                ScrollView { vertical-stretch: 1; VerticalLayout { spacing: 10px;
+                if root.discovery-warnings != "": Text { text: root.discovery-warnings; color: UiColors.warning; wrap: word-wrap; font-size: UiColors.body-size; }
+                if root.discovery-results.length == 0: Text { text: "No matching observations. Change the filters or select another run."; color: UiColors.muted; wrap: word-wrap; font-size: UiColors.body-size; }
+                for item in root.discovery-results: VerticalLayout { spacing: 5px;
+                    HorizontalLayout { spacing: 8px;
+                        Text { text: item.title; color: UiColors.text; font-size: UiColors.body-size; overflow: elide; horizontal-stretch: 1; vertical-alignment: center; }
+                        Text { text: item.status; color: UiColors.muted; font-size: UiColors.body-size; vertical-alignment: center; }
+                        Button { compact: true; quiet: true; text: root.discovery-expanded == item.key ? "Hide evidence" : "Review"; accessible-label: "Review " + item.title; clicked => { root.discovery-target-index = 0; root.discovery-expanded = root.discovery-expanded == item.key ? "" : item.key; } }
+                    }
+                    if root.discovery-expanded == item.key: VerticalLayout { spacing: 8px;
+                        Text { text: item.evidence; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                        Text { text: item.destination; color: UiColors.text; font-size: UiColors.body-size; wrap: word-wrap; }
+                        if item.target-labels.length > 0: VerticalLayout { spacing: 8px;
+                            ComboBox { accessible-label: "Existing asset for " + item.title; model: item.target-labels; current-index <=> root.discovery-target-index; }
+                            Text { text: item.target-previews[root.discovery-target-index]; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
+                        }
+                        HorizontalLayout { spacing: 8px;
+                            if item.status == "needs-review" && item.target-labels.length == 0: Button { compact: true; primary: true; text: item.can-add ? "Confirm and add" : "Confirm evidence"; clicked => { root.discovery-review(item.key,"confirm"); } }
+                            if item.status == "needs-review" && item.target-labels.length > 0: Button { compact: true; primary: true; text: "Confirm and link"; clicked => { root.discovery-link(item.key,item.target-keys[root.discovery-target-index]); } }
+                            if item.status == "needs-review": Button { compact: true; text: "Ignore"; clicked => { root.discovery-review(item.key,"ignore"); } }
+                            if item.status != "stale": Button { compact: true; text: "Mark stale"; clicked => { root.discovery-review(item.key,"stale"); } }
+                            if item.status != "needs-review": Button { compact: true; text: "Review again"; clicked => { root.discovery-review(item.key,"reopen"); } }
+                            Rectangle { horizontal-stretch: 1; background: transparent; }
+                        }
+                    }
+                    Rectangle { height: 1px; background: UiColors.border; }
+                }
+                } }
+                HorizontalLayout { spacing: 10px;
+                    Text { text: root.discovery-page-status; color: UiColors.muted; font-size: UiColors.body-size; vertical-alignment: center; horizontal-stretch: 1; }
+                    Button { compact: true; text: "Previous"; accessible-label: "Previous discovery page"; enabled: root.discovery-has-previous; clicked => { root.discovery-expanded = ""; root.discovery-page(-1); } }
+                    Button { compact: true; text: "Next"; accessible-label: "Next discovery page"; enabled: root.discovery-has-next; clicked => { root.discovery-expanded = ""; root.discovery-page(1); } }
+                }
+            } }
                 if root.page == 8 && (!root.has-assets || root.show-first-steps): Rectangle { height: max(190px, UiColors.body-size * 15); background: UiColors.surface; border-width: 1px; border-color: UiColors.border; border-radius: 6px;
                     VerticalLayout { padding: 18px; spacing: 10px;
                         Text { text: root.demo ? "Sample workspace - explore without changing your data" : "Make your first useful connection"; color: UiColors.text; font-size: UiColors.body-size + 3px; font-weight: 650; wrap: word-wrap; }
                         Text { text: "1. Add or import a server. Confirm its proposed SSH service in Services.\n2. Add a domain and select its real hosting server. Explore the asset map.\n3. Search for the resource, then follow its connected assets."; color: UiColors.muted; font-size: UiColors.body-size; wrap: word-wrap; }
                         HorizontalLayout { spacing: 12px;
-                            if !root.demo: Button { compact: true; text: "Try sample data"; clicked => { root.sample(); } }
-                            if root.demo: Button { compact: true; text: "Exit sample"; clicked => { root.sample(); } }
                             Button { compact: true; text: "Backup and recovery"; clicked => { root.navigate(2); } }
                             Button { compact: true; text: "Export handover"; clicked => { root.handover(); } }
                             Rectangle { horizontal-stretch: 1; background: transparent; }

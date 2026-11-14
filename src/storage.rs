@@ -12,6 +12,7 @@ use rusqlite::{Connection, ErrorCode, MAIN_DB, Transaction, params};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
+use crate::discovery::{DiscoveryObservation, DiscoveryReport};
 use crate::domain::{
     Asset, AssetDraft, ChecklistItem, DueState, GlobalAsset, Health, ManagedOption, ManagedTag,
     Project, Relationship, RelationshipKind, ResourceKind, ServerColumn, ServerDraft, ServerRecord,
@@ -21,7 +22,7 @@ use crate::domain::{
 };
 use crate::import_data::TabularData;
 
-const SCHEMA_VERSION: i64 = 22;
+const SCHEMA_VERSION: i64 = 25;
 const PORTABLE_FORMAT_VERSION: u32 = 1;
 const MAX_IMPORT_BYTES: u64 = 10 * 1024 * 1024;
 const MAX_PROJECTS: usize = 1_000;
@@ -296,7 +297,400 @@ pub struct Repository {
     database_path: Option<PathBuf>,
 }
 
+/// Durable discovery evidence, separate from the confirmed asset inventory.
+pub struct DiscoveryCandidate {
+    pub id: i64,
+    pub observation: DiscoveryObservation,
+    pub discovered_at: String,
+    pub run_id: i64,
+    pub matches: Vec<DiscoveryAssetMatch>,
+    pub linked_key: String,
+    pub history: String,
+}
+
+/// Read-only existing-asset preview; never contains credentials.
+pub struct DiscoveryAssetMatch {
+    pub key: String,
+    pub label: String,
+    pub summary: String,
+}
+
+pub struct DiscoveryRun {
+    pub id: i64,
+    pub input_url: String,
+    pub completed_at: String,
+    pub total: i64,
+    pub pending: i64,
+}
+
+#[derive(Default)]
+pub struct DiscoveryFilter {
+    pub run_id: i64,
+    pub status: String,
+    pub kind: String,
+    pub query: String,
+    pub page: usize,
+}
+
+pub struct DiscoveryPage {
+    pub candidates: Vec<DiscoveryCandidate>,
+    pub total: usize,
+    pub page: usize,
+}
+
+/// Match identities only. Reusing evidence must not alter an existing asset.
+fn discovery_asset_matches(
+    connection: &Connection,
+    kind: &str,
+    value: &str,
+    source: &str,
+) -> Result<Vec<DiscoveryAssetMatch>, StorageError> {
+    let mut matches = Vec::new();
+    if matches!(kind, "domain" | "subdomain-candidate") {
+        let mut statement = connection.prepare("SELECT id,data,hidden FROM operational_inventory WHERE kind=1 AND lower(rtrim(json_extract(data,'$.name'),'.'))=lower(rtrim(?1,'.')) ORDER BY id")?;
+        let rows = statement.query_map([value], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, bool>(2)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, data, hidden) = row?;
+            let details: crate::operational::Details = serde_json::from_str(&data)?;
+            matches.push(DiscoveryAssetMatch {
+                key: format!("domain:{id}"),
+                label: format!(
+                    "{}{} (#{id})",
+                    details.name,
+                    if hidden { " [hidden]" } else { "" }
+                ),
+                summary: format!(
+                    "Domain: {}\nTags: {}\nNotes: {}\n{}",
+                    details.name,
+                    details.tags,
+                    details.notes,
+                    if hidden {
+                        "This asset stays hidden."
+                    } else {
+                        "Existing host links and fields are preserved."
+                    }
+                ),
+            });
+        }
+    } else if kind == "public-endpoint"
+        && source == "page"
+        && let Some(identity) = crate::discovery::page_identity(value)
+    {
+        // Compare normalized authorities without making URL paths case-insensitive.
+        let mut statement = connection
+            .prepare("SELECT id,name,url,purpose,archived_at IS NOT NULL FROM sites ORDER BY id")?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, bool>(4)?,
+            ))
+        })?;
+        for row in rows {
+            let (id, name, url, purpose, hidden) = row?;
+            if crate::discovery::page_identity(&url).as_ref() != Some(&identity) {
+                continue;
+            }
+            matches.push(DiscoveryAssetMatch {
+                key: format!("site:{id}"),
+                label: format!("{name}{} (#{id})", if hidden { " [hidden]" } else { "" }),
+                summary: format!(
+                    "Site: {name}\nURL: {url}\nPurpose: {purpose}\n{}",
+                    if hidden {
+                        "This asset stays hidden."
+                    } else {
+                        "Existing fields are preserved."
+                    }
+                ),
+            });
+        }
+    }
+    Ok(matches)
+}
+
 impl Repository {
+    pub fn save_discovery_report(&self, report: &DiscoveryReport) -> Result<i64, StorageError> {
+        if report.host.is_empty()
+            || report.input_url.len() > 2048
+            || report.observations.len() > 5000
+        {
+            return Err(StorageError::InvalidImport(
+                "Invalid or oversized discovery report".into(),
+            ));
+        }
+        let transaction = self.connection.unchecked_transaction()?;
+        transaction.execute(
+            "INSERT INTO discovery_runs(input_url,host,completed_at,status,warning_count) VALUES(?1,?2,CURRENT_TIMESTAMP,'completed',?3)",
+            params![report.input_url, report.host, report.warnings.len() as i64],
+        )?;
+        let run_id = transaction.last_insert_rowid();
+        for warning in report.warnings.iter().take(100) {
+            transaction.execute(
+                "INSERT INTO discovery_warnings(run_id,message) VALUES(?1,?2)",
+                params![run_id, warning.chars().take(4096).collect::<String>()],
+            )?;
+        }
+        for observation in &report.observations {
+            if observation.value.len() > 2048
+                || observation.evidence.len() > 4096
+                || observation.source.len() > 128
+                || observation.kind.len() > 64
+            {
+                return Err(StorageError::InvalidImport(
+                    "Discovery observation exceeds size limit".into(),
+                ));
+            }
+            transaction.execute(
+                "INSERT INTO discovery_observations(run_id,kind,value,source,evidence,confidence,verification_status) VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                params![run_id, observation.kind, observation.value, observation.source, observation.evidence, observation.confidence.min(100), "needs-review"],
+            )?;
+        }
+        transaction.commit()?;
+        Ok(run_id)
+    }
+
+    #[cfg(test)]
+    pub fn discovery_candidates(&self) -> Result<Vec<DiscoveryCandidate>, StorageError> {
+        Ok(self.discovery_page(&DiscoveryFilter::default())?.candidates)
+    }
+
+    /// Recent run choices; all-run observation pages remain available for older runs.
+    pub fn discovery_runs(&self) -> Result<Vec<DiscoveryRun>, StorageError> {
+        let mut statement = self.connection.prepare("SELECT r.id,r.input_url,COALESCE(r.completed_at,r.started_at),COUNT(o.id),COALESCE(SUM(o.verification_status='needs-review'),0) FROM (SELECT * FROM discovery_runs ORDER BY id DESC LIMIT 100) r LEFT JOIN discovery_observations o ON o.run_id=r.id GROUP BY r.id ORDER BY r.id DESC")?;
+        Ok(statement
+            .query_map([], |row| {
+                Ok(DiscoveryRun {
+                    id: row.get(0)?,
+                    input_url: row.get(1)?,
+                    completed_at: row.get(2)?,
+                    total: row.get(3)?,
+                    pending: row.get(4)?,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// SQL filtering and stable, bounded pages; do not load the full observation history.
+    pub fn discovery_page(&self, filter: &DiscoveryFilter) -> Result<DiscoveryPage, StorageError> {
+        let condition = "(?1=0 OR o.run_id=?1) AND (?2='' OR o.verification_status=?2) AND (?3='' OR o.kind=?3) AND (?4='' OR instr(lower(o.value||' '||o.evidence||' '||o.source),lower(?4))>0)";
+        let query = filter.query.chars().take(256).collect::<String>();
+        let total: i64 = self.connection.query_row(
+            &format!("SELECT COUNT(*) FROM discovery_observations o WHERE {condition}"),
+            params![filter.run_id, filter.status, filter.kind, query],
+            |row| row.get(0),
+        )?;
+        let total = total.max(0) as usize;
+        let page = filter.page.min(total.saturating_sub(1) / 20);
+        let mut statement = self.connection.prepare(&format!("SELECT o.id,o.kind,o.value,o.source,o.evidence,o.confidence,o.verification_status,o.discovered_at,o.run_id,COALESCE(l.asset_kind||':'||l.asset_id,'') FROM discovery_observations o LEFT JOIN discovery_asset_links l ON l.observation_id=o.id WHERE {condition} ORDER BY o.id DESC LIMIT 20 OFFSET ?5"))?;
+        let mut candidates = statement
+            .query_map(
+                params![
+                    filter.run_id,
+                    filter.status,
+                    filter.kind,
+                    query,
+                    (page * 20) as i64
+                ],
+                |row| {
+                    Ok(DiscoveryCandidate {
+                        id: row.get(0)?,
+                        observation: DiscoveryObservation {
+                            kind: row.get(1)?,
+                            value: row.get(2)?,
+                            source: row.get(3)?,
+                            evidence: row.get(4)?,
+                            confidence: row.get(5)?,
+                            verification_status: row.get(6)?,
+                        },
+                        discovered_at: row.get(7)?,
+                        run_id: row.get(8)?,
+                        linked_key: row.get(9)?,
+                        matches: Vec::new(),
+                        history: String::new(),
+                    })
+                },
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        for candidate in &mut candidates {
+            let item = &candidate.observation;
+            candidate.matches =
+                discovery_asset_matches(&self.connection, &item.kind, &item.value, &item.source)?;
+            let mut history = self.connection.prepare("SELECT reviewed_at||' UTC | '||previous_status||' -> '||status FROM discovery_reviews WHERE observation_id=?1 ORDER BY id DESC LIMIT 10")?;
+            candidate.history = history
+                .query_map([candidate.id], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?
+                .join("\n");
+        }
+        Ok(DiscoveryPage {
+            candidates,
+            total,
+            page,
+        })
+    }
+
+    #[cfg(test)]
+    pub fn latest_discovery_warnings(&self) -> Result<Vec<String>, StorageError> {
+        self.discovery_warnings(0)
+    }
+
+    pub fn discovery_warnings(&self, run_id: i64) -> Result<Vec<String>, StorageError> {
+        let mut statement = self.connection.prepare("SELECT message FROM discovery_warnings WHERE run_id=CASE WHEN ?1=0 THEN (SELECT MAX(id) FROM discovery_runs) ELSE ?1 END LIMIT 100")?;
+        statement
+            .query_map([run_id], |row| row.get(0))?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(Into::into)
+    }
+
+    /// Confirm evidence without treating DNS addresses as origin servers.
+    /// Domain and page promotion are atomic with the review decision and idempotent.
+    pub fn review_discovery_candidate(
+        &mut self,
+        id: i64,
+        action: &str,
+    ) -> Result<(), StorageError> {
+        self.review_discovery_with_target(id, action, None)
+    }
+
+    /// Associate evidence with an explicitly selected identity match, preserving its fields.
+    pub fn link_discovery_candidate(&mut self, id: i64, target: &str) -> Result<(), StorageError> {
+        self.review_discovery_with_target(id, "confirm", Some(target))
+    }
+
+    fn review_discovery_with_target(
+        &mut self,
+        id: i64,
+        action: &str,
+        target: Option<&str>,
+    ) -> Result<(), StorageError> {
+        let status = match action {
+            "confirm" => "confirmed",
+            "ignore" => "ignored",
+            "stale" => "stale",
+            "reopen" => "needs-review",
+            _ => {
+                return Err(StorageError::InvalidImport(
+                    "Unknown discovery review action".into(),
+                ));
+            }
+        };
+        let transaction = self.connection.transaction()?;
+        let (kind, value, source, previous): (String,String,String,String) = transaction.query_row(
+            "SELECT kind,value,source,verification_status FROM discovery_observations WHERE id=?1", [id],
+            |row| Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?)))?;
+        let existing_matches = discovery_asset_matches(&transaction, &kind, &value, &source)?;
+        if let Some(key) = target
+            && !existing_matches.iter().any(|item| item.key == key)
+        {
+            return Err(StorageError::InvalidImport("Select an existing asset with the same domain or URL identity. No asset was changed.".into()));
+        }
+        if previous == "confirmed" && status == "confirmed" && target.is_none() {
+            return Ok(());
+        }
+        if status == "confirmed" && matches!(kind.as_str(), "domain" | "subdomain-candidate") {
+            if crate::discovery::host_from_url(&format!("https://{value}")).as_deref()
+                != Some(value.as_str())
+                || value.len() > 160
+            {
+                return Err(StorageError::InvalidImport(
+                    "Invalid domain candidate".into(),
+                ));
+            }
+            let existing = !existing_matches.is_empty();
+            if !existing {
+                let count: i64 = transaction.query_row(
+                    "SELECT COUNT(*) FROM operational_inventory",
+                    [],
+                    |r| r.get(0),
+                )?;
+                if count >= 5000 {
+                    return Err(StorageError::InvalidImport(
+                        "Inventory is limited to 5000 records".into(),
+                    ));
+                }
+                let details = crate::operational::Details {
+                    name: value.clone(),
+                    notes:
+                        "Confirmed from Discovery. DNS addresses are not verified origin servers."
+                            .into(),
+                    ..Default::default()
+                };
+                transaction.execute(
+                    "INSERT INTO operational_inventory(kind,data) VALUES(1,?1)",
+                    [serde_json::to_string(&details)?],
+                )?;
+            }
+        } else if status == "confirmed" && kind == "public-endpoint" && source == "page" {
+            if crate::discovery::host_from_url(&value).is_none() {
+                return Err(StorageError::InvalidImport(
+                    "Invalid public URL candidate".into(),
+                ));
+            }
+            let draft = validate_site(&SiteDraft {
+                name: value.chars().take(100).collect(),
+                url: value.clone(),
+                environment: "Unspecified".into(),
+                status: "Recorded".into(),
+                purpose: "Confirmed from Discovery".into(),
+                tags: vec![],
+            })
+            .map_err(ValidationError::from)?;
+            if existing_matches.is_empty() {
+                transaction.execute("INSERT INTO sites(name,url,environment,status,purpose,tags,position) SELECT ?1,?2,?3,?4,?5,'',(SELECT COALESCE(MAX(position),-1)+1 FROM sites) WHERE NOT EXISTS(SELECT 1 FROM sites WHERE url=?2)", params![draft.name,draft.url,draft.environment,draft.status,draft.purpose])?;
+            }
+        }
+        if status == "confirmed" {
+            let matches = discovery_asset_matches(&transaction, &kind, &value, &source)?;
+            if let Some(selected) = matches
+                .iter()
+                .find(|item| target.is_none_or(|key| item.key == key))
+                && let Some((asset_kind, asset_id)) = selected.key.split_once(':')
+            {
+                transaction.execute("INSERT INTO discovery_asset_links(observation_id,asset_kind,asset_id) VALUES(?1,?2,?3) ON CONFLICT(observation_id) DO UPDATE SET asset_kind=excluded.asset_kind,asset_id=excluded.asset_id,linked_at=CURRENT_TIMESTAMP", params![id, asset_kind, asset_id.parse::<i64>().map_err(|_| StorageError::InvalidImport("Invalid asset identity".into()))?])?;
+            }
+        }
+        transaction.execute(
+            "UPDATE discovery_observations SET verification_status=?1 WHERE id=?2",
+            params![status, id],
+        )?;
+        transaction.execute(
+            "INSERT INTO discovery_reviews(observation_id,previous_status,status) VALUES(?1,?2,?3)",
+            params![id, previous, status],
+        )?;
+        transaction.commit()?;
+        Ok(())
+    }
+
+    pub fn discovery_observations(
+        &self,
+        pending_only: bool,
+    ) -> Result<Vec<DiscoveryObservation>, StorageError> {
+        let sql = if pending_only {
+            "SELECT kind,value,source,evidence,confidence,verification_status FROM discovery_observations WHERE verification_status='needs-review' ORDER BY discovered_at DESC,id DESC LIMIT 5000"
+        } else {
+            "SELECT kind,value,source,evidence,confidence,verification_status FROM discovery_observations ORDER BY discovered_at DESC,id DESC LIMIT 5000"
+        };
+        let mut statement = self.connection.prepare(sql)?;
+        let rows = statement.query_map([], |row| {
+            Ok(DiscoveryObservation {
+                kind: row.get(0)?,
+                value: row.get(1)?,
+                source: row.get(2)?,
+                evidence: row.get(3)?,
+                confidence: row.get::<_, i64>(4)?.clamp(0, 100) as u8,
+                verification_status: row.get(5)?,
+            })
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     pub fn open_default() -> Result<Self, StorageError> {
         let directory = data_directory()?;
         fs::create_dir_all(&directory).map_err(|source| StorageError::CreateDataDirectory {
@@ -520,6 +914,28 @@ impl Repository {
             let transaction = self.connection.transaction()?;
             transaction.execute_batch(include_str!("../migrations/022_reminder_reviews.sql"))?;
             transaction.pragma_update(None, "user_version", 22)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 22 {
+            self.automatic_backup("pre-schema-23.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/023_discovery.sql"))?;
+            transaction.pragma_update(None, "user_version", 23)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 23 {
+            self.automatic_backup("pre-schema-24.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction.execute_batch(include_str!("../migrations/024_discovery_review.sql"))?;
+            transaction.pragma_update(None, "user_version", 24)?;
+            transaction.commit()?;
+        }
+        if self.schema_version()? == 24 {
+            self.automatic_backup("pre-schema-25.db")?;
+            let transaction = self.connection.transaction()?;
+            transaction
+                .execute_batch(include_str!("../migrations/025_discovery_asset_links.sql"))?;
+            transaction.pragma_update(None, "user_version", 25)?;
             transaction.commit()?;
         }
         Ok(())
@@ -3917,6 +4333,510 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     use super::*;
+
+    #[test]
+    fn discovery_observations_are_saved_pending_and_never_promoted_automatically()
+    -> Result<(), StorageError> {
+        let repo = Repository::in_memory()?;
+        let report = DiscoveryReport {
+            input_url: "https://www.example.com".into(),
+            host: "www.example.com".into(),
+            observations: vec![DiscoveryObservation {
+                kind: "subdomain-candidate".into(),
+                value: "api.example.com".into(),
+                source: "sitemap.xml".into(),
+                evidence: "Found in sitemap".into(),
+                confidence: 60,
+                verification_status: "needs-review".into(),
+            }],
+            warnings: Vec::new(),
+        };
+        let run = repo.save_discovery_report(&report)?;
+        assert!(run > 0);
+        assert_eq!(repo.discovery_observations(true)?, report.observations);
+        assert!(repo.server_records()?.is_empty());
+        assert!(repo.inventory_entries()?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn enriched_discovery_evidence_never_creates_assets_or_edges() -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let kinds = [
+            "dns-record",
+            "tls-certificate",
+            "certificate-pattern",
+            "external-reference",
+            "link-evidence",
+            "http-evidence",
+            "discovery-scope",
+        ];
+        let report = DiscoveryReport {
+            input_url: "https://example.com/".into(),
+            host: "example.com".into(),
+            observations: kinds
+                .iter()
+                .map(|kind| DiscoveryObservation {
+                    kind: (*kind).into(),
+                    value: "example.com".into(),
+                    source: "fixture".into(),
+                    evidence: "Evidence only".into(),
+                    confidence: 60,
+                    verification_status: "needs-review".into(),
+                })
+                .collect(),
+            warnings: vec![],
+        };
+        repo.save_discovery_report(&report)?;
+        let candidates = repo.discovery_candidates()?;
+        assert_eq!(candidates.len(), kinds.len());
+        for candidate in candidates {
+            repo.review_discovery_candidate(candidate.id, "confirm")?;
+        }
+        assert!(repo.server_records()?.is_empty());
+        assert!(repo.site_records()?.is_empty());
+        assert!(repo.inventory_entries()?.is_empty());
+        assert!(repo.resource_links()?.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_review_promotes_only_explicit_domains_and_pages_idempotently()
+    -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let report = DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![
+                DiscoveryObservation {
+                    kind: "domain".into(),
+                    value: "example.com".into(),
+                    source: "input".into(),
+                    evidence: "URL input".into(),
+                    confidence: 100,
+                    verification_status: "confirmed".into(),
+                },
+                DiscoveryObservation {
+                    kind: "public-endpoint".into(),
+                    value: "https://example.com".into(),
+                    source: "page".into(),
+                    evidence: "HTTP 200".into(),
+                    confidence: 80,
+                    verification_status: "needs-review".into(),
+                },
+                DiscoveryObservation {
+                    kind: "ip-candidate".into(),
+                    value: "1.1.1.1".into(),
+                    source: "dns".into(),
+                    evidence: "May be CDN".into(),
+                    confidence: 70,
+                    verification_status: "needs-review".into(),
+                },
+            ],
+            warnings: vec!["Optional sitemap missing".into()],
+        };
+        repo.save_discovery_report(&report)?;
+        assert_eq!(
+            repo.discovery_observations(true)?.len(),
+            3,
+            "Imported state cannot bypass review"
+        );
+        assert!(repo.inventory_entries()?.is_empty());
+        assert_eq!(repo.latest_discovery_warnings()?, report.warnings);
+        let candidates = repo.discovery_candidates()?;
+        for candidate in &candidates {
+            repo.review_discovery_candidate(candidate.id, "confirm")?;
+            repo.review_discovery_candidate(candidate.id, "confirm")?;
+        }
+        assert_eq!(repo.inventory_entries()?.len(), 1);
+        assert_eq!(repo.site_records()?.len(), 1);
+        assert!(
+            repo.server_records()?.is_empty(),
+            "DNS/CDN is never promoted to an origin host"
+        );
+        assert!(repo.resource_links()?.is_empty());
+        let candidate = &candidates[0];
+        for action in ["stale", "reopen", "ignore", "reopen", "confirm"] {
+            repo.review_discovery_candidate(candidate.id, action)?;
+        }
+        repo.save_discovery_report(&report)?;
+        for candidate in repo.discovery_candidates()? {
+            repo.review_discovery_candidate(candidate.id, "confirm")?;
+        }
+        assert_eq!(repo.inventory_entries()?.len(), 1);
+        assert_eq!(repo.site_records()?.len(), 1);
+        assert!(
+            repo.review_discovery_candidate(candidate.id, "delete")
+                .is_err()
+        );
+        assert!(
+            repo.review_discovery_candidate(i64::MAX, "confirm")
+                .is_err()
+        );
+        let history: i64 =
+            repo.connection
+                .query_row("SELECT COUNT(*) FROM discovery_reviews", [], |r| r.get(0))?;
+        assert!(history >= 8);
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_confirmation_preserves_hidden_assets_and_user_details() -> Result<(), StorageError>
+    {
+        let mut repo = Repository::in_memory()?;
+        let details = serde_json::to_string(&crate::operational::Details {
+            name: "example.com".into(),
+            notes: "Keep the existing handover notes".into(),
+            ..Default::default()
+        })?;
+        repo.connection.execute(
+            "INSERT INTO operational_inventory(kind,data,hidden) VALUES(1,?1,1)",
+            [&details],
+        )?;
+        let site_id = repo.save_site(
+            None,
+            &SiteDraft {
+                name: "Existing production site".into(),
+                url: "https://example.com".into(),
+                environment: "Production".into(),
+                status: "Recorded".into(),
+                purpose: "Keep this purpose".into(),
+                tags: vec!["handover".into()],
+            },
+        )?;
+        repo.hide_site(site_id)?;
+        let before = repo.hidden_site_records()?;
+        repo.save_discovery_report(&DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![
+                DiscoveryObservation {
+                    kind: "domain".into(),
+                    value: "example.com".into(),
+                    source: "input".into(),
+                    evidence: "URL input".into(),
+                    confidence: 100,
+                    verification_status: "needs-review".into(),
+                },
+                DiscoveryObservation {
+                    kind: "public-endpoint".into(),
+                    value: "https://example.com".into(),
+                    source: "page".into(),
+                    evidence: "HTTP 200".into(),
+                    confidence: 80,
+                    verification_status: "needs-review".into(),
+                },
+            ],
+            warnings: vec![],
+        })?;
+        for candidate in repo.discovery_candidates()? {
+            repo.review_discovery_candidate(candidate.id, "confirm")?;
+        }
+        assert!(repo.site_records()?.is_empty());
+        assert_eq!(repo.hidden_site_records()?, before);
+        let (count, saved, hidden): (i64, String, bool) = repo.connection.query_row(
+            "SELECT COUNT(*),data,hidden FROM operational_inventory WHERE kind=1",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )?;
+        assert_eq!(count, 1);
+        assert_eq!(saved, details);
+        assert!(hidden);
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_failed_save_and_invalid_promotion_roll_back() -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let mut report = DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![DiscoveryObservation {
+                kind: "domain".into(),
+                value: "not a hostname".into(),
+                source: "input".into(),
+                evidence: "x".into(),
+                confidence: 100,
+                verification_status: "needs-review".into(),
+            }],
+            warnings: vec![],
+        };
+        repo.save_discovery_report(&report)?;
+        let id = repo.discovery_candidates()?[0].id;
+        assert!(repo.review_discovery_candidate(id, "confirm").is_err());
+        assert_eq!(
+            repo.discovery_candidates()?[0]
+                .observation
+                .verification_status,
+            "needs-review"
+        );
+        assert!(repo.inventory_entries()?.is_empty());
+        report.observations[0].evidence = "x".repeat(4097);
+        assert!(repo.save_discovery_report(&report).is_err());
+        let runs: i64 =
+            repo.connection
+                .query_row("SELECT COUNT(*) FROM discovery_runs", [], |r| r.get(0))?;
+        assert_eq!(runs, 1);
+
+        // Fail after the asset insert to prove review and promotion commit together.
+        report.observations[0].value = "example.com".into();
+        report.observations[0].evidence = "Input URL".into();
+        repo.save_discovery_report(&report)?;
+        let id = repo.discovery_candidates()?[0].id;
+        repo.connection.execute_batch(
+            "CREATE TRIGGER reject_discovery_review BEFORE INSERT ON discovery_reviews
+             BEGIN SELECT RAISE(ABORT, 'fixture review failure'); END;",
+        )?;
+        assert!(repo.review_discovery_candidate(id, "confirm").is_err());
+        assert!(repo.inventory_entries()?.is_empty());
+        assert_eq!(
+            repo.discovery_candidates()?[0]
+                .observation
+                .verification_status,
+            "needs-review"
+        );
+        repo.connection
+            .execute_batch("DROP TRIGGER reject_discovery_review")?;
+        repo.review_discovery_candidate(id, "confirm")?;
+        assert_eq!(repo.inventory_entries()?.len(), 1);
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_inbox_survives_reopen_and_schema_23_upgrade() -> Result<(), StorageError> {
+        let path = temporary_path("discovery-upgrade", "db");
+        let repo = Repository::open(path.clone())?;
+        repo.save_discovery_report(&DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![DiscoveryObservation {
+                kind: "domain".into(),
+                value: "example.com".into(),
+                source: "input".into(),
+                evidence: "Input URL".into(),
+                confidence: 100,
+                verification_status: "needs-review".into(),
+            }],
+            warnings: vec![],
+        })?;
+        repo.connection.execute_batch(
+            "DROP TABLE discovery_asset_links; DROP INDEX discovery_observations_run_page_idx; DROP TABLE discovery_warnings; DROP TABLE discovery_reviews; PRAGMA user_version=23;",
+        )?;
+        drop(repo);
+        let mut reopened = Repository::open(path.clone())?;
+        assert_eq!(reopened.schema_version()?, SCHEMA_VERSION);
+        let candidates = reopened.discovery_candidates()?;
+        assert_eq!(candidates.len(), 1);
+        assert!(!candidates[0].discovered_at.is_empty());
+        reopened.review_discovery_candidate(candidates[0].id, "ignore")?;
+        drop(reopened);
+        let reopened = Repository::open(path.clone())?;
+        assert_eq!(
+            reopened.discovery_candidates()?[0]
+                .observation
+                .verification_status,
+            "ignored"
+        );
+        drop(reopened);
+        let _ = fs::remove_file(path);
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_pages_filter_runs_states_and_evidence_without_losing_old_results()
+    -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let mut report = DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: (0..225)
+                .map(|i| DiscoveryObservation {
+                    kind: "subdomain-candidate".into(),
+                    value: format!("node-{i:03}.example.com"),
+                    source: "sitemap.xml".into(),
+                    evidence: "First run evidence".into(),
+                    confidence: 60,
+                    verification_status: "needs-review".into(),
+                })
+                .collect(),
+            warnings: vec!["First run warning".into()],
+        };
+        let first = repo.save_discovery_report(&report)?;
+        report.observations = vec![DiscoveryObservation {
+            kind: "ip-candidate".into(),
+            value: "8.8.8.8".into(),
+            source: "dns".into(),
+            evidence: "Second run evidence".into(),
+            confidence: 70,
+            verification_status: "needs-review".into(),
+        }];
+        report.warnings = vec!["Second run warning".into()];
+        let second = repo.save_discovery_report(&report)?;
+        let mut filter = DiscoveryFilter {
+            run_id: first,
+            ..Default::default()
+        };
+        let page = repo.discovery_page(&filter)?;
+        assert_eq!(page.total, 225);
+        assert_eq!(page.candidates.len(), 20);
+        assert!(
+            page.candidates
+                .iter()
+                .all(|candidate| candidate.run_id == first)
+        );
+        let mut ids = Vec::new();
+        for number in 0..225_usize.div_ceil(20) {
+            filter.page = number;
+            ids.extend(
+                repo.discovery_page(&filter)?
+                    .candidates
+                    .into_iter()
+                    .map(|candidate| candidate.id),
+            );
+        }
+        ids.sort_unstable();
+        ids.dedup();
+        assert_eq!(ids.len(), 225);
+        filter.page = usize::MAX;
+        assert_eq!(repo.discovery_page(&filter)?.page, 11);
+        repo.review_discovery_candidate(ids[0], "ignore")?;
+        filter.status = "ignored".into();
+        assert_eq!(repo.discovery_page(&filter)?.total, 1);
+        filter.status = "needs-review".into();
+        assert_eq!(repo.discovery_page(&filter)?.total, 224);
+        filter.status.clear();
+        filter.query = "NODE-020".into();
+        assert_eq!(repo.discovery_page(&filter)?.total, 1);
+        filter.query = "Second run".into();
+        assert_eq!(repo.discovery_page(&filter)?.total, 0);
+        filter.run_id = second;
+        assert_eq!(repo.discovery_page(&filter)?.total, 1);
+        filter.kind = "domain".into();
+        assert_eq!(repo.discovery_page(&filter)?.total, 0);
+        assert_eq!(repo.discovery_warnings(first)?, vec!["First run warning"]);
+        assert_eq!(repo.discovery_warnings(second)?, vec!["Second run warning"]);
+        assert_eq!(repo.discovery_runs()?[1].pending, 224);
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_explicit_link_preserves_hidden_metadata_and_rejects_wrong_identity()
+    -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let details = serde_json::to_string(&crate::operational::Details {
+            name: "EXAMPLE.COM.".into(),
+            notes: "Do not replace my handover notes".into(),
+            tags: "production".into(),
+            ..Default::default()
+        })?;
+        repo.connection.execute(
+            "INSERT INTO operational_inventory(kind,data,hidden) VALUES(1,?1,1)",
+            [&details],
+        )?;
+        let asset_id = repo.connection.last_insert_rowid();
+        repo.save_discovery_report(&DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![DiscoveryObservation {
+                kind: "domain".into(),
+                value: "example.com".into(),
+                source: "input".into(),
+                evidence: "URL input".into(),
+                confidence: 100,
+                verification_status: "needs-review".into(),
+            }],
+            warnings: vec![],
+        })?;
+        let page = repo.discovery_page(&DiscoveryFilter::default())?;
+        let candidate = &page.candidates[0];
+        assert_eq!(candidate.matches.len(), 1);
+        assert!(candidate.matches[0].summary.contains("stays hidden"));
+        assert!(
+            repo.link_discovery_candidate(candidate.id, "site:999")
+                .is_err()
+        );
+        assert!(
+            repo.link_discovery_candidate(candidate.id, "domain:999")
+                .is_err()
+        );
+        let key = format!("domain:{asset_id}");
+        repo.link_discovery_candidate(candidate.id, &key)?;
+        let page = repo.discovery_page(&DiscoveryFilter::default())?;
+        assert_eq!(page.candidates[0].linked_key, key);
+        assert!(page.candidates[0].history.contains("confirmed"));
+        repo.review_discovery_candidate(candidate.id, "stale")?;
+        let (saved, hidden): (String, bool) = repo.connection.query_row(
+            "SELECT data,hidden FROM operational_inventory WHERE id=?1",
+            [asset_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )?;
+        assert_eq!(saved, details);
+        assert!(hidden);
+        assert_eq!(
+            repo.discovery_page(&DiscoveryFilter::default())?.candidates[0].linked_key,
+            key
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn discovery_url_normalization_avoids_duplicate_sites_and_link_failure_rolls_back()
+    -> Result<(), StorageError> {
+        let mut repo = Repository::in_memory()?;
+        let id = repo.save_site(
+            None,
+            &SiteDraft {
+                name: "Production site".into(),
+                url: "https://EXAMPLE.COM:443/".into(),
+                environment: "Production".into(),
+                status: "Recorded".into(),
+                purpose: "Keep purpose".into(),
+                tags: vec![],
+            },
+        )?;
+        let mut report = DiscoveryReport {
+            input_url: "https://example.com".into(),
+            host: "example.com".into(),
+            observations: vec![DiscoveryObservation {
+                kind: "public-endpoint".into(),
+                value: "https://example.com".into(),
+                source: "page".into(),
+                evidence: "HTTP success".into(),
+                confidence: 80,
+                verification_status: "needs-review".into(),
+            }],
+            warnings: vec![],
+        };
+        repo.save_discovery_report(&report)?;
+        let candidate = repo
+            .discovery_page(&DiscoveryFilter::default())?
+            .candidates
+            .remove(0);
+        assert_eq!(candidate.matches[0].key, format!("site:{id}"));
+        repo.link_discovery_candidate(candidate.id, &format!("site:{id}"))?;
+        assert_eq!(repo.site_records()?.len(), 1);
+        assert_eq!(repo.site_records()?[0].purpose, "Keep purpose");
+        report.observations[0].kind = "domain".into();
+        report.observations[0].value = "new.example.com".into();
+        repo.save_discovery_report(&report)?;
+        let candidate = repo
+            .discovery_page(&DiscoveryFilter::default())?
+            .candidates
+            .remove(0);
+        repo.connection.execute_batch("CREATE TRIGGER fail_discovery_link BEFORE INSERT ON discovery_asset_links BEGIN SELECT RAISE(ABORT,'fixture link failure'); END;")?;
+        assert!(
+            repo.review_discovery_candidate(candidate.id, "confirm")
+                .is_err()
+        );
+        assert!(repo.inventory_entries()?.is_empty());
+        assert_eq!(
+            repo.discovery_page(&DiscoveryFilter::default())?.candidates[0]
+                .observation
+                .verification_status,
+            "needs-review"
+        );
+        Ok(())
+    }
 
     fn temporary_path(label: &str, extension: &str) -> PathBuf {
         let nonce = SystemTime::now()
